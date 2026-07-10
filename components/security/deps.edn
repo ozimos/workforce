@@ -1,0 +1,12 @@
+{:paths ["src/clojure" "resources" "src/java"]
+ :deps {org.springframework.security/spring-security-web {:mvn/version "6.5.11"}
+        org.springframework.security/spring-security-config {:mvn/version "6.5.11"}
+        org.springframework.security/spring-security-core {:mvn/version "6.5.11"}
+        org.springframework.security/spring-security-oauth2-resource-server {:mvn/version "6.5.11"}
+        org.springframework.security/spring-security-oauth2-jose {:mvn/version "6.5.11"}
+        org.springframework/spring-context {:mvn/version "6.2.7"}
+        org.springframework/spring-web {:mvn/version "6.2.7"}
+        jakarta.servlet/jakarta.servlet-api {:mvn/version "6.0.0"}
+        integrant/integrant {:mvn/version "1.0.0"}}
+ :aliases {:test {:extra-paths ["test/clojure"]
+                  :extra-deps {org.clojure/test.check {:mvn/version "1.1.1"}}}}}

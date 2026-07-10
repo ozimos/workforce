@@ -1,0 +1,13 @@
+{:dev
+ {:rama/cluster
+  {:mode :ipc :tasks 4 :threads 2}
+
+  :password/encoder
+  {:strength 10}
+
+  :adapter/jetty
+  {:port 8080}
+
+  :handler/routes
+  {:user-store #ig/ref :user/store
+   :session-store #ig/ref :session/store}}}

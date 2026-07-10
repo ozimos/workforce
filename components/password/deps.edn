@@ -1,0 +1,5 @@
+{:paths ["src/clojure" "resources"]
+ :deps {org.springframework.security/spring-security-core {:mvn/version "6.5.11"}
+        integrant/integrant {:mvn/version "1.0.0"}}
+ :aliases {:test {:extra-paths ["test/clojure"]
+                  :extra-deps {org.clojure/test.check {:mvn/version "1.1.1"}}}}}

@@ -1,0 +1,5 @@
+{:paths ["src/clojure" "resources"]
+ :deps {aero/aero {:mvn/version "1.0.1"}
+        integrant/integrant {:mvn/version "1.0.0"}}
+ :aliases {:test {:extra-paths ["test/clojure"]
+                  :extra-deps {}}}}

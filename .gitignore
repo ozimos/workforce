@@ -1,0 +1,15 @@
+/.git
+/.cpcache
+/*.jar
+/bin/launchpad
+/target
+/classes
+/.clojure
+/.dir-locals.el
+node_modules
+/.gradle
+/build
+/resources/private
+/target-*
+/deps.local.edn
+*.log

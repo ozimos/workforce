@@ -1,0 +1,46 @@
+{:rama/cluster
+ {:mode #profile {:dev :ipc :prod :cluster}
+  :hosts #profile {:dev nil :prod ["localhost"]}
+  :tasks #profile {:dev 4 :prod 64}
+  :threads #profile {:dev 2 :prod 16}}
+
+ :password/encoder
+ {:strength 12}
+
+ :token/encoder
+ {:rsa-key-id "auth-template-key-1"}
+
+ :token/decoder
+ {:rsa-key-id "auth-template-key-1"
+  :revocation-validator #ig/ref :revocation/validator}
+
+ :revocation/validator
+ {:rama #ig/ref :rama/cluster}
+
+ :security/app-context
+ {:jwt-decoder #ig/ref :token/decoder
+  :user-service #ig/ref :user/store
+  :password-encoder #ig/ref :password/encoder}
+
+ :user/store
+ {:rama #ig/ref :rama/cluster}
+
+ :session/store
+ {:rama #ig/ref :rama/cluster}
+
+ :adapter/jetty
+ {:port #profile {:dev 8080 :prod 8080}
+  :host "0.0.0.0"
+  :filter-chain-proxy #ig/ref :security/app-context
+  :handler #ig/ref :handler/app}
+
+ :handler/app
+ {:routes #ig/ref :handler/routes}
+
+ :handler/routes
+ {:user-store #ig/ref :user/store
+  :session-store #ig/ref :session/store
+  :password-encoder #ig/ref :password/encoder
+  :token-encoder #ig/ref :token/encoder
+  :token-decoder #ig/ref :token/decoder
+  :revocation-validator #ig/ref :revocation/validator}}
