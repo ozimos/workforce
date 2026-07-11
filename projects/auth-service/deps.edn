@@ -9,7 +9,6 @@
         poly/session     {:local/root "../../components/session"}
         poly/revocation  {:local/root "../../components/revocation"}
         poly/token       {:local/root "../../components/token"}
-        poly/password    {:local/root "../../components/password"}
         poly/security    {:local/root "../../components/security"}
 
         poly/auth-api    {:local/root "../../bases/auth-api"}
@@ -18,6 +17,6 @@
 
  :aliases {:test {:extra-paths [] :extra-deps {}}
 
-           :uberjar {:main com.ozimos.auth.auth_api.main}
+           :uberjar {:main com.ozimos.auth.auth-api.main}
 
-           :run {:main-opts ["-m" "com.ozimos.auth.auth_api.main" "prod"]}}}
+           :run {:main-opts ["-m" "com.ozimos.auth.auth-api.main" "prod"]}}}
