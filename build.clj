@@ -26,4 +26,4 @@
   (b/uber {:class-dir class-dir
            :uber-file uber-file
            :basis basis
-           :main "com.ozimos.auth.auth_api.main"}))
+           :main "com.ozimos.auth.auth-api.main"}))

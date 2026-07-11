@@ -13,3 +13,5 @@ node_modules
 /target-*
 /deps.local.edn
 *.log
+/.nrepl-port
+/.clj-kondo/.cache

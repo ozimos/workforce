@@ -1,0 +1,4 @@
+{:include ["bases/**/*.{clj,cljs,cljc,edn}"
+           "components/**/*.{clj,cljs,cljc,edn}"
+           "projects/**/*.{clj,cljs,cljc,edn}"
+           "development/**/*.{clj,cljs,cljc,edn}"]}

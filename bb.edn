@@ -1,2 +1,8 @@
 {:deps
- {com.lambdaisland/launchpad {:mvn/version "0.53.238-alpha"}}}
+ {com.lambdaisland/launchpad {:mvn/version "0.53.238-alpha"}}
+
+ :tasks
+ {:requires ([babashka.process :refer [shell]])
+  lint         (shell {:continue true} "clj-kondo" "--lint" "bases" "components" "projects" "development/src/clojure")
+  fmt-check    (shell {:continue true} "standard-clj" "check" "bases" "components" "projects" "development/src/clojure")
+  fmt-fix      (shell {:continue true} "standard-clj" "fix" "bases" "components" "projects" "development/src/clojure")}}

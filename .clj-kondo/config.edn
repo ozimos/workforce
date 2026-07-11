@@ -1,0 +1,33 @@
+{:config-paths
+ ["imports/babashka/fs"
+  "imports/com.rpl/rama"
+  "imports/metosin/malli"
+  "imports/rewrite-clj/rewrite-clj"
+  "imports/taoensso/encore"]
+
+ :linters
+ {:unused-namespace
+  {:level :warning}
+
+  :unused-binding
+  {:level :warning}
+
+  :unused-import
+  {:level :warning}
+
+  :redundant-let
+  {:level :warning}
+
+  :redundant-str-call
+  {:level :off}
+
+  :conflicting-alias
+  {:level :warning}
+
+  :unresolved-var
+  {:level :warning}
+
+  :redundant-boolean-coercion
+  {:level :off}
+
+  :skip-comments true}}
