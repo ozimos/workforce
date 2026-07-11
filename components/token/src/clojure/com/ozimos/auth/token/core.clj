@@ -1,15 +1,14 @@
 (ns com.ozimos.auth.token.core
-  (:require [integrant.core :as ig])
-  (:import [com.nimbusds.jose.jwk RSAKey RSAKeyGenerator KeyUse JWKSet]
-           [com.nimbusds.jose JWSAlgorithm]
-           [com.nimbusds.jose.proc SecurityContext]
-           [org.springframework.security.oauth2.jose.jwk JWKSource]
-           [org.springframework.security.oauth2.jose.jws SignatureAlgorithm]
-           [org.springframework.security.oauth2.jwt NimbusJwtEncoder NimbusJwtDecoder
-            JwtEncoder JwtDecoder JwtClaimsSet JwsHeader JwtEncoderParameters
-            OAuth2TokenValidator]
-           [java.time Instant]
-           [java.util UUID]))
+  (:require
+   [integrant.core :as ig])
+  (:import
+   (com.nimbusds.jose JWSAlgorithm)
+   (com.nimbusds.jose.jwk JWKSet KeyUse RSAKey RSAKeyGenerator)
+   (com.nimbusds.jose.proc SecurityContext)
+   (java.time Instant)
+   (org.springframework.security.oauth2.jose.jwk JWKSource)
+   (org.springframework.security.oauth2.jose.jws SignatureAlgorithm)
+   (org.springframework.security.oauth2.jwt JwsHeader Jwt JwtClaimsSet JwtDecoder JwtEncoder JwtEncoderParameters NimbusJwtDecoder NimbusJwtEncoder)))
 
 (defn gen-rsa-key
   "Generate a 2048-bit RSA signing key with the given key id."
@@ -25,7 +24,7 @@
   (let [jwk-set (JWKSet. rsa-key)]
     (reify JWKSource
       (^java.util.List get [_ ^org.springframework.security.oauth2.jose.jwk.JWKSelector selector ^SecurityContext ctx]
-       (.select selector jwk-set)))))
+        (.select selector jwk-set)))))
 
 (defn make-encoder
   ^JwtEncoder [^RSAKey rsa-key]
@@ -83,7 +82,7 @@
    (.decode decoder token-string)))
 
 (defmethod ig/init-key :token/encoder [_ {:keys [rsa-key-id]
-                                           :or {rsa-key-id "auth-template-key-1"}}]
+                                          :or {rsa-key-id "auth-template-key-1"}}]
   (let [rsa-key (gen-rsa-key rsa-key-id)]
     {:encoder (make-encoder rsa-key)
      :rsa-key rsa-key}))
@@ -91,11 +90,11 @@
 (defmethod ig/halt-key! :token/encoder [_ _])
 
 (defmethod ig/init-key :token/decoder [_ {:keys [rsa-key-id revocation-validator]
-                                           :or {rsa-key-id "auth-template-key-1"}}]
+                                          :or {rsa-key-id "auth-template-key-1"}}]
   (let [rsa-key (gen-rsa-key rsa-key-id)
-         ;; Note: In production, the decoder must use the SAME rsa-key as the
-         ;; encoder. We re-generate it here for simplicity in dev; production
-         ;; should persist the key and pass it via config.
+        ;; Note: In production, the decoder must use the SAME rsa-key as the
+        ;; encoder. We re-generate it here for simplicity in dev; production
+        ;; should persist the key and pass it via config.
         decoder (make-decoder rsa-key revocation-validator)]
     {:decoder decoder
      :rsa-key rsa-key}))

@@ -1,5 +1,6 @@
 (ns com.ozimos.auth.session.interface
-  (:require [com.ozimos.auth.session.core :as core]))
+  (:require
+   [com.ozimos.auth.session.core :as core]))
 
 (defn create!
   "Create a session for user-id with the given jti and expiry (epoch ms). Returns session-id."

@@ -1,5 +1,6 @@
 (ns com.ozimos.auth.user.interface
-  (:require [com.ozimos.auth.user.core :as core]))
+  (:require
+   [com.ozimos.auth.user.core :as core]))
 
 (defn register! [deps input]
   (core/register! deps input))
@@ -15,3 +16,9 @@
 
 (defn change-password! [deps user-id new-pwd-hash]
   (core/change-password! deps user-id new-pwd-hash))
+
+(defn encode-password [deps plain]
+  (core/encode-password deps plain))
+
+(defn matches-password? [deps plain encoded]
+  (core/matches-password? deps plain encoded))

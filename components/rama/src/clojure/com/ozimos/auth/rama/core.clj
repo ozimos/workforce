@@ -1,10 +1,11 @@
 (ns com.ozimos.auth.rama.core
-  (:require [com.rpl.rama :as rama]
-            [com.rpl.rama.test :as rtest]
-            [com.ozimos.auth.rama.module :as module]
-            [integrant.core :as ig])
-  (:import [com.rpl.rama.cluster ClusterManager]
-           [com.rpl.rama.test InProcessCluster]))
+  (:require
+   [com.ozimos.auth.rama.module :as module]
+   [com.rpl.rama :as rama]
+   [com.rpl.rama.test :as rtest]
+   [integrant.core :as ig])
+  (:import
+   (com.rpl.rama.test InProcessCluster)))
 
 (defn module-name
   "Returns the full module name string for AuthModule."
@@ -21,10 +22,10 @@
   (rama/foreign-depot cmgr module-name depot-name))
 
 (defmethod ig/init-key :rama/cluster [_ {:keys [mode hosts repl-factor tasks threads]
-                                          :or {mode :ipc
-                                               repl-factor 1
-                                               tasks 4
-                                               threads 2}}]
+                                         :or {mode :ipc
+                                              repl-factor 1
+                                              tasks 4
+                                              threads 2}}]
   (case mode
     :ipc
     (let [ipc (rtest/create-ipc)]
@@ -38,7 +39,5 @@
       {:cluster-manager cmgr :mode :cluster})))
 
 (defmethod ig/halt-key! :rama/cluster [_ {:keys [cluster-manager mode]}]
-  (when (= mode :ipc)
-    (.close ^InProcessCluster cluster-manager))
-  (when (= mode :cluster)
-    (.close ^ClusterManager cluster-manager)))
+  (when cluster-manager
+    (.close cluster-manager)))

@@ -1,5 +1,6 @@
 (ns com.ozimos.auth.token.interface
-  (:require [com.ozimos.auth.token.core :as core]))
+  (:require
+   [com.ozimos.auth.token.core :as core]))
 
 (defn issue-access-token
   "Issue a short-lived access JWT. Returns the token string.

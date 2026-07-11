@@ -1,5 +1,6 @@
 (ns com.ozimos.auth.schema.interface.registration
-  (:require [com.ozimos.auth.schema.interface :as schema]))
+  (:require
+   [com.ozimos.auth.schema.interface :as schema]))
 
 (def register-request
   [:map

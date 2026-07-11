@@ -1,5 +1,6 @@
 (ns com.ozimos.auth.user.interface
-  (:require [com.ozimos.auth.user.core :as core]))
+  (:require
+   [com.ozimos.auth.user.core :as core]))
 
 (defn register!
   "Register a new user. Returns [true user] on success, [false {:errors ...}] on failure.
@@ -26,3 +27,13 @@
   "Change a user's password hash. Returns true on success."
   [deps user-id new-pwd-hash]
   (core/change-password! deps user-id new-pwd-hash))
+
+(defn encode-password
+  "Encode a plaintext password using BCrypt. Returns the hash string."
+  [deps plain]
+  (core/encode-password deps plain))
+
+(defn matches-password?
+  "Check if a plaintext password matches a BCrypt hash."
+  [deps plain encoded]
+  (core/matches-password? deps plain encoded))

@@ -1,5 +1,6 @@
 (ns com.ozimos.auth.revocation.interface
-  (:require [com.ozimos.auth.revocation.core :as core]))
+  (:require
+   [com.ozimos.auth.revocation.core :as core]))
 
 (defn is-revoked?
   "Check if a token jti is revoked. Returns true/false."

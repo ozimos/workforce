@@ -1,5 +1,6 @@
 (ns com.ozimos.auth.rama.interface
-  (:require [com.ozimos.auth.rama.core :as core]))
+  (:require
+   [com.ozimos.auth.rama.core :as core]))
 
 (defn cluster-manager
   "Returns the Rama cluster manager (or IPC for dev) from the integrant system."

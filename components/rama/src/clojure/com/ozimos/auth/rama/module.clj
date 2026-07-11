@@ -1,3 +1,4 @@
+#_:standard-clj/ignore-file
 (ns com.ozimos.auth.rama.module
   (:use [com.rpl.rama]
         [com.rpl.rama.path])
@@ -69,7 +70,7 @@
                                        [:pwd-hash (termval *pwd-hash)]
                                        [:email (termval *email)]
                                        [:verified (termval false)]
-                                       [:roles (termval (or *roles #{"ROLE_USER"}))])]
+                                        [:roles (termval (or *roles #{"ROLE_USER"}))])]
           $$profiles)
         (ack-return> *user-id))
       (<<else
@@ -100,7 +101,7 @@
       ;; Single session end
       (source> *session-end-depot :> {:keys [*session-id]})
       (|hash *session-id)
-      (local-remove> (keypath *session-id) $$sessions)
+      (local-clear> (keypath *session-id) $$sessions)
 
       ;; Revoke all sessions for a user
       (source> *revoke-all-depot :> {:keys [*user-id]})
@@ -108,10 +109,10 @@
       (local-select> (keypath *user-id) $$user-sessions :> *session-ids)
       (ops/explode *session-ids :> *sid)
       (|hash *sid)
-      (local-remove> (keypath *sid) $$sessions)
+      (local-clear> (keypath *sid) $$sessions)
       (|hash *user-id)
-      (local-remove> (keypath *user-id) $$user-sessions)
-      (local-remove> (keypath *user-id) $$user-active-jtis)
+      (local-clear> (keypath *user-id) $$user-sessions)
+      (local-clear> (keypath *user-id) $$user-active-jtis)
 
       ;; Token revocation
       (source> *revocation-depot :> {:keys [*jti *expires-at]})
@@ -124,5 +125,7 @@
       (local-select> (keypath *user-id) $$user-active-jtis :> *jtis)
       (ops/explode *jtis :> *jti)
       (|hash *jti)
-      (local-transform> [(keypath *jti) (termval *expires-at)] $$revoked-tokens)
+      (local-transform> [(keypath *jti) (termval (System/currentTimeMillis))] $$revoked-tokens)
       )))
+
+
