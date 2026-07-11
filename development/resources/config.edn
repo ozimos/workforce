@@ -1,13 +1,25 @@
-{:dev
- {:rama/cluster
-  {:mode :ipc :tasks 4 :threads 2}
+{:user/store
+ {}
 
-  :password/encoder
-  {:strength 10}
+ :token/encoder
+ {:rsa-key-id "auth-template-key-1"}
 
-  :adapter/jetty
-  {:port 8080}
+ :token/decoder
+ {:rsa-key-id "auth-template-key-1"}
 
-  :handler/routes
-  {:user-store #ig/ref :user/store
-   :session-store #ig/ref :session/store}}}
+ :security/app-context
+ {:jwt-decoder #ig/ref :token/decoder
+  :user-store #ig/ref :user/store}
+
+ :adapter/jetty
+ {:port 8080
+  :host "0.0.0.0"
+  :filter-chain-proxy #ig/ref :security/app-context
+  :handler #ig/ref :handler/app}
+
+ :handler/app
+ {:routes #ig/ref :handler/routes}
+
+ :handler/routes
+ {:user-store #ig/ref :user/store
+  :echo? true}}

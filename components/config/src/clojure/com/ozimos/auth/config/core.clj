@@ -1,7 +1,8 @@
 (ns com.ozimos.auth.config.core
-  (:require [aero.core :as aero]
-            [clojure.java.io :as io]
-            [integrant.core :as ig]))
+  (:require
+   [aero.core :as aero]
+   [clojure.java.io :as io]
+   [integrant.core :as ig]))
 
 ;; Register #ig/ref and #ig/refset as Aero reader tags so they work alongside #profile
 (defmethod aero/reader 'ig/ref [_opts _tag value]
@@ -24,5 +25,4 @@
         _ (when-not resource
             (throw (ex-info "No config.edn found on classpath" {})))]
     (-> (aero/read-config resource {:profile profile})
-        ig/prep
         ig/expand)))

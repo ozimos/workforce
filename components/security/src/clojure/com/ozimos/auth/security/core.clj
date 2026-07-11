@@ -1,42 +1,42 @@
 (ns com.ozimos.auth.security.core
-  (:require [integrant.core :as ig])
-  (:import [org.springframework.context.annotation AnnotationConfigApplicationContext]
-          [org.springframework.security.web FilterChainProxy]
-          [org.springframework.security.core.userdetails UserDetailsService User UserDetails UsernameNotFoundException]
-          [org.springframework.security.crypto.password PasswordEncoder]
-          [org.springframework.security.oauth2.jwt JwtDecoder]))
+  (:require
+   [integrant.core :as ig])
+  (:import
+   (org.springframework.context.annotation AnnotationConfigApplicationContext)
+   (org.springframework.security.core.userdetails User UserDetails UserDetailsService UsernameNotFoundException)
+   (org.springframework.security.oauth2.jwt JwtDecoder)
+   (org.springframework.security.web FilterChainProxy)))
 
 (defn- make-user-details-service
-  "Create a UserDetailsService backed by the user store interface."
-  [user-store password-encoder]
+  "Create a UserDetailsService backed by a find-user-by-username function.
+   `find-user-fn` is a fn: (username) -> user-map with :username, :pwd-hash, :roles, :verified.
+   This avoids a compile-time dependency on the user component interface."
+  [find-user-fn]
   (reify UserDetailsService
     (^UserDetails loadUserByUsername [_ ^String username]
-     (let [user (com.ozimos.auth.user.interface/find-by-username user-store username)]
-       (when (nil? user)
-         (throw (UsernameNotFoundException. ^String (str "User not found: " username))))
-       (-> (User/withUsername ^String (:username user))
-           (.password ^String (:pwd-hash user))
-           (.roles ^"[Ljava.lang.String;" (into-array String (vec (:roles user))))
-           (.accountExpired (boolean (not (:verified user))))
-           (.disabled (boolean (not (:verified user))))
-           (.build))))))
+      (let [user (find-user-fn username)]
+        (when (nil? user)
+          (throw (UsernameNotFoundException. ^String (str "User not found: " username))))
+        (-> (User/withUsername ^String (:username user))
+            (.password ^String (:pwd-hash user))
+            (.roles ^"[Ljava.lang.String;" (into-array String (vec (:roles user))))
+            (.accountExpired (not (:verified user)))
+            (.disabled (not (:verified user)))
+            (.build))))))
 
 (defn build-application-context
   "Builds a Spring ApplicationContext programmatically.
    `deps` must contain:
      :jwt-decoder   - JwtDecoder instance
-     :user-service  - user store deps map (passed to user/find-by-username)
-     :password-encoder - PasswordEncoder instance"
+     :find-user-fn  - fn (username) -> user-map"
   [deps]
   (let [ctx (AnnotationConfigApplicationContext.)
         jwt-decoder (:jwt-decoder deps)
-        password-encoder (:password-encoder deps)
-        user-store (:user-service deps)
-        user-details-service (make-user-details-service user-store password-encoder)]
+        find-user-fn (:find-user-fn deps)
+        user-details-service (make-user-details-service find-user-fn)]
     (.registerSingleton ctx "jwtDecoder" ^Object jwt-decoder)
-    (.registerSingleton ctx "passwordEncoder" ^Object password-encoder)
     (.registerSingleton ctx "userDetailsService" ^Object user-details-service)
-    (.register ctx (class (com.ozimos.auth.security.SecurityConfig.)))
+    (.register ctx (Class/forName "com.ozimos.auth.security.SecurityConfig"))
     (.refresh ctx)
     ctx))
 
@@ -45,10 +45,12 @@
   ^FilterChainProxy [app-ctx]
   (.getBean app-ctx "springSecurityFilterChain" FilterChainProxy))
 
-(defmethod ig/init-key :security/app-context [_ {:keys [jwt-decoder user-service password-encoder]}]
-  (let [deps {:jwt-decoder jwt-decoder
-              :user-service user-service
-              :password-encoder password-encoder}
+(defmethod ig/init-key :security/app-context [_ {:keys [jwt-decoder user-store]}]
+  (let [decoder (:decoder jwt-decoder)
+        find-user-fn (fn [username]
+                       ((requiring-resolve 'com.ozimos.auth.user.interface/find-by-username) user-store username))
+        deps {:jwt-decoder decoder
+              :find-user-fn find-user-fn}
         ctx (build-application-context deps)
         fcp (filter-chain-proxy ctx)]
     {:app-context ctx

@@ -1,5 +1,6 @@
 (ns com.ozimos.auth.security.interface
-  (:require [com.ozimos.auth.security.core :as core]))
+  (:require
+   [com.ozimos.auth.security.core :as core]))
 
 (defn build-application-context
   "Build a Spring ApplicationContext programmatically, registering all beans.

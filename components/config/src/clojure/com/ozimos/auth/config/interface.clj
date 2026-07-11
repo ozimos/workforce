@@ -1,5 +1,6 @@
 (ns com.ozimos.auth.config.interface
-  (:require [com.ozimos.auth.config.core :as core]))
+  (:require
+   [com.ozimos.auth.config.core :as core]))
 
 (defn load-config
   "Load and prepare the Integrant config from an EDN resource file.

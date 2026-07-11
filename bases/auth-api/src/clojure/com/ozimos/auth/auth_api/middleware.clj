@@ -1,6 +1,8 @@
-(ns com.ozimos.auth.auth_api.middleware
-  (:require [clojure.walk :as walk])
-  (:import [org.springframework.security.core.context SecurityContextHolder]))
+(ns com.ozimos.auth.auth-api.middleware
+  (:require
+   [clojure.walk :as walk])
+  (:import
+   (org.springframework.security.core.context SecurityContextHolder)))
 
 (defn wrap-authenticated
   "Middleware that checks the request is authenticated via Spring Security.

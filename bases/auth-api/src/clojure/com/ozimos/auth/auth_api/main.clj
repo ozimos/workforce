@@ -1,6 +1,7 @@
-(ns com.ozimos.auth.auth_api.main
-  (:require [com.ozimos.auth.auth_api.system :as system]
-            [integrant.core :as ig])
+(ns com.ozimos.auth.auth-api.main
+  (:require
+   [com.ozimos.auth.auth-api.system :as system]
+   [integrant.core :as ig])
   (:gen-class))
 
 (defn -main [& args]
