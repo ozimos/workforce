@@ -16,7 +16,6 @@
 (defrecord RevokeAllForUser [user-id])
 
 (defmodule AuthModule [setup topologies]
-  ;; Depots
   (declare-depot setup *registration-depot (hash-by :username))
   (declare-depot setup *verification-depot (hash-by :user-id))
   (declare-depot setup *password-change-depot (hash-by :user-id))
@@ -27,29 +26,20 @@
 
   (let [s (stream-topology topologies "auth")
         id-gen (ModuleUniqueIdPState. "$$id")]
-    ;; PStates
-    (declare-pstate s $$username->id
-      {String Long})
-
-    (declare-pstate s $$email->id
-      {String Long})
-
+    (declare-pstate s $$username->id {String Long})
+    (declare-pstate s $$email->id {String Long})
     (declare-pstate s $$profiles
       {Long (fixed-keys-schema {:username String
                                 :pwd-hash String
                                 :email String
                                 :verified Boolean
                                 :roles (set-schema String {:subindex? true})})})
-
     (declare-pstate s $$sessions
       {String (fixed-keys-schema {:user-id Long :jti String :expires-at Long})})
-
     (declare-pstate s $$user-sessions
       {Long (set-schema String {:subindex? true})})
-
     (declare-pstate s $$revoked-tokens
       {String Long})
-
     (declare-pstate s $$user-active-jtis
       {Long (set-schema String {:subindex? true})})
 
@@ -70,10 +60,10 @@
                                        [:pwd-hash (termval *pwd-hash)]
                                        [:email (termval *email)]
                                        [:verified (termval false)]
-                                        [:roles (termval (or *roles #{"ROLE_USER"}))])]
+                                        [:roles (termval (ifexpr (some? *roles) *roles #{"ROLE_USER"}))])]
           $$profiles)
-        (ack-return> *user-id))
-      (<<else
+        (ack-return> *user-id)
+        (else>)
         (ack-return> nil))
 
       ;; Verification
@@ -103,7 +93,7 @@
       (|hash *session-id)
       (local-clear> (keypath *session-id) $$sessions)
 
-      ;; Revoke all sessions for a user
+      ;; Revoke all sessions & tokens for a user
       (source> *revoke-all-depot :> {:keys [*user-id]})
       (|hash *user-id)
       (local-select> (keypath *user-id) $$user-sessions :> *session-ids)
@@ -112,20 +102,15 @@
       (local-clear> (keypath *sid) $$sessions)
       (|hash *user-id)
       (local-clear> (keypath *user-id) $$user-sessions)
+      (local-select> (keypath *user-id) $$user-active-jtis :> *jtis)
+      (ops/explode *jtis :> *jti)
+      (|hash *jti)
+      (local-transform> [(keypath *jti) (termval (System/currentTimeMillis))] $$revoked-tokens)
+      (|hash *user-id)
       (local-clear> (keypath *user-id) $$user-active-jtis)
 
       ;; Token revocation
       (source> *revocation-depot :> {:keys [*jti *expires-at]})
       (|hash *jti)
-      (local-transform> [(keypath *jti) (termval *expires-at)] $$revoked-tokens)
-
-      ;; Revoke all tokens for a user (reads from $$user-active-jtis)
-      (source> *revoke-all-depot :> {:keys [*user-id]})
-      (|hash *user-id)
-      (local-select> (keypath *user-id) $$user-active-jtis :> *jtis)
-      (ops/explode *jtis :> *jti)
-      (|hash *jti)
-      (local-transform> [(keypath *jti) (termval (System/currentTimeMillis))] $$revoked-tokens)
-      )))
-
+      (local-transform> [(keypath *jti) (termval *expires-at)] $$revoked-tokens))))
 
