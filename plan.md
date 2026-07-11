@@ -6,7 +6,7 @@ A reusable authentication application template built with:
 - **Clojure** (JVM 21)
 - **Rama** (Red Planet Labs) — full data layer
 - **Polylith** — code organization
-- **Spring Security** — JWT validation, password encoding, servlet filter chain
+- **Spring Security** — JWT validation, servlet filter chain
 - **Integrant** — lifecycle management (config-as-data)
 - **Ring + Jetty 12 + Reitit** — HTTP server with Java 21 virtual threads
 - **Malli** — data validation and route coercion
@@ -33,6 +33,8 @@ Login issues a short-lived Access JWT (15 min) with a unique `jti` claim and a l
 Logout appends a revocation event to a Rama depot; the ETL topology writes the `jti` to the `$$revoked-tokens` PState.
 "Logout everywhere" revokes all active JTIs for a user via the `$$user-active-jtis` PState.
 
+Password encoding (BCrypt) lives in the `user` component — Spring Security's `DaoAuthenticationProvider` is not used; login is handled by a custom Ring handler that verifies credentials directly via `user/matches-password?`.
+
 ## Architecture
 
 ```
@@ -43,26 +45,26 @@ Logout appends a revocation event to a Rama depot; the ETL topology writes the `
                               v
   :rama/cluster --> :token/encoder ---+
   :token/decoder -->                  +--> :security/app-context
-  :password/encoder -->               |         |
-  :revocation/validator -------------+          v
-  :user/store  :session/store              FilterChainProxy
-                                                 |
-                                                 v
-                                           :adapter/jetty
-                                           (ring-jetty-adapter
-                                            + virtual threads
-                                            + DelegatingFilterProxy)
-                                                 |
-                                                 v
-                                           Ring Handler
-                                           (Reitit + Malli)
-                                                 |
-                                                 v
-                                           Component interfaces
-                                           (user, session, token, etc.)
-                                                 |
-                                                 v
-                                           Rama PStates/Depots
+  :revocation/validator -------------+         |
+  :user/store  :session/store               v
+                                         FilterChainProxy
+                                              |
+                                              v
+                                        :adapter/jetty
+                                        (ring-jetty-adapter
+                                         + virtual threads
+                                         + DelegatingFilterProxy)
+                                              |
+                                              v
+                                        Ring Handler
+                                        (Reitit + Malli)
+                                              |
+                                              v
+                                        Component interfaces
+                                        (user, session, token, etc.)
+                                              |
+                                              v
+                                        Rama PStates/Depots
 ```
 
 ### Request Flow
@@ -110,17 +112,18 @@ best_auth/
 │   │       ├── module.clj             # defmodule AuthModule (depots, PStates, topologies)
 │   │       └── core.clj               # ig/init-key :rama/cluster (IPC/cluster)
 │   │
-│   ├── user/                          # Rama-backed user store
-│   │   ├── deps.edn                   # integrant
+│   ├── user/                          # Rama-backed user store (+ BCrypt password encoding)
+│   │   ├── deps.edn                   # integrant, spring-security-core (BCrypt)
 │   │   └── src/clojure/com/ozimos/auth/user/
-│   │       ├── interface.clj          # register!, find-by-username, find-by-id, verify!, change-password!
-│   │       └── core.clj               # uses rama + password + schema interfaces
+│   │       ├── interface.clj          # register!, find-by-username, find-by-id, verify!,
+│   │       │                           # change-password!, encode-password, matches-password?
+│   │       └── core.clj               # uses rama + schema interfaces; BCryptPasswordEncoder
 │   │
 │   ├── user-memory/                   # Atom-backed store (for +default dev profile)
-│   │   ├── deps.edn
+│   │   ├── deps.edn                   # spring-security-core (BCrypt)
 │   │   └── src/clojure/com/ozimos/auth/user/
 │   │       ├── interface.clj          # SAME interface path, atom-backed
-│   │       └── core.clj
+│   │       └── core.clj               # BCrypt inline, atom storage
 │   │
 │   ├── session/                       # Session management
 │   │   ├── deps.edn                   # integrant
@@ -132,19 +135,13 @@ best_auth/
 │   │   ├── deps.edn                   # spring-security-oauth2-jose, integrant
 │   │   └── src/clojure/com/ozimos/auth/revocation/
 │   │       ├── interface.clj          # is-revoked?, revoke!, revoke-all-for-user!, validator
-│   │       └── core.clj               # OAuth2TokenValidator<Jwt> backed by Rama PState
+│   │       └── core.clj               # OAuth2TokenValidator<Jwt> backed by Rama PState or atom
 │   │
 │   ├── token/                         # JWT issuance + validation
 │   │   ├── deps.edn                   # spring-security-oauth2-jose, nimbus-jose-jwt, integrant
 │   │   └── src/clojure/com/ozimos/auth/token/
 │   │       ├── interface.clj          # issue-access-token, issue-refresh-token, decode, rsa-key
 │   │       └── core.clj               # NimbusJwtEncoder, NimbusJwtDecoder, RSAKey, ig/init-key
-│   │
-│   ├── password/                      # Password encoding
-│   │   ├── deps.edn                   # spring-security-core, integrant
-│   │   └── src/clojure/com/ozimos/auth/password/
-│   │       ├── interface.clj          # encode, matches?
-│   │       └── core.clj               # BCryptPasswordEncoder, ig/init-key :password/encoder
 │   │
 │   └── security/                      # Spring Security filter chain
 │       ├── deps.edn                   # spring-security-web/config/oauth2-*, spring-context, integrant
@@ -183,23 +180,21 @@ best_auth/
 ```
 auth-api (base)
   +-> schema.interface (route coercion + validation)
-  +-> user.interface (register, login, verify)
+  +-> user.interface (register, login, verify, encode-password, matches-password?)
   +-> session.interface (session lifecycle)
   +-> token.interface (issue/decode JWTs)
-  +-> password.interface (encode/verify passwords)
   +-> revocation.interface (revoke tokens)
   +-> security.interface (FilterChainProxy for Jetty)
 
 user --> rama.interface (PStates/depots)
-user --> password.interface (hash passwords)
 user --> schema.interface (validate inputs)
+user --> BCryptPasswordEncoder (inline, not a separate component)
 
 session --> rama.interface (PStates/depots)
-revocation --> rama.interface ($$revoked-tokens PState)
+revocation --> rama.interface ($$revoked-tokens PState) or atom-store (dev)
 token --> revocation.interface (OAuth2TokenValidator in decoder)
 security --> user.interface (UserDetailsService)
 security --> token.interface (JwtDecoder bean)
-security --> password.interface (PasswordEncoder bean)
 ```
 
 ## Integrant Configuration
@@ -208,14 +203,12 @@ security --> password.interface (PasswordEncoder bean)
 
 ```clojure
 {:rama/cluster          {:mode :ipc :tasks 4 :threads 2}
- :password/encoder      {:strength 12}
  :token/encoder         {:rsa-key-id "auth-template-key-1"}
  :token/decoder         {:rsa-key-id "auth-template-key-1"
                          :revocation-validator #ig/ref :revocation/validator}
  :revocation/validator  {:rama #ig/ref :rama/cluster}
  :security/app-context  {:jwt-decoder #ig/ref :token/decoder
-                         :user-service #ig/ref :user/store
-                         :password-encoder #ig/ref :password/encoder}
+                         :user-service #ig/ref :user/store}
  :user/store            {:rama #ig/ref :rama/cluster}
  :session/store         {:rama #ig/ref :rama/cluster}
  :adapter/jetty         {:port 8080 :host "0.0.0.0"
@@ -224,14 +217,13 @@ security --> password.interface (PasswordEncoder bean)
  :handler/app           {:routes #ig/ref :handler/routes}
  :handler/routes        {:user-store #ig/ref :user/store
                          :session-store #ig/ref :session/store
-                         :password-encoder #ig/ref :password/encoder
                          :token-encoder #ig/ref :token/encoder
                          :token-decoder #ig/ref :token/decoder
                          :revocation-validator #ig/ref :revocation/validator}}
 ```
 
-Init order (leaf-first): rama → password → revocation → token → user → session → security → handler → jetty
-Halt order (reverse): jetty → handler → security → session → user → token → revocation → password → rama
+Init order (leaf-first): rama → revocation → token → user → session → security → handler → jetty
+Halt order (reverse): jetty → handler → security → session → user → token → revocation → rama
 
 ## Rama AuthModule
 
@@ -277,8 +269,7 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http,
                                            JwtDecoder jwtDecoder,
-                                           UserDetailsService userDetailsService,
-                                           PasswordEncoder passwordEncoder) throws Exception {
+                                           UserDetailsService userDetailsService) throws Exception {
         http
             .csrf(csrf -> csrf.disable())
             .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -295,8 +286,10 @@ public class SecurityConfig {
 }
 ```
 
+Note: `PasswordEncoder` is NOT a Spring bean. Password verification is handled by the custom login Ring handler via `user/matches-password?`. Spring Security only handles JWT validation + authorization.
+
 ### Integrant ownership
-- Integrant constructs all Java objects (JwtDecoder, PasswordEncoder, UserDetailsService) via `ig/init-key`
+- Integrant constructs all Java objects (JwtDecoder, UserDetailsService) via `ig/init-key`
 - Integrant registers them as singletons in `AnnotationConfigApplicationContext`
 - Spring context refreshes, `SecurityConfig` auto-wires the beans, builds `SecurityFilterChain`
 - Integrant extracts `FilterChainProxy` (bean named `springSecurityFilterChain`)
@@ -305,7 +298,7 @@ public class SecurityConfig {
 ### Revocation via OAuth2TokenValidator
 Instead of a custom servlet filter, the revocation check is folded into `JwtDecoder`:
 - `revocation/core.clj` implements `OAuth2TokenValidator<Jwt>` via `reify`
-- The validator queries Rama `$$revoked-tokens` PState by `jti`
+- The validator queries Rama `$$revoked-tokens` PState by `jti` (or an atom set in dev)
 - `NimbusJwtDecoder` uses `DelegatingOAuth2TokenValidator` (default timestamp/issuer validators + custom revocation validator)
 - Revocation check runs during JWT decoding — single-stage, no separate filter
 
@@ -360,6 +353,8 @@ When you `(reset)` after changing security config:
 5. **Integrant owns lifecycle, Spring is a consumer** — all objects constructed by Integrant, registered as Spring singletons
 6. **Rama as sole data store** — users, sessions, revocation, audit all in Rama depots/PStates
 7. **`src/clojure` source paths** — separates Clojure sources from Java sources within `src/`
+8. **Password encoding merged into user component** — BCrypt is a thin wrapper, not a separate component. Spring's `DaoAuthenticationProvider` is not used; login is a custom Ring handler.
+9. **No `last-active` tracking** — JWT `exp` claim bounds validity. No per-request writes to Rama.
 
 ## Execution Phases
 
@@ -370,43 +365,60 @@ When you `(reset)` after changing security config:
 - `integrant-repl` in `development/src/clojure/dev/user.clj`
 - `config.edn` (Integrant wiring with Aero `#profile` + `#ig/ref` tags)
 - `config` component (Aero-based config loading)
-- `poly check` passes
+- Password merged into user component
+- `poly check` passes (9 components, 8 interfaces)
 
-### Phase 2: Rama AuthModule + IPC Testing [NEXT]
-- Implement `rama/module.clj` — AuthModule with all depots, PStates, stream topology
-- Implement `rama/core.clj` — IPC setup for dev, cluster manager for prod
-- Test via REPL: launch module, append events, query PStates
+### Phase 2: Incremental Milestones to Working `(go)`
 
-### Phase 3: Password + Token + Revocation
-- BCryptPasswordEncoder wrapper (`password/core.clj`)
-- NimbusJwtEncoder/Decoder with RSAKey (`token/core.clj`)
-- `OAuth2TokenValidator` checking Rama `$$revoked-tokens` (`revocation/core.clj`)
-- Test via REPL: encode/match passwords, issue/decode JWTs, validate revocation
+The system is built up in 6 incremental milestones, each ending with a working system that can be verified via `(go)` in the REPL. Bugs surface one at a time, not all at once.
 
-### Phase 4: Spring Security Component
-- Java `SecurityConfig.java` (already scaffolded)
-- Integrant `init-key :security/app-context` (register beans, refresh, extract FilterChainProxy)
-- `UserDetailsService` via `reify` (backed by user interface)
-- Test via REPL: build context, verify FilterChainProxy bean
+#### Milestone A: Integrant + Jetty stub handler
+| What's in `config.edn` | What's stubbed | Verify |
+|---|---|---|
+| `:adapter/jetty`, `:handler/app`, `:handler/routes` | Handler returns `{:status 200 :body {:ok true}}` | `curl localhost:8080/` returns 200 |
 
-### Phase 5: User + Session Components
-- Rama-backed user operations (`user/core.clj`)
-- Session management (`session/core.clj`)
-- `user-memory` atom impl (`user-memory/core.clj`)
-- Test via REPL: register → login → session → revocation flow
+Risks surfaced: Jetty 12 ee9 + JDK 21 virtual threads; `ring-jetty-adapter` `:configurator` invocable; Aero `#ig/ref` reader dispatch via `aero/reader` multimethod.
 
-### Phase 6: HTTP Base
-- Reitit routes with Malli coercion (`routes.clj`)
-- Ring handlers calling component interfaces (`handlers.clj`)
-- `ring-jetty-adapter` with `:configurator` for Spring Security filters (`system.clj`)
-- Virtual thread pool
-- Test via REPL: `(go)` starts server, HTTP client hits endpoints
+#### Milestone B: Reitit + Malli routes
+| What's in `config.edn` | What's stubbed | Verify |
+|---|---|---|
+| Same | Reitit routes with Malli coercion, handlers echo `:body-params` | `POST /api/auth/login` with valid body returns 200; invalid returns 422 |
 
-### Phase 7: Development Workflow Polish
+Risks surfaced: Malli schema syntax (esp. `[:re ...]`); `reitit-malli` coercion setup; Muuntaja JSON negotiation.
+
+#### Milestone C: Spring Security filter chain (stub JWT)
+| What's in `config.edn` | What's stubbed | Verify |
+|---|---|---|
+| Add `:security/app-context`, `:token/decoder` (stub) | Stub `JwtDecoder` (always succeeds), stub `UserDetailsService` | `GET /actuator/health` returns 200; `GET` protected returns 401 |
+
+Risks surfaced: Spring 6.x + Jakarta Servlet + Jetty ee9 on same classpath; `DelegatingFilterProxy` actually finds the bean; `WebApplicationContext` attribute set on actual `ServletContextHandler` instance from ring-jetty-adapter.
+
+#### Milestone D: user-memory with BCrypt
+| What's in `config.edn` | What's stubbed | Verify |
+|---|---|---|
+| Add `:user/store` (atom-backed via `+default`) | `user-memory` real impl with BCrypt | At REPL: `(user/register! ...)` works; `(user/find-by-username ...)` returns user |
+
+Risks surfaced: `BCryptPasswordEncoder` instantiates cleanly; merge-into-user call-site ergonomics; Integrant halt ordering with merged deps.
+
+#### Milestone E: Token issuance + revocation (in-memory atom)
+| What's in `config.edn` | What's stubbed | Verify |
+|---|---|---|
+| Add `:token/encoder`, real `:token/decoder`, `:revocation/validator` (atom set) | Revocation stored in atom (no Rama) | Full login → bearer-protected request → 200; logout → same token → 401 |
+
+Risks surfaced: Nimbus JOSE key gen + RS256 sign + verify round-trip; `OAuth2TokenValidator` `reify` returns correct `OAuth2TokenValidatorResult`; JWT claim `getId` extracts `jti` correctly.
+
+#### Milestone F: Rama IPC + AuthModule
+| What's in `config.edn` | What's stubbed | Verify |
+|---|---|---|
+| Swap atom revocation for Rama `$$revoked-tokens`, enable `+rama` profile | Nothing — full system | Full register → login → protected request → logout → revoked request flow end-to-end against Rama IPC |
+
+Risks surfaced: Rama `defmodule` compiles; IPC launches; depot appends produce ack-return-values; PState subindex schemas work; `foreign-select-one` with `:pkey` directive for non-keypath-matching lookups.
+
+### Phase 3: Development Workflow Polish
 - `(reset)` hot-reloads SecurityFilterChain without dropping port
 - Integration tests in IPC mode (register, login, refresh, logout, verify, reset-password)
 
-### Phase 8: Project Assembly + Uberjar
+### Phase 4: Project Assembly + Uberjar
 - `auth-service` project `deps.edn` (production)
 - `build.clj` for uberjar packaging
 - Verify: uberjar runs standalone
