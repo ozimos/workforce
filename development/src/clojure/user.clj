@@ -4,7 +4,15 @@
    [integrant.repl.state :refer [config system]])
   (:gen-class))
 
-(require 'com.ozimos.auth.config.core)
+(require 'com.ozimos.auth.config.core
+         'com.ozimos.auth.rama.core
+         'com.ozimos.auth.rama.module
+         'com.ozimos.auth.user.core
+         'com.ozimos.auth.session.core
+         'com.ozimos.auth.revocation.core
+         'com.ozimos.auth.token.core
+         'com.ozimos.auth.security.core
+         'com.ozimos.auth.auth-api.system)
 
 (set-prep! (fn [] ((requiring-resolve 'com.ozimos.auth.auth-api.system/load-config) :dev)))
 

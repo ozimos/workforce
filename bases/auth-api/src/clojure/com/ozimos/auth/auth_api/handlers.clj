@@ -40,6 +40,7 @@
   (fn [{:keys [body-params]}]
     (let [{:keys [user-store token-encoder session-store]} deps
           {:keys [username password]} body-params
+          {:keys [encoder]} token-encoder
           user-record (user/find-by-username user-store username)]
       (if (and user-record
                (user/matches-password? user-store password (:pwd-hash user-record)))
@@ -50,8 +51,8 @@
               refresh-jti (str (UUID/randomUUID))
               access-ttl 900
               refresh-ttl 604800
-              access-token (token/issue-access-token token-encoder issuer sub roles access-jti access-ttl)
-              refresh-token (token/issue-refresh-token token-encoder issuer sub refresh-jti refresh-ttl)
+              access-token (token/issue-access-token encoder issuer sub roles access-jti access-ttl)
+              refresh-token (token/issue-refresh-token encoder issuer sub refresh-jti refresh-ttl)
               expires-at (+ (System/currentTimeMillis) (* refresh-ttl 1000))]
           (session/create! session-store (:id user-record) access-jti expires-at)
           {:status 200
@@ -64,9 +65,11 @@
 (defn refresh [deps]
   (fn [{:keys [body-params]}]
     (let [{:keys [token-decoder token-encoder user-store revocation-validator]} deps
-          {:keys [refresh-token]} body-params]
+          {:keys [refresh-token]} body-params
+          {:keys [decoder]} token-decoder
+          {:keys [encoder]} token-encoder]
       (try
-        (let [jwt (token/decode token-decoder refresh-token)
+        (let [jwt (token/decode decoder refresh-token)
               jti (.getId jwt)
               sub (.getSubject jwt)
               type (.getClaim jwt "type")]
@@ -79,8 +82,8 @@
                     new-access-jti (str (UUID/randomUUID))
                     new-refresh-jti (str (UUID/randomUUID))
                     issuer "com.ozimos.auth"
-                    access-token (token/issue-access-token token-encoder issuer sub roles new-access-jti 900)
-                    new-refresh-token (token/issue-refresh-token token-encoder issuer sub new-refresh-jti 604800)]
+                    access-token (token/issue-access-token encoder issuer sub roles new-access-jti 900)
+                    new-refresh-token (token/issue-refresh-token encoder issuer sub new-refresh-jti 604800)]
                 (revocation/revoke! revocation-validator jti (.. jwt getExpiresAt toEpochMilli))
                 {:status 200
                  :body {:access-token access-token

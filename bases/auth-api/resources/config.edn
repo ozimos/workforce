@@ -8,7 +8,7 @@
  {:rsa-key-id "auth-template-key-1"}
 
  :token/decoder
- {:rsa-key-id "auth-template-key-1"
+ {:encoder #ig/ref :token/encoder
   :revocation-validator #ig/ref :revocation/validator}
 
  :revocation/validator

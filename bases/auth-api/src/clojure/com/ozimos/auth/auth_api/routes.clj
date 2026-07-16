@@ -1,5 +1,6 @@
 (ns com.ozimos.auth.auth-api.routes
   (:require
+   [com.ozimos.auth.auth-api.handlers :as handlers]
    [com.ozimos.auth.schema.interface.registration :as reg-schema]
    [muuntaja.core :as m]
    [reitit.coercion.malli :as rcm]
@@ -9,27 +10,9 @@
    [reitit.ring.middleware.muuntaja :as muuntaja]
    [reitit.ring.middleware.parameters :as parameters]))
 
-(defn- json-response [status body]
-  {:status status
-   :headers {"Content-Type" "application/json"}
-   :body (if (string? body) body (pr-str body))})
-
-(defn- echo-handler
-  "Echo handler for Milestone B. Returns the validated body-params."
-  [_]
-  (fn [{:keys [body-params]}]
-    (json-response 200 body-params)))
-
-(defn- echo-register [_]
-  (fn [{:keys [body-params]}]
-    (json-response 201 body-params)))
-
-(defn- echo-login [_]
-  (fn [{:keys [body-params]}]
-    (json-response 200 body-params)))
-
 (defn health [_]
-  (json-response 200 {"status" "ok"}))
+  {:status 200
+   :body {:status "ok"}})
 
 (defn router
   "Build the reitit router with all auth routes.
@@ -42,41 +25,46 @@
        ["/register"
         {:post {:summary "Register a new user"
                 :parameters {:body reg-schema/register-request}
-                :handler (echo-register deps)
-                :responses {201 {:body [:map [:echo [:map]] [:message :string]]}}}}]
+                :handler (handlers/register deps)
+                :responses {201 {:body [:map [:id int?] [:username :string] [:email :string] [:verified boolean?]]}
+                            409 {:body [:map [:errors [:map]]]}}}}]
        ["/login"
         {:post {:summary "Login with username/password"
                 :parameters {:body reg-schema/login-request}
-                :handler (echo-login deps)
-                :responses {200 {:body [:map [:echo [:map]] [:message :string]]}}}}]
+                :handler (handlers/login deps)
+                :responses {200 {:body [:map [:access-token :string] [:refresh-token :string] [:expires-in int?]]}
+                            401 {:body [:map [:errors [:map]]]}}}}]
        ["/refresh"
         {:post {:summary "Refresh access token"
                 :parameters {:body reg-schema/refresh-request}
-                :handler (echo-handler deps)
-                :responses {200 {:body [:map [:echo [:map]]]}}}}]
+                :handler (handlers/refresh deps)
+                :responses {200 {:body [:map [:access-token :string] [:refresh-token :string] [:expires-in int?]]}
+                            401 {:body [:map [:errors [:map]]]}}}}]
        ["/logout"
         {:post {:summary "Logout (revoke current session)"
-                :handler (echo-handler deps)
+                :handler (handlers/logout deps)
                 :responses {200 {:body [:map [:message :string]]}}}}]
        ["/logout-everywhere"
         {:post {:summary "Logout from all devices"
-                :handler (echo-handler deps)
+                :handler (handlers/logout-everywhere deps)
                 :responses {200 {:body [:map [:message :string]]}}}}]
        ["/verify"
         {:post {:summary "Verify account with token"
                 :parameters {:body reg-schema/verify-request}
-                :handler (echo-handler deps)
-                :responses {200 {:body [:map [:echo [:map]]]}}}}]
+                :handler (handlers/verify deps)
+                :responses {200 {:body [:map [:message :string]]}
+                            400 {:body [:map [:errors [:map]]]}}}}]
        ["/forgot-password"
         {:post {:summary "Request password reset email"
                 :parameters {:body reg-schema/forgot-password-request}
-                :handler (echo-handler deps)
-                :responses {200 {:body [:map [:echo [:map]]]}}}}]
+                :handler (handlers/forgot-password deps)
+                :responses {200 {:body [:map [:message :string]]}}}}]
        ["/reset-password"
         {:post {:summary "Reset password with token"
                 :parameters {:body reg-schema/reset-password-request}
-                :handler (echo-handler deps)
-                :responses {200 {:body [:map [:echo [:map]]]}}}}]]
+                :handler (handlers/reset-password deps)
+                :responses {200 {:body [:map [:message :string]]}
+                            400 {:body [:map [:errors [:map]]]}}}}]]
       ["/health"
        {:get {:summary "Health check"
               :handler health}}]]]

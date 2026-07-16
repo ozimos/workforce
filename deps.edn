@@ -3,8 +3,10 @@
              "rpl"     {:url "https://nexus.redplanetlabs.com/repository/maven-public-releases/"}}
 
  :aliases
- {:dev {:extra-paths ["development/src/clojure" "development/resources" "target/classes"]
+ {:dev {:extra-paths ["development/src/clojure" "development/resources" "target/classes" "bases/auth-api/test/clojure"]
         :extra-deps {org.clojure/clojure {:mvn/version "1.12.4"}
+                      org.clj-commons/clj-http-lite {:mvn/version "1.0.13"}
+                      cheshire/cheshire {:mvn/version "5.13.0"}
 
                       poly/schema      {:local/root "components/schema"}
                       poly/config     {:local/root "components/config"}
@@ -37,7 +39,9 @@
                         "components/token/test/clojure"
                         "components/security/test/clojure"
                         "bases/auth-api/test/clojure"]
-         :extra-deps {org.clojure/test.check {:mvn/version "1.1.1"}}}
+         :extra-deps {org.clojure/test.check {:mvn/version "1.1.1"}
+org.clj-commons/clj-http-lite {:mvn/version "1.0.13"}
+                       cheshire/cheshire {:mvn/version "5.13.0"}}}
 
 :+default {:extra-deps {poly/user-memory {:local/root "components/user-memory"}}
               :extra-paths ["components/user-memory/test/clojure"]}
