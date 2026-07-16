@@ -34,9 +34,9 @@
         jwt-decoder (:jwt-decoder deps)
         find-user-fn (:find-user-fn deps)
         user-details-service (make-user-details-service find-user-fn)]
-    (.registerSingleton ctx "jwtDecoder" ^Object jwt-decoder)
-    (.registerSingleton ctx "userDetailsService" ^Object user-details-service)
-    (.register ctx (Class/forName "com.ozimos.auth.security.SecurityConfig"))
+    (.registerBean ctx JwtDecoder (reify java.util.function.Supplier (get [_] jwt-decoder)) (make-array org.springframework.beans.factory.config.BeanDefinitionCustomizer 0))
+    (.registerBean ctx UserDetailsService (reify java.util.function.Supplier (get [_] user-details-service)) (make-array org.springframework.beans.factory.config.BeanDefinitionCustomizer 0))
+    (.register ctx (into-array Class [(Class/forName "com.ozimos.auth.security.SecurityConfig")]))
     (.refresh ctx)
     ctx))
 

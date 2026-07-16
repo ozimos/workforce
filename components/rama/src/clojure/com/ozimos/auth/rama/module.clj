@@ -60,7 +60,7 @@
                                        [:pwd-hash (termval *pwd-hash)]
                                        [:email (termval *email)]
                                        [:verified (termval false)]
-                                        [:roles (termval (ifexpr (some? *roles) *roles #{"ROLE_USER"}))])]
+                                        [:roles (termval *roles)])]
           $$profiles)
         (ack-return> *user-id)
         (else>)
@@ -113,4 +113,6 @@
       (source> *revocation-depot :> {:keys [*jti *expires-at]})
       (|hash *jti)
       (local-transform> [(keypath *jti) (termval *expires-at)] $$revoked-tokens))))
+
+
 

@@ -7,6 +7,9 @@
   (:import
    (com.rpl.rama.test InProcessCluster)))
 
+(defonce ^:private ipc-instance
+  (atom nil))
+
 (defn module-name
   "Returns the full module name string for AuthModule."
   []
@@ -28,9 +31,13 @@
                                               threads 2}}]
   (case mode
     :ipc
-    (let [ipc (rtest/create-ipc)]
-      (rtest/launch-module! ipc module/AuthModule {:tasks tasks :producedThreads threads})
-      {:cluster-manager ipc :mode :ipc})
+    (if-let [ipc @ipc-instance]
+      (do (println "Reusing existing Rama IPC cluster")
+          {:cluster-manager ipc :mode :ipc})
+      (let [ipc (rtest/create-ipc)]
+        (rtest/launch-module! ipc module/AuthModule {:tasks tasks :threads threads})
+        (reset! ipc-instance ipc)
+        {:cluster-manager ipc :mode :ipc}))
 
     :cluster
     (let [config (cond-> {"conductor.host" (first hosts)}
@@ -38,6 +45,9 @@
           cmgr (rama/open-cluster-manager config)]
       {:cluster-manager cmgr :mode :cluster})))
 
-(defmethod ig/halt-key! :rama/cluster [_ {:keys [cluster-manager mode]}]
-  (when cluster-manager
+(defmethod ig/halt-key! :rama/cluster [_ {:keys [mode cluster-manager]}]
+  ;; IPC cluster lives for the entire JVM lifetime — don't close on halt
+  ;; (Rama 1.9.0 IPC can't restart in the same JVM).
+  ;; Only close in production :cluster mode.
+  (when (= mode :cluster)
     (.close cluster-manager)))

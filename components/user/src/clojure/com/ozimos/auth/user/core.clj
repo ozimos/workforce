@@ -6,6 +6,7 @@
    [com.ozimos.auth.schema.interface.registration :as registration]
    [com.rpl.rama :as ramaapi]
    [com.rpl.rama.path :refer [keypath]]
+   [integrant.core :as ig]
    [malli.core :as m])
   (:import
    (java.util UUID)
@@ -79,3 +80,8 @@
         pwd-change-depot (rama/depot cmgr mod-name "*password-change-depot")]
     (ramaapi/foreign-append! pwd-change-depot (->PasswordChange user-id new-pwd-hash))
     true))
+
+(defmethod ig/init-key :user/store [_ {:keys [rama] :as deps}]
+  (merge deps {:rama rama}))
+
+(defmethod ig/halt-key! :user/store [_ _])

@@ -43,8 +43,8 @@
   "Returns an OAuth2TokenValidator<Jwt> that rejects tokens whose jti is revoked."
   [deps]
   (reify OAuth2TokenValidator
-    (^OAuth2TokenValidatorResult validate [_ ^Jwt jwt]
-      (let [jti (.getId jwt)]
+    (validate [_ jwt]
+      (let [jti (.getId ^Jwt jwt)]
         (if (and jti (is-revoked? deps jti))
           (OAuth2TokenValidatorResult/failure
             (OAuth2Error. "token_revoked"
