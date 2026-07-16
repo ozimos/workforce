@@ -68,7 +68,7 @@
              anyvar? pstatevar? fragvar? anchorvar? if> ?<- defblock <<atomic
              <<do throw! anchor> <<branch case> default> <<cond else> <<if and>
              or> <<shadowif ifexpr continue> <<switch assert! path> NONE>
-             filter> local-select> local-transform> local-remove> local-clear> value-schema
+             filter> local-select> local-transform> local-clear> value-schema
              map-schema set-schema vector-schema fixed-keys-schema
              |shuffle |hash |hash$$ |global |global$$ |all |all$$ |direct
              |direct$$ select> |path$$ source> <<batch batch<- generator

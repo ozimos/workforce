@@ -15,3 +15,5 @@ node_modules
 *.log
 /.nrepl-port
 /.clj-kondo/.cache
+/.lsp
+/pom.xml

@@ -5,4 +5,7 @@
  {:requires ([babashka.process :refer [shell]])
   lint         (shell {:continue true} "clj-kondo" "--lint" "bases" "components" "projects" "development/src/clojure")
   fmt-check    (shell {:continue true} "standard-clj" "check" "bases" "components" "projects" "development/src/clojure")
-  fmt-fix      (shell {:continue true} "standard-clj" "fix" "bases" "components" "projects" "development/src/clojure")}}
+  fmt-fix      (shell {:continue true} "standard-clj" "fix" "bases" "components" "projects" "development/src/clojure")
+   repl         {:override-builtin true
+                 :task (let [args (or (seq *command-line-args*) ["dev" "+default"])]
+                         (apply shell "bin/launchpad" args))}}}
