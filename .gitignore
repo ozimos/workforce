@@ -1,8 +1,9 @@
 /.git
+.cpcache/
 /.cpcache
 /*.jar
 /bin/launchpad
-/target
+target/
 /classes
 /.clojure
 /.dir-locals.el
