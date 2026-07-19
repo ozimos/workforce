@@ -37,3 +37,4 @@
   "Check if a plaintext password matches a BCrypt hash."
   [deps plain encoded]
   (core/matches-password? deps plain encoded))
+

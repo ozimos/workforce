@@ -21,3 +21,4 @@
   "Return an OAuth2TokenValidator<Jwt> that checks Rama $$revoked-tokens."
   [deps]
   (core/make-validator deps))
+

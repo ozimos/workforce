@@ -11,3 +11,4 @@
     (println "Auth template server started on port 8080")
     (.addShutdownHook (Runtime/getRuntime)
                       (Thread. (fn [] (ig/halt! system))))))
+
