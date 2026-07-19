@@ -407,20 +407,310 @@ Risks surfaced: Rama `defmodule` compiles; IPC launches; depot appends produce a
 - Integration tests in IPC mode (register, login, refresh, logout, verify, reset-password)
 - Tests runnable from both REPL (`binding [*use-fixture* false]`) and `poly test :project auth-service` (self-contained fixture)
 
-### Phase 4: Project Assembly + Uberjar
-- `auth-service` project `deps.edn` (production) — [DONE]
-- `build.clj` for uberjar packaging
-- Verify: uberjar runs standalone
+### Working Agreement (Applies to Phases 4+)
 
-### Phase 5: CI Integration
-- `poly test :project auth-service` runs in CI pipeline
-- Integration tests as gating check
+All subsequent phases follow two non-negotiable practices:
 
-## Future Phases (out of scope for Phase 1)
+#### Test-first development (TDD)
+- **Before implementing any function or handler**, write a failing test in the relevant `ipc_test.clj` or `integration_test.clj`
+- For Rama PState/depot work, write an IPC test that appends to a depot and asserts the materialized PState shape
+- For HTTP handlers, write an integration test that exercises the endpoint end-to-end (request → response)
+- For pure functions (e.g., scope validation, code generation), write a unit test first
+- Only after tests fail with the expected "not implemented" error, implement the code to make them pass
+- Run `bb test` after each phase to verify all tests pass; never commit with failing tests
 
-- MFA (TOTP, Passkeys/WebAuthn, backup codes)
-- Federated auth (OAuth2/OIDC social login, SAML SSO)
-- Machine-to-machine (client credentials, device authorization)
-- Passwordless (magic links, OTP)
-- MFA step-up challenges
-- Single Sign-Out (SLO)
+#### REPL exploration for uncertainty
+- **When unsure how a Rama macro, Java interop method, or library function behaves**, experiment in the running REPL before writing code
+- Use the `?<-` macro to evaluate and pretty-print results inline (per `AGENTS.md`)
+- For Rama PState schema questions: spin up `(user/go)`, append test data to a depot, then `foreign-select-one` to inspect the materialized shape
+- For Spring Security Java interop: evaluate `(.someMethod obj args)` in the REPL to confirm return types before committing to a code path
+- For malli schema questions: `(m/validate my-schema sample-data)` in the REPL before wiring into routes
+- Never guess at API behavior — confirm in the REPL first; this avoids debug cycles later
+
+### Phase 4: Deferred Feature Work
+Polish outstanding items deferred from Phase 1-3 reviews.
+
+#### 4.1 Password reset — replace file-based stub
+- **Tests first**: write integration tests for the full forgot-password → reset-password flow before any implementation
+  - Test: forgot-password with valid email records a token (assert via Rama PState read)
+  - Test: forgot-password with unknown email returns 200 (no enumeration)
+  - Test: reset-password with valid token + new password updates pwd-hash
+  - Test: reset-password with valid token twice fails second time (one-time use)
+  - Test: reset-password with expired token fails
+  - Test: reset-password with unknown token fails
+- **Implementation**:
+  - Add `*reset-token-depot` (hash-by :token) and `$$reset-tokens {String {:user-id Long :expires-at Long}}` PState to AuthModule
+  - Topology: append to depot → materialize token → user-id + expiry into PState
+  - On reset: foreign-select-one to validate, foreign-append! a PasswordChange event, then clear the token entry
+  - Token: `java.util.UUID/randomUUID` string, TTL 15 minutes
+- **REPL checkpoint**: before wiring, append a test event to `*reset-token-depot` in the REPL and `foreign-select-one` from `$$reset-tokens` to confirm materialized shape matches expectations
+
+#### 4.2 Verify endpoint — error handling
+- **Test first**: integration test that POST `/api/auth/verify` with non-numeric `user-id` returns 400 (not 500)
+- **Implementation**: wrap `Long/parseLong` in `verify` handler with try-catch, return 400 on parse failure
+- Consider extracting a shared `parse-user-id` helper if pattern repeats
+
+#### 4.3 Consolidate Long/parseLong patterns
+- Audit all `Long/parseLong` usages across handlers (get-auth-user, refresh, verify)
+- **Test first**: write tests for malformed subject in each handler path
+- **Implementation**: extract `parse-user-id` helper in handlers.clj, returns nil on failure; all callers handle nil explicitly
+
+### Phase 5: MFA (TOTP, Passkeys/WebAuthn, Backup Codes)
+Multi-factor authentication with step-up challenges.
+
+#### 5.1 TOTP (RFC 6238) — primary MFA
+- **Tests first**:
+  - IPC test: register TOTP secret for a user, assert `$$mfa-secrets` contains encrypted secret
+  - IPC test: verify valid 6-digit code against registered secret → success
+  - IPC test: verify invalid code → failure
+  - IPC test: consume backup code → marked used, second use fails
+  - IPC test: disable MFA clears `$$mfa-secrets` and `$$mfa-backup-codes`
+  - Integration test: login requires MFA step when MFA enabled → returns challenge token → `POST /mfa/verify` completes login
+- **Implementation**:
+  - New `mfa` component: `src/clojure/com/ozimos/auth/mfa/{core.clj,interface.clj}`
+  - Deps: `dev.samsta.ring-jwt` or `java-otp` library for TOTP generation/validation
+  - New depots: `*mfa-setup-depot` (hash-by :user-id), `*mfa-verify-depot` (hash-by :user-id), `*mfa-disable-depot` (hash-by :user-id), `*backup-code-use-depot` (hash-by :user-id)
+  - New PStates:
+    - `$$mfa-secrets {Long String}` — encrypted TOTP secret per user (AES-GCM with system key)
+    - `$$mfa-backup-codes {Long (set-schema String {:subindex? true})}` — hashed backup codes per user
+    - `$$mfa-enabled {Long Boolean}` — whether MFA is enabled for user
+  - Endpoints:
+    - `POST /api/auth/mfa/setup` — generate secret, return as QR code URI (otpauth://)
+    - `POST /api/auth/mfa/verify` — validate 6-digit code; on success, mark MFA enabled
+    - `POST /api/auth/mfa/disable` — clear MFA state (requires current code)
+    - `POST /api/auth/mfa/backup-codes` — regenerate backup codes
+- **REPL checkpoint**: before integrating, experiment with the TOTP library in the REPL — generate a secret, derive the current 6-digit code, validate it. Confirm encryption/decryption round-trip for secret storage.
+
+#### 5.2 WebAuthn / Passkeys — public-key credentials
+- **Tests first**:
+  - IPC test: register passkey → `$$webauthn-credentials` contains credential descriptor
+  - IPC test: authenticate with passkey → success; with wrong challenge → failure
+  - Integration test: register flow (begin → finish) then auth flow (begin → finish)
+- **Implementation**:
+  - New `webauthn` component wrapping `java-webauthn-server` (or equivalent Clojure wrapper)
+  - New PState `$$webauthn-credentials {Long (vector-schema CredentialDescriptor)}`
+  - Endpoints:
+    - `POST /api/auth/passkeys/register/begin` → returns challenge + options
+    - `POST /api/auth/passkeys/register/finish` → verifies attestation, stores credential
+    - `POST /api/auth/passkeys/authenticate/begin` → returns challenge
+    - `POST /api/auth/passkeys/authenticate/finish` → verifies assertion, issues JWT
+  - Spring Security: integrate WebAuthn with existing filter chain or use separate route group
+- **REPL checkpoint**: confirm Java interop with the WebAuthn library — instantiate `RpId`, `Rp`, `Attestation` objects in REPL before wiring
+
+#### 5.3 Backup codes — single-use recovery
+- **Tests first**:
+  - IPC test: generate 10 backup codes → `$$mfa-backup-codes` contains all 10 (hashed)
+  - IPC test: consume each code exactly once, 11th use fails
+- **Implementation**: generated on setup, stored hashed (BCrypt or SHA-256), invalidated on use via `*backup-code-use-depot`
+- Falls under `mfa` component; reuses PState from 5.1
+
+#### 5.4 Security config integration
+- Extend `SecurityConfig.java` with MFA-aware authorization (step-up role)
+- Login response distinguishes `mfa_required: true` when MFA enabled
+- Protected routes can require `mfa_verified` role via `authorizeHttpRequests`
+
+### Phase 6: Federated Auth
+OAuth2/OIDC social login + SAML SSO with account linking.
+
+#### 6.1 OAuth2 / OIDC social login
+- **Tests first**:
+  - Integration test: mock OAuth2 provider returns code → callback exchanges for user info → JWT issued
+  - IPC test: account linking — same email as existing user → links to existing account
+  - IPC test: new user via OAuth → account created with `$$oauth-link` PState entry
+- **Implementation**:
+  - New `oauth` component using Spring Security OAuth2 Client (`spring-security-oauth2-client`)
+  - Endpoints: `GET /api/auth/oauth/{provider}/authorize`, `GET /api/auth/oauth/{provider}/callback`
+  - Account linking: PState `$$oauth-link {String {String Long}}` keyed by provider → provider-user-id → local-user-id
+  - New depot `*oauth-link-depot` (hash-by :provider+provider-user-id) to record links
+  - On callback: validate state, exchange code, fetch user info, find-or-create local user, issue JWT
+- **REPL checkpoint**: before wiring Spring OAuth2 client, evaluate `OAuth2ClientConfiguration` beans in REPL — confirm registration bean shape, callback URL resolution
+
+#### 6.2 SAML SSO
+- **Tests first**:
+  - Integration test: SP-initiated SAML auth → IdP mock returns assertion → JWT issued
+  - IPC test: account link recorded on first SAML login
+- **Implementation**:
+  - New `saml` component using Spring Security SAML2 (`spring-security-saml2-service-provider`)
+  - Endpoints: `GET /api/auth/saml/authenticate`, `POST /api/auth/saml/acs`
+  - IdP metadata configured in `config.edn` under `:saml/idp-metadata-url`
+  - Spring config: `saml2Login()` chain extension
+- **REPL checkpoint**: load IdP metadata in REPL, confirm `RelyingPartyRegistration` bean construction
+
+#### 6.3 Post-federated login JWT issuance
+- After OAuth2/SAML assertion validated, exchange for app's own JWT via existing `token.interface`
+- Subject = local user-id; claim `auth-method=oauth2|saml` for audit
+
+### Phase 7: Machine-to-Machine Auth
+Client credentials + device authorization grants for non-human clients.
+
+#### 7.1 Client Credentials (RFC 6749 §4.4)
+- **Tests first**:
+  - IPC test: register client → `$$clients` contains secret hash + scopes
+  - Integration test: `POST /api/auth/token` with valid client_credentials → JWT with `type=client-credentials`
+  - Integration test: invalid client secret → 401
+  - Integration test: scope-restricted resource rejects out-of-scope request
+- **Implementation**:
+  - New `client` component: register-client!, validate-client!, issue-client-token
+  - PState `$$clients {String {:client-secret-hash String :scopes (set-schema String {:subindex? true})}}`
+  - Depot `*client-register-depot` (hash-by :client-id)
+  - Endpoint `POST /api/auth/token` (client_credentials grant)
+  - Token issued with `type=client-credentials` claim and `scope` claim
+  - Revocation validator: enforce scopes on incoming client-credentials JWT for protected resources
+
+#### 7.2 Device Authorization Grant (RFC 8628)
+- **Tests first**:
+  - IPC test: `POST /device/authorize` creates device code + user code → `$$device-codes` contains both
+  - Integration test: poll `POST /device/token` with pending status → returns `authorization_pending`
+  - Integration test: user approves device → poll succeeds → JWT issued
+  - Integration test: expired device code → returns `expired_token`
+- **Implementation**:
+  - Endpoints: `POST /api/auth/device/authorize`, `POST /api/auth/device/token` (polling)
+  - PState `$$device-codes {String {:user-code String :status String :expires-at Long :client-id String}}`
+  - User-facing approval endpoint: `POST /api/auth/device` (requires user JWT to approve)
+  - Short-polling interval per RFC (5s recommended)
+- **REPL checkpoint**: experiment with the polling drift tolerance — confirm Rama PState read latency under IPC mode is acceptable for 5s polling
+
+#### 7.3 Scope enforcement
+- Extend revocation validator to check `scope` claim against required scope for resource
+- Per-route scope metadata in reitit route data: `:scopes ["read"]`
+
+### Phase 8: Passwordless Auth
+Magic links + OTP for password-free login.
+
+#### 8.1 Magic Links
+- **Tests first**:
+  - IPC test: request magic link → `$$magic-links` contains token + user-id + expiry
+  - Integration test: `GET /magic-link/verify?token=...` with valid token → JWT issued, token invalidated
+  - Integration test: expired token → 400
+  - Integration test: reused token → 400 (one-time use)
+- **Implementation**:
+  - Reuse token infrastructure from Phase 4 password reset
+  - Endpoints: `POST /api/auth/magic-link/request`, `GET /api/auth/magic-link/verify?token=…`
+  - PState `$$magic-links {String {:user-id Long :expires-at Long}}`
+  - Token copy sent via `notification` component (see 8.3)
+
+#### 8.2 OTP (email/SMS)
+- **Tests first**:
+  - IPC test: request OTP → `$$otps` contains hashed code + user-id + expiry
+  - Integration test: verify with correct 6-digit code → JWT issued
+  - Integration test: expired OTP → 400
+  - Integration test: wrong code 3 times → rate-limited
+- **Implementation**:
+  - Endpoints: `POST /api/auth/otp/request`, `POST /api/auth/otp/verify`
+  - PState `$$otps {String {:user-id Long :code-hash String :expires-at Long :attempts Int}}`
+  - 6-digit numeric code, 5-minute expiry, max 3 attempts
+
+#### 8.3 Notification component (email/SMS)
+- New `notification` component abstraction: `send!` dispatches via configured providers
+  - SMTP email provider (via `com.sun.mail`)
+  - SMS provider (Twilio via REST)
+- Configured via `config.edn` — providers enabled per environment
+- **Test first**: unit test `send!` with mock provider — asserts provider receives message
+
+#### 8.4 Rate limiting
+- Protect magic-link and OTP endpoints from abuse
+- Per-IP and per-email limits via token bucket in `$$rate-limits {String {:tokens Int :last-refill Long}}` PState
+- **Test first**: integration test showing 6th request within 1 minute returns 429
+
+### Phase 9: Single Sign-Out (SLO)
+Propagate logout across all authentication mechanisms and linked SPs.
+
+#### 9.1 SAML SLO
+- **Tests first**:
+  - Integration test: SP-initiated SLO → all linked SPs receive logout notification
+  - Integration test: IdP-initiated SLO → local sessions revoked
+- **Implementation**:
+  - Endpoints: `GET /api/auth/saml/logout`, `POST /api/auth/saml/slo`
+  - Use `SAMLMessageManager` (or OpenSAML) to send `LogoutRequest` / `LogoutResponse`
+  - On logout: revoke all user JWT jtis via existing `revoke-all-for-user!`
+
+#### 9.2 OIDC RP-Initiated Logout (RFC 4628)
+- **Tests first**:
+  - Integration test: `POST /api/auth/oauth/logout` with valid `id_token_hint` → revokes local session → returns 200
+  - Integration test: invalid `id_token_hint` → 400
+- **Implementation**:
+  - Validate `id_token_hint` via OAuth2 client's `JwtDecoder`
+  - Front-channel logout endpoint: `GET /api/auth/oauth/logout-callback` (iframe-based)
+  - Back-channel logout endpoint: `POST /api/auth/oauth/backchannel-logout` (per RFC)
+
+#### 9.3 Token revocation propagation
+- When SLO fires (SAML or OIDC), invoke existing `session/revoke-all!` and `revocation/revoke-all-for-user!`
+- Audit log entry: PState `$$audit-events {Long {:event String :provider String :timestamp Long}}` appended via `*audit-depot`
+
+### Phase 10: Technical Debt Cleanup
+Resolve 31 lint warnings and clean up code contracts.
+
+#### 10.1 Unused namespaces
+- `components/user/src/clojure/com/ozimos/auth/user/core.clj` — remove `com.ozimos.auth.schema.interface`
+- `bases/auth-api/src/clojure/com/ozimos/auth/auth_api/handlers.clj` — remove `com.ozimos.auth.schema.interface`, `com.ozimos.auth.schema.interface.registration`, `malli.core`
+- `bases/auth-api/src/clojure/com/ozimos/auth/auth_api/middleware.clj` — remove `clojure.walk`
+- `bases/auth-api/src/clojure/com/ozimos/auth/auth_api/system.clj` — remove `com.ozimos.auth.security.interface`
+- `components/schema/src/clojure/com/ozimos/auth/schema/interface.clj` — remove `malli.util`
+- `components/rama/src/clojure/com/ozimos/auth/rama/module.clj` — remove `com.rpl.rama.aggs`
+- `development/src/clojure/user.clj` — remove `integrant.repl.state` (and `:refer`s)
+
+#### 10.2 Unused imports
+- `components/rama/src/clojure/com/ozimos/auth/rama/core.clj` — remove `InProcessCluster`
+- `components/rama/test/clojure/com/ozimos/auth/rama/ipc_test.clj` — remove `InProcessCluster`, `ALL`
+- `components/token/src/clojure/com/ozimos/auth/token/core.clj` — remove `SecurityContext`, `UUID`, `JwtValidators`
+
+#### 10.3 Unused bindings
+- `bases/auth-api/src/clojure/com/ozimos/auth/auth_api/handlers.clj` — `e` in refresh catch (rename to `_`)
+- `bases/auth-api/src/clojure/com/ozimos/auth/auth_api/middleware.clj` — `deps` in fn (rename to `_`)
+- `bases/auth-api/src/clojure/com/ozimos/auth/auth_api/system.clj` — `routes` in handler/routes init
+- `components/session/src/clojure/com/ozimos/auth/session/core.clj` — 5 `deps` bindings (rename to `_`)
+- `components/token/src/clojure/com/ozimos/auth/token/core.clj` — `ctx` in `reify` (rename to `_`)
+- `components/user/src/clojure/com/ozimos/auth/user/core.clj` — `deps` in find-by-username, find-by-id, verify!, change-password! (rename to `_`)
+- `components/rama/src/clojure/com/ozimos/auth/rama/module.clj` — `*existing-reg-uuid` (remove)
+
+#### 10.4 Formatting and consistency
+- Run `bb fmt-fix` (standard-clj fix) across all sources
+- Verify `bb lint` shows 0 errors, 0 warnings
+
+#### 10.5 Optional refinements
+- Consider `clj-kondo` `:type-checking` config drift fixes
+- Consider adding `:hashp` or `:flow-storm` for better REPL debugging
+
+### Phase 11: Project Assembly + Uberjar
+Package production uberjar and verify standalone execution.
+
+#### 11.1 Verify uberjar builds
+- `clojure -T:build uber` produces `target/auth-service-0.1.0-SNAPSHOT-standalone.jar`
+- Confirm Java security config (`SecurityConfig.java`) compiles into uberjar
+- Confirm `config.edn` resources bundled correctly
+
+#### 11.2 Verify uberjar runs standalone
+- **Test first**: write `bb uber-test` that:
+  1. Builds the uberjar (`clojure -T:build uber`)
+  2. Starts it in background (`java -jar target/...standalone.jar &`)
+  3. Waits for `/api/health` to return 200 (poll with retry)
+  4. Runs minimal integration test (register → login → logout)
+  5. Kills the process
+  6. Asserts all checks pass
+- Targets JVM 21; documents required Java version in README
+
+#### 11.3 Deployment documentation
+- Document deployment requirements (JVM 21, no external deps for IPC mode)
+- Add `Dockerfile` (optional stretch)
+- Add `POSTS.md` or section in README for prod-mode config (Rama cluster conn)
+
+### Phase 12: CI Integration
+GitHub Actions (or equivalent) pipeline as gating check.
+
+#### 12.1 Job stages
+For each PR / push to main:
+1. **Checkout** + setup Java 21 + Clojure CLI + Babashka
+2. `bb lint` — zero errors required, warnings allowed (until Phase 10 lands)
+3. `bb fmt-check` — standard-clj check (formatting consistency)
+4. `poly check` — workspace consistency (interfaces align to components)
+5. `bb test` — full integration + IPC tests as gating check
+6. `bb uber-test` (post Phase 11) — verify uberjar builds and runs
+
+#### 12.2 Branch protection
+- Require green CI on PR merge to `main`
+- Status badge in README pointing to latest CI run
+- Fail-fast on lint errors; fail-fast on test failures; allow warnings
+
+#### 12.3 Scheduled runs
+- Nightly full test run including uberjar build + smoke test
+- Weekly `deps.edn` dependency freshness report (via `antq` or similar)
