@@ -1,7 +1,6 @@
 (ns com.ozimos.auth.session.core
   (:require
    [com.ozimos.auth.rama.interface :as rama]
-   [com.ozimos.auth.rama.module :refer [->RevokeAllForUser ->SessionEnd ->SessionStart]]
    [com.rpl.rama :as ramaapi]
    [com.rpl.rama.path :refer [ALL keypath]]
    [integrant.core :as ig])
@@ -14,7 +13,7 @@
         session-depot (rama/depot cmgr mod-name "*session-depot")
         session-id (str (UUID/randomUUID))]
     (ramaapi/foreign-append! session-depot
-      (->SessionStart user-id session-id jti expires-at))
+      (rama/->SessionStart user-id session-id jti expires-at))
     session-id))
 
 (defn verify [{:keys [rama] :as deps} session-id]
@@ -27,14 +26,14 @@
   (let [cmgr (:cluster-manager rama)
         mod-name (rama/module-name)
         session-end-depot (rama/depot cmgr mod-name "*session-end-depot")]
-    (ramaapi/foreign-append! session-end-depot (->SessionEnd session-id))
+    (ramaapi/foreign-append! session-end-depot (rama/->SessionEnd session-id))
     true))
 
 (defn revoke-all! [{:keys [rama] :as deps} user-id]
   (let [cmgr (:cluster-manager rama)
         mod-name (rama/module-name)
         revoke-all-depot (rama/depot cmgr mod-name "*revoke-all-depot")]
-    (ramaapi/foreign-append! revoke-all-depot (->RevokeAllForUser user-id))
+    (ramaapi/foreign-append! revoke-all-depot (rama/->RevokeAllForUser user-id))
     true))
 
 (defn list-for-user [{:keys [rama] :as deps} user-id]
@@ -47,3 +46,4 @@
   (merge deps {:rama rama}))
 
 (defmethod ig/halt-key! :session/store [_ _])
+

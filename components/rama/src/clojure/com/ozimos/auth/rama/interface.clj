@@ -1,6 +1,7 @@
 (ns com.ozimos.auth.rama.interface
   (:require
-   [com.ozimos.auth.rama.core :as core]))
+   [com.ozimos.auth.rama.core :as core]
+   [com.ozimos.auth.rama.module]))
 
 (defn cluster-manager
   "Returns the Rama cluster manager (or IPC for dev) from the integrant system."
@@ -21,3 +22,21 @@
   "Returns the module name string for AuthModule."
   []
   (core/module-name))
+
+(defn cleanup-expired-sessions
+  [rama-map]
+  (core/cleanup-expired-sessions rama-map))
+
+(defn cleanup-expired-revocations
+  [rama-map]
+  (core/cleanup-expired-revocations rama-map))
+
+(def ->Registration com.ozimos.auth.rama.module/->Registration)
+(def ->Verification com.ozimos.auth.rama.module/->Verification)
+(def ->PasswordChange com.ozimos.auth.rama.module/->PasswordChange)
+(def ->SessionStart com.ozimos.auth.rama.module/->SessionStart)
+(def ->SessionEnd com.ozimos.auth.rama.module/->SessionEnd)
+(def ->Revocation com.ozimos.auth.rama.module/->Revocation)
+(def ->RevokeAllForUser com.ozimos.auth.rama.module/->RevokeAllForUser)
+(def ->ClearRevocation com.ozimos.auth.rama.module/->ClearRevocation)
+

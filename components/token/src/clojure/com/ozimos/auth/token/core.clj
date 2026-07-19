@@ -1,6 +1,6 @@
 (ns com.ozimos.auth.token.core
   (:require
-   [com.ozimos.auth.revocation.core :as revocation]
+   [com.ozimos.auth.revocation.interface :as revocation]
    [integrant.core :as ig])
   (:import
    (com.nimbusds.jose JWSAlgorithm)
@@ -98,9 +98,10 @@
                                           :or {rsa-key-id "auth-template-key-1"}}]
   (let [key (or (:rsa-key encoder) (gen-rsa-key rsa-key-id))
         validator (when revocation-validator
-                    (revocation/make-validator revocation-validator))
+                    (revocation/validator revocation-validator))
         decoder (make-decoder key validator)]
     {:decoder decoder
      :rsa-key key}))
 
 (defmethod ig/halt-key! :token/decoder [_ _])
+

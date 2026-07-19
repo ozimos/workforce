@@ -15,12 +15,14 @@
   [request]
   (let [auth (get-in request [:servlet-request "org.springframework.security.context.SECURITY_CONTEXT" :authentication])]
     (when auth
-      (let [jwt (.getPrincipal auth)
-            sub (.getSubject jwt)
-            roles (.getClaim jwt "roles")]
-        {:user-id (Long/parseLong sub)
-         :roles roles
-         :jti (.getId jwt)}))))
+      (try
+        (let [jwt (.getPrincipal auth)
+              sub (.getSubject jwt)
+              roles (.getClaim jwt "roles")]
+          {:user-id (Long/parseLong sub)
+           :roles roles
+           :jti (.getId jwt)})
+        (catch Exception _ nil)))))
 
 (defn register [deps]
   (fn [{:keys [body-params]}]
@@ -112,11 +114,11 @@
 
 (defn verify [deps]
   (fn [{:keys [body-params]}]
-    (let [{:keys [token]} body-params
+    (let [{:keys [user-id]} body-params
           {:keys [user-store]} deps]
-      (if (user/verify! user-store (Long/parseLong token))
+      (if (user/verify! user-store (Long/parseLong user-id))
         {:status 200 :body {:message "Account verified"}}
-        {:status 400 :body {:errors {:token ["Invalid verification token"]}}}))))
+        {:status 400 :body {:errors {:user-id ["Invalid user-id"]}}}))))
 
 (defn forgot-password [deps]
   (fn [{:keys [body-params]}]
@@ -144,3 +146,13 @@
 
 (defn health [_]
   {:status 200 :body {:status "ok"}})
+
+#_
+(comment
+  ;; REVIEW: com.ozimos.auth.auth-api.handlers
+  ;;
+  ;; DEFERRED (known dev stub, will be replaced with proper email-based flow):
+  ;; 1. forgot-password uses spit :append to /tmp/reset-tokens.edn — concurrent issue.
+  ;; 2. reset-password uses read-string (not clojure.edn/read-string) — security concern.
+  ;; 3. reset-password clears ALL tokens by writing "{}" — loses pending tokens.
+  )

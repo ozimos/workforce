@@ -10,10 +10,6 @@
    [reitit.ring.middleware.muuntaja :as muuntaja]
    [reitit.ring.middleware.parameters :as parameters]))
 
-(defn health [_]
-  {:status 200
-   :body {:status "ok"}})
-
 (defn router
   "Build the reitit router with all auth routes.
    `deps` contains component instances needed by handlers.
@@ -67,7 +63,7 @@
                             400 {:body [:map [:errors [:map]]]}}}}]]
       ["/health"
        {:get {:summary "Health check"
-              :handler health}}]]]
+              :handler handlers/health}}]]]
     {:data {:muuntaja m/instance
             :coercion rcm/coercion
             :middleware [parameters/parameters-middleware
@@ -86,3 +82,4 @@
   (ring/ring-handler
     (router deps)
     (fn [_] {:status 404 :body {:error "not found"}})))
+

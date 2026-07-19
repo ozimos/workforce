@@ -19,7 +19,7 @@
 
 (def verify-request
   [:map
-   [:token :string]])
+   [:user-id :string]])
 
 (def forgot-password-request
   [:map
@@ -46,4 +46,5 @@
    [:id :int]
    [:username :string]
    [:email :string]
-   [:verified :boolean]])
+    [:verified :boolean]])
+

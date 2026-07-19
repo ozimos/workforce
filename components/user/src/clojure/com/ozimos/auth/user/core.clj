@@ -1,7 +1,6 @@
 (ns com.ozimos.auth.user.core
   (:require
    [com.ozimos.auth.rama.interface :as rama]
-   [com.ozimos.auth.rama.module :refer [->PasswordChange ->Registration ->Verification]]
    [com.ozimos.auth.schema.interface :as schema]
    [com.ozimos.auth.schema.interface.registration :as registration]
    [com.rpl.rama :as ramaapi]
@@ -34,18 +33,27 @@
         reg-depot (rama/depot cmgr mod-name "*registration-depot")
         pwd-hash (encode-password deps password)
         uuid (str (UUID/randomUUID))
-        roles-set (or (set roles) #{"ROLE_USER"})
-        result (ramaapi/foreign-append! reg-depot
-                 (->Registration uuid username pwd-hash email roles-set))]
-    (if (some? result)
-        (let [user-id result
-              user {:id user-id
-                    :username username
-                    :email email
-                    :verified false
-                    :roles roles-set}]
-          [true user])
-        [false {:errors {:username ["Username or email already taken."]}}])))
+        roles (or (vec roles) ["ROLE_USER"])
+        ;; Check email uniqueness at API layer to avoid race in module dataflow
+        email->id (rama/pstate cmgr mod-name "$$email->id")
+        existing-email (ramaapi/foreign-select-one (keypath email) email->id)]
+    (if existing-email
+      [false {:errors {:email ["Email already taken."]}}]
+      (let [result (ramaapi/foreign-append! reg-depot
+                     (rama/->Registration uuid username pwd-hash email roles))]
+        (if-let [user-id (get result "auth")]
+          (let [user {:id user-id
+                      :username username
+                      :email email
+                      :verified false
+                      :roles roles}]
+            [true user])
+          [false {:errors {:username ["Username already taken."]}}])))))
+
+(defn- read-profile [profiles user-id]
+  (let [profile (ramaapi/foreign-select-one (keypath user-id) profiles)]
+    (when (:username profile)
+      (update profile :roles set))))
 
 (defn find-by-username [{:keys [rama] :as deps} username]
   (let [cmgr (:cluster-manager rama)
@@ -54,8 +62,7 @@
         profiles (rama/pstate cmgr mod-name "$$profiles")
         user-id (ramaapi/foreign-select-one (keypath username) username->id)]
     (when user-id
-      (let [profile (ramaapi/foreign-select-one (keypath user-id) profiles
-                      {:pkey username})]
+      (let [profile (read-profile profiles user-id)]
         (when profile
           (assoc profile :id user-id))))))
 
@@ -63,7 +70,7 @@
   (let [cmgr (:cluster-manager rama)
         mod-name (rama/module-name)
         profiles (rama/pstate cmgr mod-name "$$profiles")
-        profile (ramaapi/foreign-select-one (keypath user-id) profiles {:pkey user-id})]
+        profile (read-profile profiles user-id)]
     (when profile
       (assoc profile :id user-id))))
 
@@ -71,17 +78,18 @@
   (let [cmgr (:cluster-manager rama)
         mod-name (rama/module-name)
         verify-depot (rama/depot cmgr mod-name "*verification-depot")]
-    (ramaapi/foreign-append! verify-depot (->Verification user-id))
+    (ramaapi/foreign-append! verify-depot (rama/->Verification user-id))
     true))
 
 (defn change-password! [{:keys [rama] :as deps} user-id new-pwd-hash]
   (let [cmgr (:cluster-manager rama)
         mod-name (rama/module-name)
         pwd-change-depot (rama/depot cmgr mod-name "*password-change-depot")]
-    (ramaapi/foreign-append! pwd-change-depot (->PasswordChange user-id new-pwd-hash))
+    (ramaapi/foreign-append! pwd-change-depot (rama/->PasswordChange user-id new-pwd-hash))
     true))
 
 (defmethod ig/init-key :user/store [_ {:keys [rama] :as deps}]
   (merge deps {:rama rama}))
 
 (defmethod ig/halt-key! :user/store [_ _])
+
