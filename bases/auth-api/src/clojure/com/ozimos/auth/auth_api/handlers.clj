@@ -136,37 +136,25 @@
           {:keys [user-store]} deps
           user-record (user/find-by-username user-store email)]
       (when user-record
-        (let [reset-token (str (java.util.UUID/randomUUID))]
-          ;; Stub: In production, send email with reset-token
-          (spit "/tmp/reset-tokens.edn" (str {reset-token (:id user-record)}) :append true)))
+        (user/create-reset-token! user-store (:id user-record)))
       {:status 200 :body {:message "If the email exists, a reset link has been sent"}})))
 
 (defn reset-password [deps]
   (fn [{:keys [body-params]}]
     (let [{:keys [token password]} body-params
-          {:keys [user-store]} deps
-          reset-store (try (read-string (slurp "/tmp/reset-tokens.edn")) (catch Exception _ {}))
-          user-id (get reset-store token)]
-      (if user-id
-        (let [pwd-hash (user/encode-password user-store password)]
-          (user/change-password! user-store user-id pwd-hash)
-          (spit "/tmp/reset-tokens.edn" "{}")
-          {:status 200 :body {:message "Password reset successfully"}})
-        {:status 400 :body {:errors {:token ["Invalid or expired reset token"]}}}))))
+          {:keys [user-store]} deps]
+      (try
+        (if-let [user-id (user/validate-reset-token user-store token)]
+          (let [pwd-hash (user/encode-password user-store password)]
+            (user/change-password! user-store user-id pwd-hash)
+            (user/clear-reset-token! user-store token)
+            {:status 200 :body {:message "Password reset successfully"}})
+          {:status 400 :body {:errors {:token ["Invalid or expired reset token"]}}})
+        (catch Exception e
+          (if (instance? clojure.lang.ExceptionInfo e)
+            {:status 400 :body {:errors {:token [(.getMessage e)]}}}
+            (throw e)))))))
 
 (defn health [_]
   {:status 200 :body {:status "ok"}})
 
-#_
-(comment
-  ;; REVIEW: com.ozimos.auth.auth-api.handlers — IN PROGRESS (Phase 4)
-  ;;
-  ;; ADDRESSED:
-  ;; - parse-user-id helper consolidates Long/parseLong with nil-safe returns
-  ;; - verify handler uses parse-user-id, returns 400 on parse failure
-  ;;
-  ;; DEFERRED PASSWORD RESET — Phase 4.1 in progress:
-  ;; 1. forgot-password uses file-based stub — replaced with Rama depot
-  ;; 2. reset-password uses read-string — replaced with Rama PState lookup
-  ;; 3.  (both above now use Rama-backed reset tokens)
-  )

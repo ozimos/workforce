@@ -39,4 +39,6 @@
 (def ->Revocation com.ozimos.auth.rama.module/->Revocation)
 (def ->RevokeAllForUser com.ozimos.auth.rama.module/->RevokeAllForUser)
 (def ->ClearRevocation com.ozimos.auth.rama.module/->ClearRevocation)
+(def ->ResetToken com.ozimos.auth.rama.module/->ResetToken)
+(def ->ClearResetToken com.ozimos.auth.rama.module/->ClearResetToken)
 

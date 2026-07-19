@@ -1,5 +1,7 @@
 (ns com.ozimos.auth.auth-api.test-system
   (:require
+   [com.rpl.rama :as ramaapi]
+   [com.rpl.rama.path :refer [keypath]]
    [integrant.core :as ig]
    [com.ozimos.auth.config.interface :as config]
    [com.ozimos.auth.rama.core]
@@ -34,4 +36,22 @@
 (defn user-store
   []
   (-> @system :system :user/store))
+
+(defn rama-cluster
+  []
+  (:cluster-manager (-> @system :system :rama/cluster)))
+
+(defn module-name
+  []
+  (com.ozimos.auth.rama.core/module-name))
+
+(defn pstate
+  [name]
+  (let [cmgr (rama-cluster)]
+    (com.ozimos.auth.rama.core/pstate cmgr (module-name) name)))
+
+(defn depot
+  [name]
+  (let [cmgr (rama-cluster)]
+    (com.ozimos.auth.rama.core/depot cmgr (module-name) name)))
 

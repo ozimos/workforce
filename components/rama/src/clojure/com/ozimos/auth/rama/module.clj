@@ -13,6 +13,8 @@
 (defrecord Revocation [jti expires-at])
 (defrecord RevokeAllForUser [user-id])
 (defrecord ClearRevocation [jti])
+(defrecord ResetToken [token user-id expires-at])
+(defrecord ClearResetToken [token])
 
 (defmodule AuthModule [setup topologies]
   (declare-depot setup *registration-depot (hash-by :username))
@@ -23,6 +25,8 @@
   (declare-depot setup *revoke-all-depot (hash-by :user-id))
   (declare-depot setup *revocation-depot (hash-by :jti))
   (declare-depot setup *clear-revocation-depot (hash-by :jti))
+  (declare-depot setup *reset-token-depot (hash-by :token))
+  (declare-depot setup *clear-reset-token-depot (hash-by :token))
 
   (let [s (stream-topology topologies "auth")
         id-gen (ModuleUniqueIdPState. "$$id")]
@@ -48,6 +52,8 @@
                     {String (set-schema String {:subindex? true})})
     (declare-pstate s $$revoked-tokens
                     {String Long})
+    (declare-pstate s $$reset-tokens
+                    {String (fixed-keys-schema {:user-id Long :expires-at Long})})
 
     (.declarePState id-gen s)
 
@@ -125,5 +131,16 @@
                 (local-transform> [(keypath *jti) (termval *expires-at)] $$revoked-tokens)
 
                 ;; Clear revocation
-                (source> *clear-revocation-depot :> {:keys [*jti]})
-                (local-clear> (keypath *jti) $$revoked-tokens))))
+                 (source> *clear-revocation-depot :> {:keys [*jti]})
+                 (local-clear> (keypath *jti) $$revoked-tokens)
+
+                ;; Reset token
+                (source> *reset-token-depot :> {:keys [*token *user-id *expires-at]})
+                (local-transform> [(keypath *token)
+                                   (multi-path [:user-id (termval *user-id)]
+                                               [:expires-at (termval *expires-at)])]
+                                   $$reset-tokens)
+
+                ;; Clear reset token
+                (source> *clear-reset-token-depot :> {:keys [*token]})
+                (local-clear> (keypath *token) $$reset-tokens))))

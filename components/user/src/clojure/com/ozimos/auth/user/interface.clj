@@ -38,3 +38,19 @@
   [deps plain encoded]
   (core/matches-password? deps plain encoded))
 
+(defn create-reset-token!
+  "Generate a password reset token and store in Rama. Returns the token string."
+  [deps user-id]
+  (core/create-reset-token! deps user-id))
+
+(defn validate-reset-token
+  "Lookup a reset token in Rama, check expiry. Returns user-id or nil.
+   Throws if the token is expired."
+  [deps token]
+  (core/validate-reset-token deps token))
+
+(defn clear-reset-token!
+  "Remove a reset token from Rama (marks it as consumed)."
+  [deps token]
+  (core/clear-reset-token! deps token))
+

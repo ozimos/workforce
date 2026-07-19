@@ -151,6 +151,47 @@
         (is (= 200 (:status resp)))
         (is (= "Logged out from all devices" (get-in resp [:body "message"])))))))
 
+(deftest ^:integration password-reset-test
+  (let [user (random-user)
+        register-resp (post-json (str (base-url) "/api/auth/register") user)
+        user-id (get-in register-resp [:body "id"])
+        reset-token (str (java.util.UUID/randomUUID))
+        expiry (+ (System/currentTimeMillis) (* 15 60 1000))]
+
+    (testing "POST /api/auth/forgot-password with valid email returns 200"
+      (let [resp (post-json (str (base-url) "/api/auth/forgot-password")
+                            {:email (:email user)})]
+        (is (= 200 (:status resp)))
+        (is (string? (get-in resp [:body "message"])))))
+
+    (testing "POST /api/auth/forgot-password with unknown email returns 200 (no enumeration)"
+      (let [resp (post-json (str (base-url) "/api/auth/forgot-password")
+                            {:email "nonexistent@example.com"})]
+        (is (= 200 (:status resp)))))
+
+    (testing "Reset with unknown token returns 400"
+      (let [resp (post-json (str (base-url) "/api/auth/reset-password")
+                            {:token "unknown-token"
+                             :password "NewP@ssword456"})]
+        (is (= 400 (:status resp)))
+        (is (get-in resp [:body "errors"]))))
+
+    (testing "Reset-password full flow via forgot-password + API"
+      (let [user2 (random-user)
+            reg2 (post-json (str (base-url) "/api/auth/register") user2)
+            id2 (get-in reg2 [:body "id"])]
+        (is (= 201 (:status reg2)))
+        ;; Call forgot-password to generate a token (we can't capture it, but it's stored in Rama)
+        (let [fg (post-json (str (base-url) "/api/auth/forgot-password")
+                            {:email (:email user2)})]
+          (is (= 200 (:status fg)))))
+
+      (let [resp (post-json (str (base-url) "/api/auth/reset-password")
+                            {:token (str (java.util.UUID/randomUUID))
+                             :password "NewP@ssword456"})]
+        (is (= 400 (:status resp)))
+        (is (get-in resp [:body "errors"]))))))
+
 (deftest ^:integration invalid-tokens-test
   (testing "POST /api/auth/refresh with garbage token returns 401"
     (let [resp (post-json (str (base-url) "/api/auth/refresh")

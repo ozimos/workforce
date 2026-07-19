@@ -88,6 +88,32 @@
     (ramaapi/foreign-append! pwd-change-depot (rama/->PasswordChange user-id new-pwd-hash))
     true))
 
+(defn create-reset-token! [{:keys [rama] :as deps} user-id]
+  (let [cmgr (:cluster-manager rama)
+        mod-name (rama/module-name)
+        reset-depot (rama/depot cmgr mod-name "*reset-token-depot")
+        token (str (java.util.UUID/randomUUID))
+        expires-at (+ (System/currentTimeMillis) (* 15 60 1000))]
+    (ramaapi/foreign-append! reset-depot (rama/->ResetToken token user-id expires-at))
+    token))
+
+(defn validate-reset-token [{:keys [rama] :as deps} token]
+  (let [cmgr (:cluster-manager rama)
+        mod-name (rama/module-name)
+        reset-pstate (rama/pstate cmgr mod-name "$$reset-tokens")
+        entry (ramaapi/foreign-select-one (keypath token) reset-pstate)]
+    (when entry
+      (let [now (System/currentTimeMillis)]
+        (when (< (:expires-at entry) now)
+          (throw (ex-info "Reset token expired" {:token token :expires-at (:expires-at entry)})))
+        (:user-id entry)))))
+
+(defn clear-reset-token! [{:keys [rama] :as deps} token]
+  (let [cmgr (:cluster-manager rama)
+        mod-name (rama/module-name)
+        clear-depot (rama/depot cmgr mod-name "*clear-reset-token-depot")]
+    (ramaapi/foreign-append! clear-depot (rama/->ClearResetToken token))))
+
 (defmethod ig/init-key :user/store [_ {:keys [rama] :as deps}]
   (merge deps {:rama rama}))
 
