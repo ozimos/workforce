@@ -1,4 +1,4 @@
-{:paths ["src/clojure" "resources" "src/java"]
+{:paths ["src/clojure" "resources" "target/classes"]
  :deps {org.springframework.security/spring-security-web {:mvn/version "6.5.11"}
         org.springframework.security/spring-security-config {:mvn/version "6.5.11"}
         org.springframework.security/spring-security-core {:mvn/version "6.5.11"}
@@ -8,5 +8,10 @@
         org.springframework/spring-web {:mvn/version "6.2.7"}
         jakarta.servlet/jakarta.servlet-api {:mvn/version "6.0.0"}
         integrant/integrant {:mvn/version "1.0.0"}}
- :aliases {:test {:extra-paths ["test/clojure"]
+ :deps/prep-lib {:ensure "target/classes"
+                 :alias :build
+                 :fn compile-java}
+ :aliases {:build {:deps {io.github.clojure/tools.build {:mvn/version "0.10.6"}}
+                   :ns-default build}
+           :test {:extra-paths ["test/clojure"]
                   :extra-deps {org.clojure/test.check {:mvn/version "1.1.1"}}}}}

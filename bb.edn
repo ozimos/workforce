@@ -7,5 +7,8 @@
   fmt-check    (shell {:continue true} "standard-clj" "check" "bases" "components" "projects" "development/src/clojure")
   fmt-fix      (shell {:continue true} "standard-clj" "fix" "bases" "components" "projects" "development/src/clojure")
    repl         {:override-builtin true
-                 :task (let [args (or (seq *command-line-args*) ["dev" "+default"])]
-                         (apply shell "bin/launchpad" args))}}}
+                  :task (let [args (or (seq *command-line-args*) ["dev" "+rama"])]
+                          (apply shell "bin/launchpad" args))}
+   test         (let [args (or (seq *command-line-args*) ["test" "project:auth-service"])]
+                  (shell "clojure" "-X:deps" "prep" ":aliases" "[:dev :test :+rama :+default :poly]")
+                  (apply shell "clojure" "-M:dev:test:+rama:+default:poly" args))}}

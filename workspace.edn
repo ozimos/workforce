@@ -1,11 +1,15 @@
 {:top-namespace "com.ozimos.auth"
  :interface-ns "interface"
- :default-profile-name "default"
  :dialects ["clj"]
  :compact-views #{}
  :vcs {:name "git"
        :auto-add false}
  :tag-patterns {:stable "^stable-.*"
                 :release "^v[0-9].*"}
- :projects {"development" {:alias "dev"}
-            "auth-service" {:alias "auth"}}}
+   :projects {"development" {:alias "devl"}
+              "auth-service" {:alias "auth"}}
+   :profiles {:default {:names ["schema" "config" "rama" "user" "session"
+                                "revocation" "token" "security"
+                                "auth-api"]}}
+   :test {:create-test-runner
+          [org.corfield.external-test-runner.interface/create]}}
