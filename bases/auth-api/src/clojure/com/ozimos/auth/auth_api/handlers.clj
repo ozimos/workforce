@@ -10,19 +10,25 @@
   (:import
    (java.util UUID)))
 
+(defn- parse-user-id
+  "Parse a user-id string to Long, returning nil on parse failure."
+  [s]
+  (try (Long/parseLong s) (catch Exception _ nil)))
+
 (defn- get-auth-user
   "Extract authenticated user info from Spring Security context."
   [request]
   (let [auth (get-in request [:servlet-request "org.springframework.security.context.SECURITY_CONTEXT" :authentication])]
     (when auth
-      (try
-        (let [jwt (.getPrincipal auth)
-              sub (.getSubject jwt)
-              roles (.getClaim jwt "roles")]
-          {:user-id (Long/parseLong sub)
-           :roles roles
-           :jti (.getId jwt)})
-        (catch Exception _ nil)))))
+        (try
+          (let [jwt (.getPrincipal auth)
+                sub (.getSubject jwt)
+                roles (.getClaim jwt "roles")]
+            (when-let [user-id (parse-user-id sub)]
+              {:user-id user-id
+               :roles roles
+               :jti (.getId jwt)}))
+          (catch Exception _ nil)))))
 
 (defn register [deps]
   (fn [{:keys [body-params]}]
@@ -79,18 +85,20 @@
             {:status 401 :body {:errors {:token ["Not a refresh token"]}}}
             (if (revocation/is-revoked? revocation-validator jti)
               {:status 401 :body {:errors {:token ["Token revoked"]}}}
-              (let [user-record (user/find-by-id user-store (Long/parseLong sub))
-                    roles (:roles user-record)
-                    new-access-jti (str (UUID/randomUUID))
-                    new-refresh-jti (str (UUID/randomUUID))
-                    issuer "com.ozimos.auth"
-                    access-token (token/issue-access-token encoder issuer sub roles new-access-jti 900)
-                    new-refresh-token (token/issue-refresh-token encoder issuer sub new-refresh-jti 604800)]
-                (revocation/revoke! revocation-validator jti (.. jwt getExpiresAt toEpochMilli))
-                {:status 200
-                 :body {:access-token access-token
-                        :refresh-token new-refresh-token
-                        :expires-in 900}}))))
+              (if-let [parsed-id (parse-user-id sub)]
+                (let [user-record (user/find-by-id user-store parsed-id)
+                      roles (:roles user-record)
+                      new-access-jti (str (UUID/randomUUID))
+                      new-refresh-jti (str (UUID/randomUUID))
+                      issuer "com.ozimos.auth"
+                      access-token (token/issue-access-token encoder issuer sub roles new-access-jti 900)
+                      new-refresh-token (token/issue-refresh-token encoder issuer sub new-refresh-jti 604800)]
+                  (revocation/revoke! revocation-validator jti (.. jwt getExpiresAt toEpochMilli))
+                  {:status 200
+                   :body {:access-token access-token
+                          :refresh-token new-refresh-token
+                          :expires-in 900}})
+                {:status 401 :body {:errors {:token ["Invalid token"]}}}))))
         (catch Exception e
           {:status 401 :body {:errors {:token ["Invalid token"]}}})))))
 
@@ -116,8 +124,10 @@
   (fn [{:keys [body-params]}]
     (let [{:keys [user-id]} body-params
           {:keys [user-store]} deps]
-      (if (user/verify! user-store (Long/parseLong user-id))
-        {:status 200 :body {:message "Account verified"}}
+      (if-let [parsed-id (parse-user-id user-id)]
+        (if (user/verify! user-store parsed-id)
+          {:status 200 :body {:message "Account verified"}}
+          {:status 400 :body {:errors {:user-id ["Invalid user-id"]}}})
         {:status 400 :body {:errors {:user-id ["Invalid user-id"]}}}))))
 
 (defn forgot-password [deps]
@@ -149,10 +159,14 @@
 
 #_
 (comment
-  ;; REVIEW: com.ozimos.auth.auth-api.handlers
+  ;; REVIEW: com.ozimos.auth.auth-api.handlers — IN PROGRESS (Phase 4)
   ;;
-  ;; DEFERRED (known dev stub, will be replaced with proper email-based flow):
-  ;; 1. forgot-password uses spit :append to /tmp/reset-tokens.edn — concurrent issue.
-  ;; 2. reset-password uses read-string (not clojure.edn/read-string) — security concern.
-  ;; 3. reset-password clears ALL tokens by writing "{}" — loses pending tokens.
+  ;; ADDRESSED:
+  ;; - parse-user-id helper consolidates Long/parseLong with nil-safe returns
+  ;; - verify handler uses parse-user-id, returns 400 on parse failure
+  ;;
+  ;; DEFERRED PASSWORD RESET — Phase 4.1 in progress:
+  ;; 1. forgot-password uses file-based stub — replaced with Rama depot
+  ;; 2. reset-password uses read-string — replaced with Rama PState lookup
+  ;; 3.  (both above now use Rama-backed reset tokens)
   )

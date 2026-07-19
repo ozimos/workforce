@@ -61,19 +61,32 @@
       (is (= "ok" (get-in resp [:body "status"]))))))
 
 (deftest ^:integration auth-flow-test
-  (let [user (random-user)]
+  (let [user (random-user)
+        register-resp (post-json (str (base-url) "/api/auth/register") user)]
 
     (testing "POST /api/auth/register creates a new user"
-      (let [resp (post-json (str (base-url) "/api/auth/register") user)]
-        (is (= 201 (:status resp)))
-        (is (some? (get-in resp [:body "id"])))
-        (is (= (:username user) (get-in resp [:body "username"])))
-        (is (= (:email user) (get-in resp [:body "email"])))
-        (is (false? (get-in resp [:body "verified"])))))
+      (is (= 201 (:status register-resp)))
+      (is (some? (get-in register-resp [:body "id"])))
+      (is (= (:username user) (get-in register-resp [:body "username"])))
+      (is (= (:email user) (get-in register-resp [:body "email"])))
+      (is (false? (get-in register-resp [:body "verified"]))))
 
     (testing "POST /api/auth/register with duplicate email returns 409"
       (let [resp (post-json (str (base-url) "/api/auth/register") user)]
         (is (= 409 (:status resp)))
+        (is (get-in resp [:body "errors"]))))
+
+    (testing "POST /api/auth/verify with valid user-id succeeds"
+      (let [user-id (get-in register-resp [:body "id"])
+            resp (post-json (str (base-url) "/api/auth/verify")
+                            {:user-id (str user-id)})]
+        (is (= 200 (:status resp)))
+        (is (= "Account verified" (get-in resp [:body "message"])))))
+
+    (testing "POST /api/auth/verify with non-numeric user-id returns 400"
+      (let [resp (post-json (str (base-url) "/api/auth/verify")
+                            {:user-id "not-a-number"})]
+        (is (= 400 (:status resp)))
         (is (get-in resp [:body "errors"]))))
 
     (testing "POST /api/auth/login with valid credentials returns tokens"
