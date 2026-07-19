@@ -119,11 +119,7 @@ best_auth/
 │   │       │                           # change-password!, encode-password, matches-password?
 │   │       └── core.clj               # uses rama + schema interfaces; BCryptPasswordEncoder
 │   │
-│   ├── user-memory/                   # Atom-backed store (for +default dev profile)
-│   │   ├── deps.edn                   # spring-security-core (BCrypt)
-│   │   └── src/clojure/com/ozimos/auth/user/
-│   │       ├── interface.clj          # SAME interface path, atom-backed
-│   │       └── core.clj               # BCrypt inline, atom storage
+
 │   │
 │   ├── session/                       # Session management
 │   │   ├── deps.edn                   # integrant
@@ -191,7 +187,7 @@ user --> schema.interface (validate inputs)
 user --> BCryptPasswordEncoder (inline, not a separate component)
 
 session --> rama.interface (PStates/depots)
-revocation --> rama.interface ($$revoked-tokens PState) or atom-store (dev)
+revocation --> rama.interface ($$revoked-tokens PState)
 token --> revocation.interface (OAuth2TokenValidator in decoder)
 security --> user.interface (UserDetailsService)
 security --> token.interface (JwtDecoder bean)
@@ -340,8 +336,7 @@ When you `(reset)` after changing security config:
 ## Profiles
 
 | Profile | User store | Use case |
-|---|---|---|
-| `+default` | `user-memory` (atom-backed) | Fast dev iteration without Rama |
+|---|---|---|---|
 | `+rama` | `user` (Rama-backed) | Full integration testing / production |
 
 ## Key Decisions
@@ -368,60 +363,58 @@ When you `(reset)` after changing security config:
 - Password merged into user component
 - `poly check` passes (9 components, 8 interfaces)
 
-### Phase 2: Incremental Milestones to Working `(go)`
+### Phase 2: Incremental Milestones to Working `(go)` [DONE]
 
-The system is built up in 6 incremental milestones, each ending with a working system that can be verified via `(go)` in the REPL. Bugs surface one at a time, not all at once.
+The system was built up in 6 incremental milestones, each ending with a working system verified via `(go)` in the REPL. All milestones complete.
 
-#### Milestone A: Integrant + Jetty stub handler
+#### Milestone A: Integrant + Jetty stub handler [DONE]
 | What's in `config.edn` | What's stubbed | Verify |
 |---|---|---|
 | `:adapter/jetty`, `:handler/app`, `:handler/routes` | Handler returns `{:status 200 :body {:ok true}}` | `curl localhost:8080/` returns 200 |
 
 Risks surfaced: Jetty 12 ee9 + JDK 21 virtual threads; `ring-jetty-adapter` `:configurator` invocable; Aero `#ig/ref` reader dispatch via `aero/reader` multimethod.
 
-#### Milestone B: Reitit + Malli routes
+#### Milestone B: Reitit + Malli routes [DONE]
 | What's in `config.edn` | What's stubbed | Verify |
 |---|---|---|
 | Same | Reitit routes with Malli coercion, handlers echo `:body-params` | `POST /api/auth/login` with valid body returns 200; invalid returns 422 |
 
 Risks surfaced: Malli schema syntax (esp. `[:re ...]`); `reitit-malli` coercion setup; Muuntaja JSON negotiation.
 
-#### Milestone C: Spring Security filter chain (stub JWT)
+#### Milestone C: Spring Security filter chain (stub JWT) [DONE]
 | What's in `config.edn` | What's stubbed | Verify |
 |---|---|---|
 | Add `:security/app-context`, `:token/decoder` (stub) | Stub `JwtDecoder` (always succeeds), stub `UserDetailsService` | `GET /actuator/health` returns 200; `GET` protected returns 401 |
 
 Risks surfaced: Spring 6.x + Jakarta Servlet + Jetty ee9 on same classpath; `DelegatingFilterProxy` actually finds the bean; `WebApplicationContext` attribute set on actual `ServletContextHandler` instance from ring-jetty-adapter.
 
-#### Milestone D: user-memory with BCrypt
-| What's in `config.edn` | What's stubbed | Verify |
-|---|---|---|
-| Add `:user/store` (atom-backed via `+default`) | `user-memory` real impl with BCrypt | At REPL: `(user/register! ...)` works; `(user/find-by-username ...)` returns user |
-
-Risks surfaced: `BCryptPasswordEncoder` instantiates cleanly; merge-into-user call-site ergonomics; Integrant halt ordering with merged deps.
-
-#### Milestone E: Token issuance + revocation (in-memory atom)
+#### Milestone E: Token issuance + revocation (in-memory atom) [DONE]
 | What's in `config.edn` | What's stubbed | Verify |
 |---|---|---|
 | Add `:token/encoder`, real `:token/decoder`, `:revocation/validator` (atom set) | Revocation stored in atom (no Rama) | Full login → bearer-protected request → 200; logout → same token → 401 |
 
 Risks surfaced: Nimbus JOSE key gen + RS256 sign + verify round-trip; `OAuth2TokenValidator` `reify` returns correct `OAuth2TokenValidatorResult`; JWT claim `getId` extracts `jti` correctly.
 
-#### Milestone F: Rama IPC + AuthModule
+#### Milestone F: Rama IPC + AuthModule [DONE]
 | What's in `config.edn` | What's stubbed | Verify |
 |---|---|---|
 | Swap atom revocation for Rama `$$revoked-tokens`, enable `+rama` profile | Nothing — full system | Full register → login → protected request → logout → revoked request flow end-to-end against Rama IPC |
 
 Risks surfaced: Rama `defmodule` compiles; IPC launches; depot appends produce ack-return-values; PState subindex schemas work; `foreign-select-one` with `:pkey` directive for non-keypath-matching lookups.
 
-### Phase 3: Development Workflow Polish
-- `(reset)` hot-reloads SecurityFilterChain without dropping port
+### Phase 3: Development Workflow Polish [DONE]
+- `(reset)` hot-reloads SecurityFilterChain without dropping port (Java CGLIB fix: `proxyBeanMethods = false`)
 - Integration tests in IPC mode (register, login, refresh, logout, verify, reset-password)
+- Tests runnable from both REPL (`binding [*use-fixture* false]`) and `poly test :project auth-service` (self-contained fixture)
 
 ### Phase 4: Project Assembly + Uberjar
-- `auth-service` project `deps.edn` (production)
+- `auth-service` project `deps.edn` (production) — [DONE]
 - `build.clj` for uberjar packaging
 - Verify: uberjar runs standalone
+
+### Phase 5: CI Integration
+- `poly test :project auth-service` runs in CI pipeline
+- Integration tests as gating check
 
 ## Future Phases (out of scope for Phase 1)
 

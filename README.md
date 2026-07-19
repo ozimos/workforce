@@ -49,8 +49,7 @@ Connect your editor to the nREPL port, then in the REPL:
 ## Profiles
 
 | Profile | Flag | User store | Use case |
-|---|---|---|---|
-| `+default` | `--` | Atom-backed (`user-memory`) | Fast dev iteration without Rama |
+|---|---|---|---|---|
 | `+rama` | `--` | Rama-backed (`user`) | Full integration testing / production |
 
 ## Verification
@@ -119,7 +118,6 @@ best_auth/
 │   ├── config/               # Aero-based config loading
 │   ├── rama/                 # Rama cluster + AuthModule (defmodule)
 │   ├── user/                 # Rama-backed user store + BCrypt
-│   ├── user-memory/          # Atom-backed user store + BCrypt (dev profile)
 │   ├── session/              # Session lifecycle management
 │   ├── revocation/           # Token revocation (OAuth2TokenValidator)
 │   ├── token/                # JWT issuance + validation (Nimbus)
