@@ -2,6 +2,7 @@
   (:require
    [com.ozimos.auth.rama.module :as module]
    [com.rpl.rama :as rama]
+   [com.rpl.rama.path :refer [ALL keypath]]
    [com.rpl.rama.test :as rtest]
    [integrant.core :as ig])
   (:import
@@ -51,3 +52,51 @@
   ;; Only close in production :cluster mode.
   (when (= mode :cluster)
     (.close cluster-manager)))
+
+(defn- cmgr
+  [rama-map]
+  (:cluster-manager rama-map))
+
+(defn all-session-ids
+  [rama-map]
+  (let [pstate (rama/foreign-pstate (cmgr rama-map) "AuthModule" "$$all-session-ids")]
+    (rama/foreign-select [(keypath "_sessions") ALL] pstate)))
+
+(defn all-revoked-jtis
+  [rama-map]
+  (let [pstate (rama/foreign-pstate (cmgr rama-map) "AuthModule" "$$all-revoked-jtis")]
+    (rama/foreign-select [(keypath "_jtis") ALL] pstate)))
+
+(defn cleanup-expired-sessions
+  "Scans all sessions and appends SessionEnd for each expired one.
+   Returns the count of expired sessions cleaned up."
+  [rama-map]
+  (let [sessions-pstate (rama/foreign-pstate (cmgr rama-map) "AuthModule" "$$sessions")
+        session-end-depot (rama/foreign-depot (cmgr rama-map) "AuthModule" "*session-end-depot")
+        session-ids (all-session-ids rama-map)
+        now (System/currentTimeMillis)
+        expired (volatile! 0)]
+    (doseq [session-id session-ids]
+      (let [expires-at (rama/foreign-select-one (keypath session-id :expires-at) sessions-pstate
+                                                {:pkey session-id})]
+        (when (and expires-at (< expires-at now))
+          (rama/foreign-append! session-end-depot (module/->SessionEnd session-id))
+          (vswap! expired inc))))
+    @expired))
+
+(defn cleanup-expired-revocations
+  "Scans all revoked token entries and removes those past their expiry.
+   Returns the count of expired tokens cleaned up."
+  [rama-map]
+  (let [revoked-pstate (rama/foreign-pstate (cmgr rama-map) "AuthModule" "$$revoked-tokens")
+        clear-depot (rama/foreign-depot (cmgr rama-map) "AuthModule" "*clear-revocation-depot")
+        jtis (all-revoked-jtis rama-map)
+        now (System/currentTimeMillis)
+        expired (volatile! 0)]
+    (doseq [jti jtis]
+      (let [expiry (rama/foreign-select-one (keypath jti) revoked-pstate {:pkey jti})]
+        (when (and expiry (< expiry now))
+          (rama/foreign-append! clear-depot (module/->ClearRevocation jti))
+          (vswap! expired inc))))
+    @expired))
+

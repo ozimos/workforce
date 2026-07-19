@@ -24,6 +24,10 @@
  :session/store
  {:rama #ig/ref :rama/cluster}
 
+ :cleanup/scheduler
+ {:rama #ig/ref :rama/cluster
+  :interval-ms 300000}
+
  :adapter/jetty
  {:port #profile {:dev 8080 :prod 8080}
   :host "0.0.0.0"

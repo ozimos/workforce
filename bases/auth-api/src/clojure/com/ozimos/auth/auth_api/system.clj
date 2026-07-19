@@ -1,11 +1,12 @@
 (ns com.ozimos.auth.auth-api.system
   (:require
    [com.ozimos.auth.config.interface :as config]
+   [com.ozimos.auth.rama.interface :as rama]
    [com.ozimos.auth.security.interface :as security]
    [integrant.core :as ig]
    [ring.adapter.jetty :as jetty])
   (:import
-   (java.util.concurrent Executors)
+   (java.util.concurrent Executors TimeUnit)
    (org.eclipse.jetty.ee9.servlet ServletContextHandler)
    (org.eclipse.jetty.server Server)
    (org.eclipse.jetty.util.thread QueuedThreadPool)
@@ -84,9 +85,28 @@
 
 (defmethod ig/halt-key! :handler/routes [_ _])
 
+(defmethod ig/init-key :cleanup/scheduler
+  [_ {:keys [rama interval-ms]}]
+  (let [scheduler (Executors/newScheduledThreadPool 1)]
+    (.scheduleAtFixedRate scheduler
+      (fn []
+        (try
+          (println "Cleanup: expired sessions" (rama/cleanup-expired-sessions rama)
+                   "revocations" (rama/cleanup-expired-revocations rama))
+          (catch Exception e
+            (println "Cleanup error:" (.getMessage e)))))
+      interval-ms interval-ms TimeUnit/MILLISECONDS)
+    {:scheduler scheduler}))
+
+(defmethod ig/halt-key! :cleanup/scheduler [_ {:keys [scheduler]}]
+  (when scheduler
+    (.shutdown scheduler)
+    (.awaitTermination scheduler 5 TimeUnit/SECONDS)))
+
 (defn -main [& [profile]]
   (let [cfg (load-config (or (keyword profile) :dev))
         system (ig/init cfg)]
     (println "Auth template server started")
     (.addShutdownHook (Runtime/getRuntime)
                       (Thread. (fn [] (ig/halt! system))))))
+
