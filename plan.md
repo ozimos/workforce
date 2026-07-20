@@ -455,21 +455,21 @@ Polish outstanding items deferred from Phase 1-3 reviews.
 - **Test first**: write tests for malformed subject in each handler path
 - **Implementation**: extract `parse-user-id` helper in handlers.clj, returns nil on failure; all callers handle nil explicitly
 
-### Phase 5: Frontend Scaffold
+### Phase 5: Frontend Scaffold [DONE]
 Set up the CLJS/Fulcro frontend build pipeline within the Polylith workspace.
 
-#### 5.1 Polylith CLJS dialect
+#### 5.1 Polylith CLJS dialect [DONE]
 - Add `:dialects ["clj" "cljs"]` to `workspace.edn`
 - Verify `poly check` passes with both dialects
 
-#### 5.2 Frontend component
+#### 5.2 Frontend component [DONE]
 - Create `components/frontend/` with:
   - `deps.edn` (fulcro, com.rpl/rama, shadow-cljs deps)
   - `src/cljs/com/ozimos/auth/frontend/` — CLJS source tree
   - `test/cljs/` — CLJS test tree
 - Register in `workspace.edn` as component
 
-#### 5.3 shadow-cljs + package.json
+#### 5.3 shadow-cljs + package.json [DONE]
 - Create `shadow-cljs.edn` at root:
   - `:builds {:app {:target :browser
                     :output-dir "bases/auth-api/resources/public/js"
@@ -478,13 +478,13 @@ Set up the CLJS/Fulcro frontend build pipeline within the Polylith workspace.
 - Create `package.json` at root with `shadow-cljs` dependency
 - Verify `npx shadow-cljs compile app` produces JS in output dir
 
-#### 5.4 Static file serving
+#### 5.4 Static file serving [DONE]
 - Add `resources/public/` to `bases/auth-api` with `index.html`
 - Add Ring `wrap-resource` or Reitit route to serve `/js/*`, `/index.html`
 - Update Integrant config: `:static/resources` key or inline in `:adapter/jetty`
 - Verify `curl localhost:8080/index.html` returns the HTML
 
-#### 5.5 Pathom query endpoint stub
+#### 5.5 Pathom query endpoint stub [DONE]
 - Add `POST /api/query` route in auth-api (Pathom resolver + mutation handler)
 - Stub: returns `{:ok true}` for any valid Pathom query
 - Update Integrant config with `:handler/pathom` key
@@ -495,7 +495,7 @@ Set up the CLJS/Fulcro frontend build pipeline within the Polylith workspace.
 - Connect CLJS REPL via `shadow-connect` from the Clojure REPL
 - Verify Fulcro can render a stub component served from auth-api
 
-### Phase 6: Fulcro Auth Pages
+### Phase 6: Fulcro Auth Pages [DONE]
 Build login, register, forgot/reset-password, and verify pages using Fulcro + REST remote for auth endpoints.
 
 #### 6.1 Fulcro application skeleton
