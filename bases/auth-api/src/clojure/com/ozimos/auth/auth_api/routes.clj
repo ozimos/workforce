@@ -8,7 +8,8 @@
    [reitit.ring.coercion :as coercion]
    [reitit.ring.middleware.exception :as exception]
    [reitit.ring.middleware.muuntaja :as muuntaja]
-   [reitit.ring.middleware.parameters :as parameters]))
+   [reitit.ring.middleware.parameters :as parameters]
+   [ring.middleware.resource :refer [wrap-resource]]))
 
 (defn router
   "Build the reitit router with all auth routes.
@@ -61,6 +62,10 @@
                 :handler (handlers/reset-password deps)
                 :responses {200 {:body [:map [:message :string]]}
                             400 {:body [:map [:errors [:map]]]}}}}]]
+      ["/query"
+       {:post {:summary "Pathom query endpoint (app logic)"
+               :handler (handlers/query deps)
+               :responses {200 {:body [:map [:ok boolean?] [:query :any]]}}}}]
       ["/health"
        {:get {:summary "Health check"
               :handler handlers/health}}]]]
@@ -81,5 +86,7 @@
   [deps]
   (ring/ring-handler
     (router deps)
-    (fn [_] {:status 404 :body {:error "not found"}})))
+    (wrap-resource
+      (fn [_] {:status 404 :body {:error "not found"}})
+      "public")))
 

@@ -1,0 +1,5 @@
+{:source-paths ["components/frontend/src/cljs"]
+ :dependencies [[com.fulcrologic/fulcro "3.9.5"]]
+ :builds {:app {:target :browser
+                :output-dir "bases/auth-api/resources/public/js"
+                :modules {:main {:entries [com.ozimos.auth.frontend.core]}}}}}

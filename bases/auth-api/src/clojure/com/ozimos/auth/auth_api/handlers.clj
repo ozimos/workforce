@@ -155,6 +155,11 @@
             {:status 400 :body {:errors {:token [(.getMessage e)]}}}
             (throw e)))))))
 
+(defn query [deps]
+  (fn [{:keys [body-params]}]
+    (let [query (:query body-params)]
+      {:status 200 :body {:ok true, :query query}})))
+
 (defn health [_]
   {:status 200 :body {:status "ok"}})
 

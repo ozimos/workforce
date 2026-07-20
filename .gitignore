@@ -18,3 +18,4 @@ node_modules
 /.clj-kondo/.cache
 /.lsp
 /pom.xml
+/.shadow-cljs

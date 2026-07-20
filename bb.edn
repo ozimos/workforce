@@ -9,6 +9,12 @@
    repl         {:override-builtin true
                   :task (let [args (or (seq *command-line-args*) ["dev" "+rama"])]
                           (apply shell "bin/launchpad" args))}
-   test         (let [args (or (seq *command-line-args*) ["test" "project:auth-service"])]
-                  (shell "clojure" "-X:deps" "prep" ":aliases" "[:dev :test :+rama :+default :poly]")
-                  (apply shell "clojure" "-M:dev:test:+rama:+default:poly" args))}}
+    test         (let [args (or (seq *command-line-args*) ["test" "project:auth-service"])]
+                   (shell "clojure" "-X:deps" "prep" ":aliases" "[:dev :test :+rama :+default :poly]")
+                   (apply shell "clojure" "-M:dev:test:+rama:+default:poly" args))
+   css          (shell "npx" "tailwindcss" "-i" "components/frontend/src/css/tailwind.css" "-o" "bases/auth-api/resources/public/css/app.css")
+   css-watch    (shell "npx" "tailwindcss" "-i" "components/frontend/src/css/tailwind.css" "-o" "bases/auth-api/resources/public/css/app.css" "--watch")
+   fe           (shell "npx" "shadow-cljs" "compile" "app")
+   fe-watch     (shell "npx" "shadow-cljs" "watch" "app")
+   build        (do (shell "npx" "tailwindcss" "-i" "components/frontend/src/css/tailwind.css" "-o" "bases/auth-api/resources/public/css/app.css")
+                    (shell "npx" "shadow-cljs" "compile" "app"))}}
