@@ -427,7 +427,7 @@ All subsequent phases follow two non-negotiable practices:
 - For malli schema questions: `(m/validate my-schema sample-data)` in the REPL before wiring into routes
 - Never guess at API behavior — confirm in the REPL first; this avoids debug cycles later
 
-### Phase 4: Deferred Feature Work
+### Phase 4: Deferred Feature Work [DONE]
 Polish outstanding items deferred from Phase 1-3 reviews.
 
 #### 4.1 Password reset — replace file-based stub
@@ -455,10 +455,115 @@ Polish outstanding items deferred from Phase 1-3 reviews.
 - **Test first**: write tests for malformed subject in each handler path
 - **Implementation**: extract `parse-user-id` helper in handlers.clj, returns nil on failure; all callers handle nil explicitly
 
-### Phase 5: MFA (TOTP, Passkeys/WebAuthn, Backup Codes)
+### Phase 5: Frontend Scaffold
+Set up the CLJS/Fulcro frontend build pipeline within the Polylith workspace.
+
+#### 5.1 Polylith CLJS dialect
+- Add `:dialects ["clj" "cljs"]` to `workspace.edn`
+- Verify `poly check` passes with both dialects
+
+#### 5.2 Frontend component
+- Create `components/frontend/` with:
+  - `deps.edn` (fulcro, com.rpl/rama, shadow-cljs deps)
+  - `src/cljs/com/ozimos/auth/frontend/` — CLJS source tree
+  - `test/cljs/` — CLJS test tree
+- Register in `workspace.edn` as component
+
+#### 5.3 shadow-cljs + package.json
+- Create `shadow-cljs.edn` at root:
+  - `:builds {:app {:target :browser
+                    :output-dir "bases/auth-api/resources/public/js"
+                    :modules {:main {:entries [frontend.core]}}}}`
+  - Module paths reference the CLJS source via Polylith settings
+- Create `package.json` at root with `shadow-cljs` dependency
+- Verify `npx shadow-cljs compile app` produces JS in output dir
+
+#### 5.4 Static file serving
+- Add `resources/public/` to `bases/auth-api` with `index.html`
+- Add Ring `wrap-resource` or Reitit route to serve `/js/*`, `/index.html`
+- Update Integrant config: `:static/resources` key or inline in `:adapter/jetty`
+- Verify `curl localhost:8080/index.html` returns the HTML
+
+#### 5.5 Pathom query endpoint stub
+- Add `POST /api/query` route in auth-api (Pathom resolver + mutation handler)
+- Stub: returns `{:ok true}` for any valid Pathom query
+- Update Integrant config with `:handler/pathom` key
+- This route handles all future app queries (not auth)
+
+#### 5.6 REPL checkpoint
+- Start shadow-cljs watch mode: `npx shadow-cljs watch app`
+- Connect CLJS REPL via `shadow-connect` from the Clojure REPL
+- Verify Fulcro can render a stub component served from auth-api
+
+### Phase 6: Fulcro Auth Pages
+Build login, register, forgot/reset-password, and verify pages using Fulcro + REST remote for auth endpoints.
+
+#### 6.1 Fulcro application skeleton
+- Install Fulcro + routing deps in `package.json` (fulcro, fulcro-css, etc.)
+- Create `frontend/core.cljs` — Fulcro application mount with router
+- Create `frontend/ui/root.cljs` — root UI with route-based rendering
+- Verify: page renders basic "Welcome" text in the browser
+
+#### 6.2 REST remote for auth
+- Create `frontend/remote.cljs` — Fulcro REST remote targeting `POST /api/auth/*`
+- Token interceptor: attach `Authorization: Bearer <jwt>` from localStorage
+- Error interceptor: handle 401 by redirecting to login
+- Auth events store in localStorage (access-token, refresh-token)
+
+#### 6.3 Login page
+- Form: username + password fields, submit button
+- Mutation: `POST /api/auth/login` via REST remote
+- On success: store access/refresh tokens in localStorage, redirect to home
+- On error: display error message
+- Route: `/login`
+
+#### 6.4 Register page
+- Form: email, username, password, confirm-password fields
+- Mutation: `POST /api/auth/register` via REST remote
+- On success: redirect to "please verify your email" page
+- On error: display server validation errors (409 for duplicate, 422 for invalid)
+- Route: `/register`
+
+#### 6.5 Forgot password page
+- Form: email field only
+- Mutation: `POST /api/auth/forgot-password`
+- On success: display confirmation message ("check your email")
+- Always returns 200 (no user enumeration)
+- Route: `/forgot-password`
+
+#### 6.6 Reset password page
+- Extract token from URL query param `?token=...`
+- Form: new password + confirm password fields
+- Mutation: `POST /api/auth/reset-password`
+- On success: display success + link to login
+- On error: expired/invalid token → error message
+- Route: `/reset-password?token=...`
+
+#### 6.7 Verify account page
+- Extract token from URL query param `?token=...`
+- On mount: `POST /api/auth/verify` with the token
+- On success: display "Account verified!" + link to login
+- On error: invalid/expired token → error message
+- Route: `/verify-account?token=...`
+
+#### 6.8 Token management
+- On app mount: check localStorage for existing JWT
+- If valid (not expired): set in Fulcro app state as `:auth/token`
+- If expired: attempt refresh via `POST /api/auth/refresh`
+- If refresh fails: clear tokens, redirect to login
+- Logout: clear localStorage, redirect to login
+
+#### 6.9 Navigation + layout
+- App shell with nav bar: conditional links (logged-in vs logged-out)
+- Logged-out: Login, Register
+- Logged-in: Logout
+- Loading state: spinner while auth status resolves
+- Use Fulcro CSS-in-JS or plain CSS imported in `index.html`
+
+### Phase 7: MFA (TOTP, Passkeys/WebAuthn, Backup Codes)
 Multi-factor authentication with step-up challenges.
 
-#### 5.1 TOTP (RFC 6238) — primary MFA
+#### 7.1 TOTP (RFC 6238) — primary MFA
 - **Tests first**:
   - IPC test: register TOTP secret for a user, assert `$$mfa-secrets` contains encrypted secret
   - IPC test: verify valid 6-digit code against registered secret → success
@@ -481,7 +586,7 @@ Multi-factor authentication with step-up challenges.
     - `POST /api/auth/mfa/backup-codes` — regenerate backup codes
 - **REPL checkpoint**: before integrating, experiment with the TOTP library in the REPL — generate a secret, derive the current 6-digit code, validate it. Confirm encryption/decryption round-trip for secret storage.
 
-#### 5.2 WebAuthn / Passkeys — public-key credentials
+#### 7.2 WebAuthn / Passkeys — public-key credentials
 - **Tests first**:
   - IPC test: register passkey → `$$webauthn-credentials` contains credential descriptor
   - IPC test: authenticate with passkey → success; with wrong challenge → failure
@@ -497,22 +602,22 @@ Multi-factor authentication with step-up challenges.
   - Spring Security: integrate WebAuthn with existing filter chain or use separate route group
 - **REPL checkpoint**: confirm Java interop with the WebAuthn library — instantiate `RpId`, `Rp`, `Attestation` objects in REPL before wiring
 
-#### 5.3 Backup codes — single-use recovery
+#### 7.3 Backup codes — single-use recovery
 - **Tests first**:
   - IPC test: generate 10 backup codes → `$$mfa-backup-codes` contains all 10 (hashed)
   - IPC test: consume each code exactly once, 11th use fails
 - **Implementation**: generated on setup, stored hashed (BCrypt or SHA-256), invalidated on use via `*backup-code-use-depot`
 - Falls under `mfa` component; reuses PState from 5.1
 
-#### 5.4 Security config integration
+#### 7.4 Security config integration
 - Extend `SecurityConfig.java` with MFA-aware authorization (step-up role)
 - Login response distinguishes `mfa_required: true` when MFA enabled
 - Protected routes can require `mfa_verified` role via `authorizeHttpRequests`
 
-### Phase 6: Federated Auth
+### Phase 8: Federated Auth
 OAuth2/OIDC social login + SAML SSO with account linking.
 
-#### 6.1 OAuth2 / OIDC social login
+#### 8.1 OAuth2 / OIDC social login
 - **Tests first**:
   - Integration test: mock OAuth2 provider returns code → callback exchanges for user info → JWT issued
   - IPC test: account linking — same email as existing user → links to existing account
@@ -525,7 +630,7 @@ OAuth2/OIDC social login + SAML SSO with account linking.
   - On callback: validate state, exchange code, fetch user info, find-or-create local user, issue JWT
 - **REPL checkpoint**: before wiring Spring OAuth2 client, evaluate `OAuth2ClientConfiguration` beans in REPL — confirm registration bean shape, callback URL resolution
 
-#### 6.2 SAML SSO
+#### 8.2 SAML SSO
 - **Tests first**:
   - Integration test: SP-initiated SAML auth → IdP mock returns assertion → JWT issued
   - IPC test: account link recorded on first SAML login
@@ -536,14 +641,14 @@ OAuth2/OIDC social login + SAML SSO with account linking.
   - Spring config: `saml2Login()` chain extension
 - **REPL checkpoint**: load IdP metadata in REPL, confirm `RelyingPartyRegistration` bean construction
 
-#### 6.3 Post-federated login JWT issuance
+#### 8.3 Post-federated login JWT issuance
 - After OAuth2/SAML assertion validated, exchange for app's own JWT via existing `token.interface`
 - Subject = local user-id; claim `auth-method=oauth2|saml` for audit
 
-### Phase 7: Machine-to-Machine Auth
+### Phase 9: Machine-to-Machine Auth
 Client credentials + device authorization grants for non-human clients.
 
-#### 7.1 Client Credentials (RFC 6749 §4.4)
+#### 9.1 Client Credentials (RFC 6749 §4.4)
 - **Tests first**:
   - IPC test: register client → `$$clients` contains secret hash + scopes
   - Integration test: `POST /api/auth/token` with valid client_credentials → JWT with `type=client-credentials`
@@ -557,7 +662,7 @@ Client credentials + device authorization grants for non-human clients.
   - Token issued with `type=client-credentials` claim and `scope` claim
   - Revocation validator: enforce scopes on incoming client-credentials JWT for protected resources
 
-#### 7.2 Device Authorization Grant (RFC 8628)
+#### 9.2 Device Authorization Grant (RFC 8628)
 - **Tests first**:
   - IPC test: `POST /device/authorize` creates device code + user code → `$$device-codes` contains both
   - Integration test: poll `POST /device/token` with pending status → returns `authorization_pending`
@@ -570,14 +675,14 @@ Client credentials + device authorization grants for non-human clients.
   - Short-polling interval per RFC (5s recommended)
 - **REPL checkpoint**: experiment with the polling drift tolerance — confirm Rama PState read latency under IPC mode is acceptable for 5s polling
 
-#### 7.3 Scope enforcement
+#### 9.3 Scope enforcement
 - Extend revocation validator to check `scope` claim against required scope for resource
 - Per-route scope metadata in reitit route data: `:scopes ["read"]`
 
-### Phase 8: Passwordless Auth
+### Phase 10: Passwordless Auth
 Magic links + OTP for password-free login.
 
-#### 8.1 Magic Links
+#### 10.1 Magic Links
 - **Tests first**:
   - IPC test: request magic link → `$$magic-links` contains token + user-id + expiry
   - Integration test: `GET /magic-link/verify?token=...` with valid token → JWT issued, token invalidated
@@ -589,7 +694,7 @@ Magic links + OTP for password-free login.
   - PState `$$magic-links {String {:user-id Long :expires-at Long}}`
   - Token copy sent via `notification` component (see 8.3)
 
-#### 8.2 OTP (email/SMS)
+#### 10.2 OTP (email/SMS)
 - **Tests first**:
   - IPC test: request OTP → `$$otps` contains hashed code + user-id + expiry
   - Integration test: verify with correct 6-digit code → JWT issued
@@ -600,22 +705,22 @@ Magic links + OTP for password-free login.
   - PState `$$otps {String {:user-id Long :code-hash String :expires-at Long :attempts Int}}`
   - 6-digit numeric code, 5-minute expiry, max 3 attempts
 
-#### 8.3 Notification component (email/SMS)
+#### 10.3 Notification component (email/SMS)
 - New `notification` component abstraction: `send!` dispatches via configured providers
   - SMTP email provider (via `com.sun.mail`)
   - SMS provider (Twilio via REST)
 - Configured via `config.edn` — providers enabled per environment
 - **Test first**: unit test `send!` with mock provider — asserts provider receives message
 
-#### 8.4 Rate limiting
+#### 10.4 Rate limiting
 - Protect magic-link and OTP endpoints from abuse
 - Per-IP and per-email limits via token bucket in `$$rate-limits {String {:tokens Int :last-refill Long}}` PState
 - **Test first**: integration test showing 6th request within 1 minute returns 429
 
-### Phase 9: Single Sign-Out (SLO)
+### Phase 11: Single Sign-Out (SLO)
 Propagate logout across all authentication mechanisms and linked SPs.
 
-#### 9.1 SAML SLO
+#### 11.1 SAML SLO
 - **Tests first**:
   - Integration test: SP-initiated SLO → all linked SPs receive logout notification
   - Integration test: IdP-initiated SLO → local sessions revoked
@@ -624,7 +729,7 @@ Propagate logout across all authentication mechanisms and linked SPs.
   - Use `SAMLMessageManager` (or OpenSAML) to send `LogoutRequest` / `LogoutResponse`
   - On logout: revoke all user JWT jtis via existing `revoke-all-for-user!`
 
-#### 9.2 OIDC RP-Initiated Logout (RFC 4628)
+#### 11.2 OIDC RP-Initiated Logout (RFC 4628)
 - **Tests first**:
   - Integration test: `POST /api/auth/oauth/logout` with valid `id_token_hint` → revokes local session → returns 200
   - Integration test: invalid `id_token_hint` → 400
@@ -633,14 +738,14 @@ Propagate logout across all authentication mechanisms and linked SPs.
   - Front-channel logout endpoint: `GET /api/auth/oauth/logout-callback` (iframe-based)
   - Back-channel logout endpoint: `POST /api/auth/oauth/backchannel-logout` (per RFC)
 
-#### 9.3 Token revocation propagation
+#### 11.3 Token revocation propagation
 - When SLO fires (SAML or OIDC), invoke existing `session/revoke-all!` and `revocation/revoke-all-for-user!`
 - Audit log entry: PState `$$audit-events {Long {:event String :provider String :timestamp Long}}` appended via `*audit-depot`
 
-### Phase 10: Technical Debt Cleanup
+### Phase 12: Technical Debt Cleanup
 Resolve 31 lint warnings and clean up code contracts.
 
-#### 10.1 Unused namespaces
+#### 12.1 Unused namespaces
 - `components/user/src/clojure/com/ozimos/auth/user/core.clj` — remove `com.ozimos.auth.schema.interface`
 - `bases/auth-api/src/clojure/com/ozimos/auth/auth_api/handlers.clj` — remove `com.ozimos.auth.schema.interface`, `com.ozimos.auth.schema.interface.registration`, `malli.core`
 - `bases/auth-api/src/clojure/com/ozimos/auth/auth_api/middleware.clj` — remove `clojure.walk`
@@ -649,12 +754,12 @@ Resolve 31 lint warnings and clean up code contracts.
 - `components/rama/src/clojure/com/ozimos/auth/rama/module.clj` — remove `com.rpl.rama.aggs`
 - `development/src/clojure/user.clj` — remove `integrant.repl.state` (and `:refer`s)
 
-#### 10.2 Unused imports
+#### 12.2 Unused imports
 - `components/rama/src/clojure/com/ozimos/auth/rama/core.clj` — remove `InProcessCluster`
 - `components/rama/test/clojure/com/ozimos/auth/rama/ipc_test.clj` — remove `InProcessCluster`, `ALL`
 - `components/token/src/clojure/com/ozimos/auth/token/core.clj` — remove `SecurityContext`, `UUID`, `JwtValidators`
 
-#### 10.3 Unused bindings
+#### 12.3 Unused bindings
 - `bases/auth-api/src/clojure/com/ozimos/auth/auth_api/handlers.clj` — `e` in refresh catch (rename to `_`)
 - `bases/auth-api/src/clojure/com/ozimos/auth/auth_api/middleware.clj` — `deps` in fn (rename to `_`)
 - `bases/auth-api/src/clojure/com/ozimos/auth/auth_api/system.clj` — `routes` in handler/routes init
@@ -663,23 +768,23 @@ Resolve 31 lint warnings and clean up code contracts.
 - `components/user/src/clojure/com/ozimos/auth/user/core.clj` — `deps` in find-by-username, find-by-id, verify!, change-password! (rename to `_`)
 - `components/rama/src/clojure/com/ozimos/auth/rama/module.clj` — `*existing-reg-uuid` (remove)
 
-#### 10.4 Formatting and consistency
+#### 12.4 Formatting and consistency
 - Run `bb fmt-fix` (standard-clj fix) across all sources
 - Verify `bb lint` shows 0 errors, 0 warnings
 
-#### 10.5 Optional refinements
+#### 12.5 Optional refinements
 - Consider `clj-kondo` `:type-checking` config drift fixes
 - Consider adding `:hashp` or `:flow-storm` for better REPL debugging
 
-### Phase 11: Project Assembly + Uberjar
+### Phase 13: Project Assembly + Uberjar
 Package production uberjar and verify standalone execution.
 
-#### 11.1 Verify uberjar builds
+#### 13.1 Verify uberjar builds
 - `clojure -T:build uber` produces `target/auth-service-0.1.0-SNAPSHOT-standalone.jar`
 - Confirm Java security config (`SecurityConfig.java`) compiles into uberjar
 - Confirm `config.edn` resources bundled correctly
 
-#### 11.2 Verify uberjar runs standalone
+#### 13.2 Verify uberjar runs standalone
 - **Test first**: write `bb uber-test` that:
   1. Builds the uberjar (`clojure -T:build uber`)
   2. Starts it in background (`java -jar target/...standalone.jar &`)
@@ -689,28 +794,28 @@ Package production uberjar and verify standalone execution.
   6. Asserts all checks pass
 - Targets JVM 21; documents required Java version in README
 
-#### 11.3 Deployment documentation
+#### 13.3 Deployment documentation
 - Document deployment requirements (JVM 21, no external deps for IPC mode)
 - Add `Dockerfile` (optional stretch)
 - Add `POSTS.md` or section in README for prod-mode config (Rama cluster conn)
 
-### Phase 12: CI Integration
+### Phase 14: CI Integration
 GitHub Actions (or equivalent) pipeline as gating check.
 
-#### 12.1 Job stages
+#### 14.1 Job stages
 For each PR / push to main:
 1. **Checkout** + setup Java 21 + Clojure CLI + Babashka
-2. `bb lint` — zero errors required, warnings allowed (until Phase 10 lands)
+2. `bb lint` — zero errors required, warnings allowed (until Phase 12 lands)
 3. `bb fmt-check` — standard-clj check (formatting consistency)
 4. `poly check` — workspace consistency (interfaces align to components)
 5. `bb test` — full integration + IPC tests as gating check
-6. `bb uber-test` (post Phase 11) — verify uberjar builds and runs
+6. `bb uber-test` (post Phase 13) — verify uberjar builds and runs
 
-#### 12.2 Branch protection
+#### 14.2 Branch protection
 - Require green CI on PR merge to `main`
 - Status badge in README pointing to latest CI run
 - Fail-fast on lint errors; fail-fast on test failures; allow warnings
 
-#### 12.3 Scheduled runs
+#### 14.3 Scheduled runs
 - Nightly full test run including uberjar build + smoke test
 - Weekly `deps.edn` dependency freshness report (via `antq` or similar)
