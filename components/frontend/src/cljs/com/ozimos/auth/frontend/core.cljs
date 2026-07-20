@@ -6,3 +6,5 @@
 
 (defn ^:export init []
   (app/mount! app-inst root/Root "app"))
+
+(init)
