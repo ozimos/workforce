@@ -9,7 +9,8 @@
    [reitit.ring.middleware.exception :as exception]
    [reitit.ring.middleware.muuntaja :as muuntaja]
    [reitit.ring.middleware.parameters :as parameters]
-   [ring.middleware.resource :refer [wrap-resource]]))
+   [ring.middleware.resource :refer [wrap-resource]]
+   [clojure.java.io :as io]))
 
 (defn router
   "Build the reitit router with all auth routes.
@@ -81,12 +82,25 @@
                          muuntaja/format-request-middleware
                          coercion/coerce-request-middleware]}}))
 
+(defn- wrap-spa [handler]
+  (fn [request]
+    (let [response (handler request)]
+      (if (and (= 404 (:status response))
+               (not (.startsWith (:uri request) "/api/")))
+        (if-let [resource (io/resource "public/index.html")]
+          {:status 200
+           :headers {"Content-Type" "text/html"}
+           :body (slurp resource)}
+          response)
+        response))))
+
 (defn app
   "Build the Ring handler from the router."
   [deps]
-  (ring/ring-handler
-    (router deps)
-    (wrap-resource
-      (fn [_] {:status 404 :body {:error "not found"}})
-      "public")))
+  (-> (ring/ring-handler
+        (router deps)
+        (wrap-resource
+          (fn [_] {:status 404 :body {:error "not found"}})
+          "public"))
+      (wrap-spa)))
 
