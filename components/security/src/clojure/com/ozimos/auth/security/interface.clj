@@ -12,4 +12,3 @@
   "Extract the FilterChainProxy from the Spring ApplicationContext."
   [app-ctx]
   (core/filter-chain-proxy app-ctx))
-

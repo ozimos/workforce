@@ -118,4 +118,3 @@
   (merge deps {:rama rama}))
 
 (defmethod ig/halt-key! :user/store [_ _])
-

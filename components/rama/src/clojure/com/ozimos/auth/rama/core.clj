@@ -99,4 +99,3 @@
           (rama/foreign-append! clear-depot (module/->ClearRevocation jti))
           (vswap! expired inc))))
     @expired))
-

@@ -53,4 +53,3 @@
   "Remove a reset token from Rama (marks it as consumed)."
   [deps token]
   (core/clear-reset-token! deps token))
-

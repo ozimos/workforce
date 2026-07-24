@@ -104,4 +104,3 @@
      :rsa-key key}))
 
 (defmethod ig/halt-key! :token/decoder [_ _])
-

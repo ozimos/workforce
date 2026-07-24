@@ -26,4 +26,3 @@
             (throw (ex-info "No config.edn found on classpath" {})))]
     (-> (aero/read-config resource {:profile profile})
         ig/expand)))
-

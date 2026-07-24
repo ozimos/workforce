@@ -46,4 +46,3 @@
   (merge deps {:rama rama}))
 
 (defmethod ig/halt-key! :session/store [_ _])
-

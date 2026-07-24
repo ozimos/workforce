@@ -22,4 +22,3 @@
 (defn valid-email? [e] (m/validate email e))
 (defn valid-username? [u] (m/validate username u))
 (defn valid-password? [p] (m/validate password p))
-

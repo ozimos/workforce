@@ -18,7 +18,7 @@
       (.replace "'" "&#39;")))
 
 (defn- authenticated? []
-  (= (js/process.env.SSR_AUTHENTICATED) "true"))
+  (= js/process.env.SSR_AUTHENTICATED "true"))
 
 (defn- setup-ssr-globals [path search]
   ;; window and localStorage are provided by ssr-server/shim.js at module-load

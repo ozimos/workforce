@@ -109,4 +109,3 @@
     (println "Auth template server started")
     (.addShutdownHook (Runtime/getRuntime)
                       (Thread. (fn [] (ig/halt! system))))))
-

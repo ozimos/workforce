@@ -36,4 +36,3 @@
   "Create a NimbusJwtDecoder from an RSAKey's public key and an optional revocation validator."
   ^org.springframework.security.oauth2.jwt.JwtDecoder [rsa-key revocation-validator]
   (core/make-decoder rsa-key revocation-validator))
-

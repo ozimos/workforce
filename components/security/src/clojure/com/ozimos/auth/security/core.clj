@@ -59,4 +59,3 @@
 (defmethod ig/halt-key! :security/app-context [_ {:keys [app-context]}]
   (when app-context
     (.close app-context)))
-

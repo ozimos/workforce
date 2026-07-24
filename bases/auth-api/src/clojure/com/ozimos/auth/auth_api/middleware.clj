@@ -14,4 +14,3 @@
       (if (or (nil? auth) (not (.isAuthenticated auth)))
         {:status 401 :body {:errors {:auth ["Not authenticated"]}}}
         (handler request)))))
-
