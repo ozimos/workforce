@@ -1,55 +1,65 @@
 (ns com.ozimos.auth.frontend.ui.root
-  (:require [com.fulcrologic.fulcro.components :as comp :refer [defsc]]
-            [com.ozimos.auth.frontend.ui.components.nav :as nav]
-            [com.ozimos.auth.frontend.ui.pages.login :as login]
-            [com.ozimos.auth.frontend.ui.pages.register :as register]
-            [com.ozimos.auth.frontend.ui.pages.forgot-password :as forgot-password]
-            [com.ozimos.auth.frontend.ui.pages.reset-password :as reset-password]
-            [com.ozimos.auth.frontend.ui.pages.verify :as verify]
-            [com.ozimos.auth.frontend.ui.pages.home :as home]))
+  (:require
+   [com.fulcrologic.fulcro.components :as comp :refer [defsc]]
+   [com.fulcrologic.fulcro.dom :as dom :refer [div p]]
+   [com.ozimos.auth.frontend.ui.components.nav :as nav]
+   [com.ozimos.auth.frontend.ui.pages.forgot-password :as forgot-password]
+   [com.ozimos.auth.frontend.ui.pages.home :as home]
+   [com.ozimos.auth.frontend.ui.pages.login :as login]
+   [com.ozimos.auth.frontend.ui.pages.register :as register]
+   [com.ozimos.auth.frontend.ui.pages.reset-password :as reset-password]
+   [com.ozimos.auth.frontend.ui.pages.verify :as verify]))
 
 (defn- current-page
   []
-  (let [hash (or js/window.location.hash "")]
+  (let [path (or js/window.location.pathname "")]
     (cond
-      (.startsWith hash "#/register") :route/register
-      (.startsWith hash "#/forgot-password") :route/forgot-password
-      (.startsWith hash "#/reset-password") :route/reset-password
-      (.startsWith hash "#/verify") :route/verify
-      (.startsWith hash "#/login") :route/login
-      (.startsWith hash "#/") :route/home
+      (= path "/register") :route/register
+      (= path "/forgot-password") :route/forgot-password
+      (.startsWith path "/reset-password") :route/reset-password
+      (.startsWith path "/verify") :route/verify
+      (= path "/login") :route/login
+      (= path "/") :route/home
       :else :route/login)))
 
 (defn- logged-in?
   []
-  (some? (.getItem js/localStorage "access-token")))
+  (and (exists? js/localStorage)
+       (some? (.getItem js/localStorage "access-token"))))
 
 (defn- route-for-page [page]
   (case page
-    :route/login "#!/login"
-    :route/register "#!/register"
-    :route/forgot-password "#!/forgot-password"
-    :route/reset-password "#!/reset-password"
-    :route/verify "#!/verify"
-    :route/home "#!/"
-    "#!/login"))
+    :route/login "/login"
+    :route/register "/register"
+    :route/forgot-password "/forgot-password"
+    :route/reset-password "/reset-password"
+    :route/verify "/verify"
+    :route/home "/"
+    "/login"))
 
-(defsc Root [_ {:keys []}]
-  {:query []
-   :ident (fn [] [:root :singleton])}
+(def nav-factory (comp/factory nav/NavBar))
+(def login-factory (comp/factory login/Login))
+(def register-factory (comp/factory register/Register))
+(def forgot-pw-factory (comp/factory forgot-password/ForgotPassword))
+(def reset-pw-factory (comp/factory reset-password/ResetPassword))
+(def verify-factory (comp/factory verify/Verify))
+(def home-factory (comp/factory home/Home))
+
+(defsc Root [_ _]
+  {:query []}
   (let [page (current-page)
         logged-in (logged-in?)]
     (when (and (not logged-in)
                (= page :route/home))
-      (set! js/window.location.hash (route-for-page :route/login)))
-    [:div {:class "min-h-full"}
-     (when logged-in (nav/nav-bar))
-     (case page
-       :route/login (login/ui-login)
-       :route/register (register/ui-register)
-       :route/forgot-password (forgot-password/ui-forgot-password)
-       :route/reset-password (reset-password/ui-reset-password)
-       :route/verify (verify/ui-verify)
-       :route/home (home/ui-home)
-       [:div {:class "flex items-center justify-center h-64"}
-        [:p {:class "text-gray-500"} "Loading..."]])]))
+      (set! js/window.location.pathname (route-for-page :route/login)))
+    (div {:className "min-h-full"}
+      (when logged-in (div {:key "nav"} (nav-factory)))
+      (div {:key "page"} (case page
+                           :route/login (login-factory)
+                           :route/register (register-factory)
+                           :route/forgot-password (forgot-pw-factory)
+                           :route/reset-password (reset-pw-factory)
+                           :route/verify (verify-factory)
+                           :route/home (home-factory)
+                           (div {:className "flex items-center justify-center h-64"}
+                             (p {:className "text-gray-500"} "Loading...")))))))
