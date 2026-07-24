@@ -89,8 +89,11 @@ function setupMiddleware() {
     next();
   });
 
-  app.use("/js", express.static(path.resolve(PUBLIC_DIR, "js"), { maxAge: "1y" }));
-  app.use("/css", express.static(path.resolve(PUBLIC_DIR, "css"), { maxAge: "1y" }));
+  // maxAge=0 so the browser revalidates on every request (sends
+  // If-Modified-Since). Shadow recompiles overwrite the same filenames, so
+  // long-lived caching freezes dev on a stale bundle.
+  app.use("/js", express.static(path.resolve(PUBLIC_DIR, "js"), { maxAge: 0 }));
+  app.use("/css", express.static(path.resolve(PUBLIC_DIR, "css"), { maxAge: 0 }));
 
   app.get(getSpaRoutes(), (req, res, next) => {
     if (req.path === "/" && req.accepts("html")) {
@@ -116,7 +119,7 @@ function setupMiddleware() {
   });
   app.use("/api", apiProxy);
 
-  app.use(express.static(PUBLIC_DIR, { index: false, maxAge: "5m" }));
+  app.use(express.static(PUBLIC_DIR, { index: false, maxAge: 0 }));
 
   app.use((req, res) => {
     renderSsrPage(req, res);
