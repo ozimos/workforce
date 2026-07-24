@@ -36,4 +36,5 @@
                      (a {:href "/login" :className "mt-2 inline-block text-sm font-semibold text-indigo-600 hover:text-indigo-500"} "Sign in"))
           :error (div {:className "rounded-md bg-red-50 p-4"}
                    (p {:className "text-sm text-red-700"} (or message "Verification failed"))
-                   (a {:href "/login" :className "mt-2 inline-block text-sm font-semibold text-indigo-600 hover:text-indigo-500"} "Back to sign in")))))))
+                   (a {:href "/login" :className "mt-2 inline-block text-sm font-semibold text-indigo-600 hover:text-indigo-500"} "Back to sign in"))
+          (div {:className "text-center"} (p {:className "text-gray-500"} "Verifying your account...")))))))
