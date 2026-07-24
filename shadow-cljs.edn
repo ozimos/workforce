@@ -2,4 +2,13 @@
  :dependencies [[com.fulcrologic/fulcro "3.9.5"]]
  :builds {:app {:target :browser
                 :output-dir "bases/auth-api/resources/public/js"
-                :modules {:main {:entries [com.ozimos.auth.frontend.core]}}}}}
+                :compiler {:preloads [shadow.cljs.devtools.client.browser
+                     com.fulcrologic.fulcro.inspect.preload]}
+                :devtools {:after-load com.ozimos.auth.frontend.core/refresh}
+                :init-fn com.ozimos.auth.frontend.core/init
+                :modules {:main {:entries [com.ozimos.auth.frontend.core]}}}
+          :ssr {:target :node-library
+                :output-to "ssr-output/ssr.js"
+                :exports {:render-page-html com.ozimos.auth.frontend.ssr/render-page-html}
+                :compiler {:external-json-modules? true}
+                :modules {:ssr {:entries [com.ozimos.auth.frontend.ssr]}}}}}
