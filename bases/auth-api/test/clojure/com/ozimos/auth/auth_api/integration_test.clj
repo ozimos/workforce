@@ -1,9 +1,9 @@
 (ns com.ozimos.auth.auth-api.integration-test
   (:require
-   [hato.client :as http]
-   [jsonista.core :as json]
    [clojure.test :refer [deftest is testing]]
-   [com.ozimos.auth.auth-api.test-system :as ts]))
+   [com.ozimos.auth.auth-api.test-system :as ts]
+   [hato.client :as http]
+   [jsonista.core :as json]))
 
 (defn base-url []
   (ts/get-base-url))
@@ -32,16 +32,16 @@
   ([url body]
    (post-json url body {}))
   ([url body headers]
-    (let [resp (->> (http/post url
-                    {:body (json/write-value-as-string body)
-                     :content-type :json
-                     :accept :json
-                     :throw-exceptions false
-                     :as :string
-                     :headers headers})
-         parse-body)]
-      (log-req-resp url body resp)
-      resp)))
+   (let [resp (->> (http/post url
+                     {:body (json/write-value-as-string body)
+                      :content-type :json
+                      :accept :json
+                      :throw-exceptions false
+                      :as :string
+                      :headers headers})
+                parse-body)]
+     (log-req-resp url body resp)
+     resp)))
 
 (defn- get-json
   ([url]
@@ -201,8 +201,7 @@
 
   (testing "POST /api/auth/login with non-existent user returns 401"
     (let [resp (post-json (str (base-url) "/api/auth/login")
-                           {:username "nonexistent"
-                            :password "CorrectHorseBatteryStaple1!"})]
+                 {:username "nonexistent"
+                  :password "CorrectHorseBatteryStaple1!"})]
       (is (= 401 (:status resp)))
       (is (get-in resp [:body "errors"])))))
-

@@ -1,7 +1,8 @@
 (ns build
-  (:require [clojure.java.shell :refer [sh]]
-            [clojure.string :as str]
-            [clojure.tools.build.api :as b]))
+  (:require
+   [clojure.java.shell :refer [sh]]
+   [clojure.string :as str]
+   [clojure.tools.build.api :as b]))
 
 (def class-dir "target/classes")
 
@@ -15,4 +16,3 @@
     (if (zero? exit)
       (println "Java compiled to" class-dir)
       (throw (ex-info (str "Java compilation failed: " err) {:exit exit})))))
-

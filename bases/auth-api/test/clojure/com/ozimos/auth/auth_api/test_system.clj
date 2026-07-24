@@ -1,17 +1,17 @@
 (ns com.ozimos.auth.auth-api.test-system
   (:require
-   [com.rpl.rama :as ramaapi]
-   [com.rpl.rama.path :refer [keypath]]
-   [integrant.core :as ig]
+   [com.ozimos.auth.auth-api.system]
    [com.ozimos.auth.config.interface :as config]
    [com.ozimos.auth.rama.core]
    [com.ozimos.auth.rama.module]
-   [com.ozimos.auth.user.core]
-   [com.ozimos.auth.session.core]
    [com.ozimos.auth.revocation.core]
-   [com.ozimos.auth.token.core]
    [com.ozimos.auth.security.core]
-   [com.ozimos.auth.auth-api.system]))
+   [com.ozimos.auth.session.core]
+   [com.ozimos.auth.token.core]
+   [com.ozimos.auth.user.core]
+   [com.rpl.rama :as ramaapi]
+   [com.rpl.rama.path :refer [keypath]]
+   [integrant.core :as ig]))
 
 (defonce system
   (delay
@@ -54,4 +54,3 @@
   [name]
   (let [cmgr (rama-cluster)]
     (com.ozimos.auth.rama.core/depot cmgr (module-name) name)))
-

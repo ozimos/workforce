@@ -5,8 +5,8 @@
    [com.rpl.rama.path :refer [keypath]]
    [integrant.core :as ig])
   (:import
-    (org.springframework.security.oauth2.core OAuth2Error OAuth2TokenValidator OAuth2TokenValidatorResult)
-    (org.springframework.security.oauth2.jwt Jwt)))
+   (org.springframework.security.oauth2.core OAuth2Error OAuth2TokenValidator OAuth2TokenValidatorResult)
+   (org.springframework.security.oauth2.jwt Jwt)))
 
 (defn is-revoked? [deps jti]
   (let [{:keys [rama]} deps
@@ -46,4 +46,3 @@
 
 (defmethod ig/init-key :revocation/validator [_ {:keys [rama]}]
   {:rama rama})
-

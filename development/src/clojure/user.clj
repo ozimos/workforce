@@ -20,20 +20,20 @@
   (try
     (require 'virgil)
     (require 'clj-reload.core)
-     ((resolve 'clj-reload.core/init)
-      {:dirs     ["development/src/clojure"
-                  "bases/auth-api/src/clojure"
-                  "bases/auth-api/test/clojure"
-                  "components/schema/src/clojure"
-                  "components/config/src/clojure"
-                  "components/rama/src/clojure"
-                  "components/session/src/clojure"
-                  "components/revocation/src/clojure"
-                  "components/token/src/clojure"
-                  "components/security/src/clojure"
-                  "components/user/src/clojure"]
-       :no-reload '#{user}
-       :output   :verbose})
+    ((resolve 'clj-reload.core/init)
+     {:dirs     ["development/src/clojure"
+                 "bases/auth-api/src/clojure"
+                 "bases/auth-api/test/clojure"
+                 "components/schema/src/clojure"
+                 "components/config/src/clojure"
+                 "components/rama/src/clojure"
+                 "components/session/src/clojure"
+                 "components/revocation/src/clojure"
+                 "components/token/src/clojure"
+                 "components/security/src/clojure"
+                 "components/user/src/clojure"]
+      :no-reload '#{user}
+      :output   :verbose})
     ((resolve 'virgil/watch-and-recompile)
      java-dirs
      :options ["-proc:none"]
@@ -48,4 +48,3 @@
   (reset)    ;; Reload changed namespaces + rebuild system
   (reset-all) ;; Reload ALL namespaces + rebuild system
   (clear))    ;; Discard prepped config + system
-

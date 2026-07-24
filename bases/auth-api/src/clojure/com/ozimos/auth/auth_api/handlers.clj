@@ -20,15 +20,15 @@
   [request]
   (let [auth (get-in request [:servlet-request "org.springframework.security.context.SECURITY_CONTEXT" :authentication])]
     (when auth
-        (try
-          (let [jwt (.getPrincipal auth)
-                sub (.getSubject jwt)
-                roles (.getClaim jwt "roles")]
-            (when-let [user-id (parse-user-id sub)]
-              {:user-id user-id
-               :roles roles
-               :jti (.getId jwt)}))
-          (catch Exception _ nil)))))
+      (try
+        (let [jwt (.getPrincipal auth)
+              sub (.getSubject jwt)
+              roles (.getClaim jwt "roles")]
+          (when-let [user-id (parse-user-id sub)]
+            {:user-id user-id
+             :roles roles
+             :jti (.getId jwt)}))
+        (catch Exception _ nil)))))
 
 (defn register [deps]
   (fn [{:keys [body-params]}]
@@ -162,4 +162,3 @@
 
 (defn health [_]
   {:status 200 :body {:status "ok"}})
-

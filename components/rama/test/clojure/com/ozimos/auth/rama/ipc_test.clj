@@ -1,11 +1,11 @@
 (ns com.ozimos.auth.rama.ipc-test
   (:require
    [clojure.test :refer [deftest is testing use-fixtures]]
+   [com.ozimos.auth.auth-api.test-system :as ts]
+   [com.ozimos.auth.rama.module :as mod]
    [com.rpl.rama :as rama]
    [com.rpl.rama.path :refer [ALL keypath]]
-   [com.rpl.rama.test :as rtest]
-   [com.ozimos.auth.rama.module :as mod]
-   [com.ozimos.auth.auth-api.test-system :as ts])
+   [com.rpl.rama.test :as rtest])
   (:import
    (com.rpl.rama.test InProcessCluster)))
 
@@ -84,8 +84,8 @@
           uname (str "session-cleanup-" suffix)
           email (str uname "@test.com")
           user-id (get (rama/foreign-append! (:registration depots)
-                        (mod/->Registration (str (java.util.UUID/randomUUID))
-                          uname "hash" email ["ROLE_USER"])) "auth")
+                         (mod/->Registration (str (java.util.UUID/randomUUID))
+                           uname "hash" email ["ROLE_USER"])) "auth")
           session-id (str (java.util.UUID/randomUUID))
           jti (str (java.util.UUID/randomUUID))
           expires-at (+ (System/currentTimeMillis) 3600000)]
@@ -120,4 +120,3 @@
         (is (nil? stored) "session should be removed from $$sessions"))
 
       (println "=== end session-end-cleanup-test ==="))))
-

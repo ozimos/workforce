@@ -1,5 +1,6 @@
 (ns com.ozimos.auth.auth-api.routes
   (:require
+   [clojure.java.io :as io]
    [com.ozimos.auth.auth-api.handlers :as handlers]
    [com.ozimos.auth.schema.interface.registration :as reg-schema]
    [muuntaja.core :as m]
@@ -9,8 +10,7 @@
    [reitit.ring.middleware.exception :as exception]
    [reitit.ring.middleware.muuntaja :as muuntaja]
    [reitit.ring.middleware.parameters :as parameters]
-   [ring.middleware.resource :refer [wrap-resource]]
-   [clojure.java.io :as io]))
+   [ring.middleware.resource :refer [wrap-resource]]))
 
 (defn router
   "Build the reitit router with all auth routes.
@@ -103,4 +103,3 @@
           (fn [_] {:status 404 :body {:error "not found"}})
           "public"))
       (wrap-spa)))
-

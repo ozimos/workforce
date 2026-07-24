@@ -46,5 +46,4 @@
    [:id :int]
    [:username :string]
    [:email :string]
-    [:verified :boolean]])
-
+   [:verified :boolean]])

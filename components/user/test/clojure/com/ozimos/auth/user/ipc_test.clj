@@ -1,11 +1,11 @@
 (ns com.ozimos.auth.user.ipc-test
   (:require
    [clojure.test :refer [deftest is testing use-fixtures]]
-   [com.rpl.rama :as rama]
-   [com.rpl.rama.test :as rtest]
+   [com.ozimos.auth.auth-api.test-system :as ts]
    [com.ozimos.auth.rama.module :as mod]
    [com.ozimos.auth.user.core :as user]
-   [com.ozimos.auth.auth-api.test-system :as ts]))
+   [com.rpl.rama :as rama]
+   [com.rpl.rama.test :as rtest]))
 
 (def ^:dynamic *system* nil)
 
@@ -34,8 +34,8 @@
           email (str uname "@test.com")
           pwd "P@ssword123"
           [ok user] (user/register! *system* {:username uname
-                                               :email email
-                                               :password pwd})
+                                              :email email
+                                              :password pwd})
           found (user/find-by-username *system* uname)]
 
       (println "\n=== register-and-find-test ===")
@@ -62,8 +62,8 @@
           email (str uname "@test.com")
           pwd "P@ssword123"
           [ok user] (user/register! *system* {:username uname
-                                               :email email
-                                               :password pwd})
+                                              :email email
+                                              :password pwd})
           user-id (:id user)]
 
       (println "\n=== register-and-find-by-id-test ===")
@@ -148,4 +148,3 @@
         (is (some? id2) "retry should return a user-id")
         (is (= id1 id2) "both appends should return the same user-id"))
       (println "=== end registration-idempotency-test ==="))))
-
