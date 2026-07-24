@@ -37,13 +37,18 @@
     :route/home "/"
     "/login"))
 
-(def nav-factory (comp/factory nav/NavBar))
-(def login-factory (comp/factory login/Login))
-(def register-factory (comp/factory register/Register))
-(def forgot-pw-factory (comp/factory forgot-password/ForgotPassword))
-(def reset-pw-factory (comp/factory reset-password/ResetPassword))
-(def verify-factory (comp/factory verify/Verify))
-(def home-factory (comp/factory home/Home))
+;; Factories are created lazily (on first use) instead of at namespace-load
+;; time because shadow-cljs's :node-library target (used for the SSR validation
+;; harness) can reorder top-level component-class metadata attachment in a way
+;; that makes `comp/factory` blow up at import time. Creating them on first
+;; render sidesteps that ordering issue and is harmless in the browser build.
+(def nav-factory        (delay (comp/factory nav/NavBar)))
+(def login-factory      (delay (comp/factory login/Login)))
+(def register-factory   (delay (comp/factory register/Register)))
+(def forgot-pw-factory  (delay (comp/factory forgot-password/ForgotPassword)))
+(def reset-pw-factory   (delay (comp/factory reset-password/ResetPassword)))
+(def verify-factory     (delay (comp/factory verify/Verify)))
+(def home-factory       (delay (comp/factory home/Home)))
 
 (defsc Root [_ _]
   {:query []}
@@ -53,13 +58,13 @@
                (= page :route/home))
       (set! js/window.location.pathname (route-for-page :route/login)))
     (div {:className "min-h-full"}
-      (when logged-in (div {:key "nav"} (nav-factory)))
+      (when logged-in (div {:key "nav"} (@nav-factory)))
       (div {:key "page"} (case page
-                           :route/login (login-factory)
-                           :route/register (register-factory)
-                           :route/forgot-password (forgot-pw-factory)
-                           :route/reset-password (reset-pw-factory)
-                           :route/verify (verify-factory)
-                           :route/home (home-factory)
+                           :route/login (@login-factory)
+                           :route/register (@register-factory)
+                           :route/forgot-password (@forgot-pw-factory)
+                           :route/reset-password (@reset-pw-factory)
+                           :route/verify (@verify-factory)
+                           :route/home (@home-factory)
                            (div {:className "flex items-center justify-center h-64"}
                              (p {:className "text-gray-500"} "Loading...")))))))
