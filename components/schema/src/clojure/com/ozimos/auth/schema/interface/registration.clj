@@ -4,13 +4,13 @@
 
 (def register-request
   [:map
-   [:username schema/username]
+   [:username {:optional true} schema/username]
    [:email schema/email]
    [:password schema/password]])
 
 (def login-request
   [:map
-   [:username schema/username]
+   [:identifier [:or schema/email schema/username]]
    [:password schema/password]])
 
 (def refresh-request

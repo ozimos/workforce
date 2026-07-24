@@ -1,5 +1,6 @@
 (ns com.ozimos.auth.user.ipc-test
   (:require
+   [clojure.string :as string]
    [clojure.test :refer [deftest is testing use-fixtures]]
    [com.ozimos.auth.auth-api.test-system :as ts]
    [com.ozimos.auth.rama.module :as mod]
@@ -78,6 +79,24 @@
         (is (some? found) "find-by-id should return the user")
         (is (= user-id (:id found)) "id should match"))
       (println "=== end register-and-find-by-id-test ==="))))
+
+(deftest ^:integration auto-derive-username-test
+  (testing "register! without :username derives one from email"
+    (let [suffix (short-suffix)
+          email (str "autoderive-" suffix "@test.com")
+          pwd "P@ssword123"
+          [ok user] (user/register! *system* {:email email :password pwd})]
+      (println "\n=== auto-derive-username-test ===")
+      (println "register! ok:" ok)
+      (println "register! user:" (pr-str user))
+      (is ok "register! should succeed")
+      (is (some? (:username user)) "username should be auto-derived")
+      (is (string/starts-with? (:username user) "autoderive"))
+      (is (= email (:email user)) "email should match")
+      (let [found (user/find-by-username *system* (:username user))]
+        (is (some? found) "find-by-username should work with derived username")
+        (is (= (:username user) (:username found)) "usernames should match"))
+      (println "=== end auto-derive-username-test ==="))))
 
 (deftest ^:integration duplicate-registration-test
   (testing "register! with duplicate username returns error"

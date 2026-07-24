@@ -1,11 +1,12 @@
 (ns com.ozimos.auth.user.core
   (:require
+   [clojure.string :as str]
    [com.ozimos.auth.rama.interface :as rama]
    [com.ozimos.auth.schema.interface :as schema]
    [com.ozimos.auth.schema.interface.registration :as registration]
    [com.rpl.rama :as ramaapi]
    [com.rpl.rama.path :refer [keypath]]
-   [integrant.core :as ig]
+[integrant.core :as ig]
    [malli.core :as m])
   (:import
    (java.util UUID)
@@ -24,31 +25,47 @@
   (let [encoder (or (:password-encoder deps) (make-encoder))]
     (.matches ^PasswordEncoder encoder plain encoded)))
 
+(defn- derive-username-from-email
+  ([email]
+   (derive-username-from-email email ""))
+  ([email suffix]
+   (let [local-part (-> email (str/split #"@") first)
+         sanitized  (str/replace local-part #"[^a-zA-Z0-9_-]" "_")
+         max-len    (- 32 (count suffix))
+         base       (apply str (take max-len sanitized))
+         base       (if (< (count base) 3) (str base "_user") base)]
+     (str base suffix))))
+
 (defn register! [{:keys [rama] :as deps} input]
   (when-not (m/validate registration/register-request input)
     (throw (ex-info "Invalid registration input" {:input input})))
-  (let [{:keys [username email password roles]} input
+  (let [{:keys [email password roles]} input
         cmgr (:cluster-manager rama)
         mod-name (rama/module-name)
         reg-depot (rama/depot cmgr mod-name "*registration-depot")
         pwd-hash (encode-password deps password)
-        uuid (str (UUID/randomUUID))
         roles (or (vec roles) ["ROLE_USER"])
-        ;; Check email uniqueness at API layer to avoid race in module dataflow
         email->id (rama/pstate cmgr mod-name "$$email->id")
         existing-email (ramaapi/foreign-select-one (keypath email) email->id)]
     (if existing-email
       [false {:errors {:email ["Email already taken."]}}]
-      (let [result (ramaapi/foreign-append! reg-depot
-                     (rama/->Registration uuid username pwd-hash email roles))]
-        (if-let [user-id (get result "auth")]
-          (let [user {:id user-id
-                      :username username
-                      :email email
-                      :verified false
-                      :roles roles}]
-            [true user])
-          [false {:errors {:username ["Username already taken."]}}])))))
+      (let [base-username (or (:username input) (derive-username-from-email email))]
+        (loop [username base-username
+               attempt 1]
+          (let [uuid (str (UUID/randomUUID))
+                result (ramaapi/foreign-append! reg-depot
+                         (rama/->Registration uuid username pwd-hash email roles))]
+            (if-let [user-id (get result "auth")]
+              (let [user {:id user-id
+                          :username username
+                          :email email
+                          :verified false
+                          :roles roles}]
+                [true user])
+              (if (< attempt 5)
+                (recur (derive-username-from-email email (str "_" (inc attempt)))
+                       (inc attempt))
+                [false {:errors {:username ["Username already taken."]}}]))))))))
 
 (defn- read-profile [profiles user-id]
   (let [profile (ramaapi/foreign-select-one (keypath user-id) profiles)]
@@ -73,6 +90,21 @@
         profile (read-profile profiles user-id)]
     (when profile
       (assoc profile :id user-id))))
+
+(defn find-by-email [{:keys [rama] :as deps} email]
+  (let [cmgr (:cluster-manager rama)
+        mod-name (rama/module-name)
+        email->id (rama/pstate cmgr mod-name "$$email->id")
+        profiles (rama/pstate cmgr mod-name "$$profiles")
+        user-id (ramaapi/foreign-select-one (keypath email) email->id)]
+    (when user-id
+      (let [profile (read-profile profiles user-id)]
+        (when profile
+          (assoc profile :id user-id))))))
+
+(defn find-by-identifier [{:keys [rama] :as deps} identifier]
+  (or (find-by-email deps identifier)
+      (find-by-username deps identifier)))
 
 (defn verify! [{:keys [rama] :as deps} user-id]
   (let [cmgr (:cluster-manager rama)

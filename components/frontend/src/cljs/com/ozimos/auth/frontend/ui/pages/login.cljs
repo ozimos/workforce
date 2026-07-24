@@ -5,23 +5,22 @@
    [com.ozimos.auth.frontend.json :as json]))
 
 (defn- handle-login [this]
-  (let [{:keys [username password]} (comp/get-state this)]
+  (let [{:keys [identifier password]} (comp/get-state this)]
     (comp/set-state! this {:error-msg nil})
-    (-> (json/fetch-json "/api/auth/login" "POST" {:username username :password password})
+    (-> (json/fetch-json "/api/auth/login" "POST" {:identifier identifier :password password})
         (.then (fn [{:keys [status body]}]
                  (if (= 200 status)
                    (do
                      (.setItem js/localStorage "access-token" (:access-token body))
                      (.setItem js/localStorage "refresh-token" (:refresh-token body))
-                     (.setItem js/localStorage "username" username)
                      (set! js/window.location.pathname "/"))
                    (comp/set-state! this {:error-msg (or (-> body :errors :credentials first)
-                                                         "Invalid username or password")})))))))
+                                                         "Invalid email/username or password")})))))))
 
 (defsc Login [this _props]
-  {:query [:username :password :error-msg]
-   :initial-state {:username "" :password "" :error-msg nil}}
-  (let [{:keys [username password error-msg]} (comp/get-state this)]
+  {:query [:identifier :password :error-msg]
+   :initial-state {:identifier "" :password "" :error-msg nil}}
+  (let [{:keys [identifier password error-msg]} (comp/get-state this)]
     (div {:className "flex min-h-full flex-col justify-center px-6 py-12 lg:px-8"}
       (div {:className "sm:mx-auto sm:w-full sm:max-w-sm"}
         (h2 {:className "mt-10 text-center text-2xl font-bold leading-9 tracking-tight text-gray-900"}
@@ -32,11 +31,11 @@
             (p {:className "text-sm text-red-700"} error-msg)))
         (form {:onSubmit (fn [e] (.preventDefault e) (handle-login this))}
           (div nil
-            (label {:htmlFor "username" :className "block text-sm font-medium leading-6 text-gray-900"} "Username")
+            (label {:htmlFor "identifier" :className "block text-sm font-medium leading-6 text-gray-900"} "Email or username")
             (div {:className "mt-2"}
-              (input {:id "username" :name "username" :type "text" :required true
-                      :value username
-                      :onChange #(comp/set-state! this {:username (.. % -target -value)})
+              (input {:id "identifier" :name "identifier" :type "text" :required true
+                      :value identifier
+                      :onChange #(comp/set-state! this {:identifier (.. % -target -value)})
                       :className "block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"})))
           (div {:className "mt-4"}
             (label {:htmlFor "password" :className "block text-sm font-medium leading-6 text-gray-900"} "Password")

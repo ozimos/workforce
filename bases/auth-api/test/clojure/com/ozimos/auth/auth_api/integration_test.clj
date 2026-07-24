@@ -1,5 +1,6 @@
 (ns com.ozimos.auth.auth-api.integration-test
   (:require
+   [clojure.string :as string]
    [clojure.test :refer [deftest is testing]]
    [com.ozimos.auth.auth-api.test-system :as ts]
    [hato.client :as http]
@@ -15,6 +16,11 @@
   (let [suffix (short-suffix)]
     {:username (str "test-" suffix)
      :email (str "test-" suffix "@example.com")
+     :password "P@ssword123"}))
+
+(defn- random-email-only-user []
+  (let [suffix (short-suffix)]
+    {:email (str "emailonly-" suffix "@example.com")
      :password "P@ssword123"}))
 
 (defn- parse-body [resp]
@@ -91,7 +97,7 @@
 
     (testing "POST /api/auth/login with valid credentials returns tokens"
       (let [resp (post-json (str (base-url) "/api/auth/login")
-                            {:username (:username user)
+                            {:identifier (:username user)
                              :password (:password user)})
             body (:body resp)]
         (is (= 200 (:status resp)))
@@ -101,14 +107,14 @@
 
     (testing "POST /api/auth/login with wrong password returns 401"
       (let [resp (post-json (str (base-url) "/api/auth/login")
-                            {:username (:username user)
+                            {:identifier (:username user)
                              :password "CorrectHorseBatteryStaple1!"})]
         (is (= 401 (:status resp)))
         (is (get-in resp [:body "errors"]))))
 
-    (let [login-resp (post-json (str (base-url) "/api/auth/login")
-                                {:username (:username user)
-                                 :password (:password user)})
+(let [login-resp (post-json (str (base-url) "/api/auth/login")
+                                 {:identifier (:username user)
+                                  :password (:password user)})
           access-token (get-in login-resp [:body "access-token"])
           refresh-token (get-in login-resp [:body "refresh-token"])]
 
@@ -136,12 +142,34 @@
           (is (= 200 (:status resp)))
           (is (= "Logged out" (get-in resp [:body "message"]))))))))
 
+(deftest ^:integration email-only-registration-test
+  (testing "POST /api/auth/register without username auto-derives one from email"
+    (let [user (random-email-only-user)
+          resp (post-json (str (base-url) "/api/auth/register") user)]
+      (is (= 201 (:status resp)))
+      (is (some? (get-in resp [:body "id"])))
+      (is (some? (get-in resp [:body "username"])) "username should be auto-derived")
+      (is (string/starts-with? (get-in resp [:body "username"]) "emailonly"))
+      (is (= (:email user) (get-in resp [:body "email"])))
+      (is (false? (get-in resp [:body "verified"])))))
+
+  (testing "Login by email works for email-only registered user"
+    (let [user (random-email-only-user)
+          reg-resp (post-json (str (base-url) "/api/auth/register") user)]
+      (is (= 201 (:status reg-resp)))
+      (let [login-resp (post-json (str (base-url) "/api/auth/login")
+                                   {:identifier (:email user)
+                                    :password (:password user)})]
+        (is (= 200 (:status login-resp)))
+        (is (string? (get-in login-resp [:body "access-token"])))
+        (is (string? (get-in login-resp [:body "refresh-token"])))))))
+
 (deftest ^:integration logout-everywhere-test
   (let [user (random-user)
         _ (post-json (str (base-url) "/api/auth/register") user)
-        login-resp (post-json (str (base-url) "/api/auth/login")
-                              {:username (:username user)
-                               :password (:password user)})
+login-resp (post-json (str (base-url) "/api/auth/login")
+                               {:identifier (:username user)
+                                :password (:password user)})
         access-token (get-in login-resp [:body "access-token"])]
 
     (testing "POST /api/auth/logout-everywhere revokes all sessions"
@@ -201,7 +229,7 @@
 
   (testing "POST /api/auth/login with non-existent user returns 401"
     (let [resp (post-json (str (base-url) "/api/auth/login")
-                 {:username "nonexistent"
+                 {:identifier "nonexistent"
                   :password "CorrectHorseBatteryStaple1!"})]
       (is (= 401 (:status resp)))
       (is (get-in resp [:body "errors"])))))

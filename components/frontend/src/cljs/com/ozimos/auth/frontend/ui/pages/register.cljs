@@ -14,24 +14,23 @@
               :className "block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"}))))
 
 (defn- submit [this]
-  (let [{:keys [email username password confirm-password]} (comp/get-state this)]
+  (let [{:keys [email password confirm-password]} (comp/get-state this)]
     (if (not= password confirm-password)
       (comp/set-state! this {:error-msg "Passwords do not match"})
-      (-> (json/fetch-json "/api/auth/register" "POST" {:email email :username username :password password})
+      (-> (json/fetch-json "/api/auth/register" "POST" {:email email :password password})
           (.then (fn [{:keys [status body]}]
                    (if (= 201 status)
-                     (comp/set-state! this {:error-msg nil :success true})
+                     (comp/set-state! this {:error-msg nil :success true :created-username (:username body)})
                      (let [errors (or (:errors body) {})]
                        (comp/set-state! this
-                         {:error-msg (or (first (:username errors))
-                                         (first (:email errors))
+                         {:error-msg (or (first (:email errors))
                                          (first (:password errors))
                                          "Registration failed")})))))))))
 
 (defsc Register [this _props]
-  {:query [:email :username :password :confirm-password :error-msg :success]
-   :initial-state {:email "" :username "" :password "" :confirm-password "" :error-msg nil :success false}}
-  (let [{:keys [email username password confirm-password error-msg success]} (comp/get-state this)]
+  {:query [:email :password :confirm-password :error-msg :success :created-username]
+   :initial-state {:email "" :password "" :confirm-password "" :error-msg nil :success false :created-username nil}}
+  (let [{:keys [email password confirm-password error-msg success created-username]} (comp/get-state this)]
     (div {:className "flex min-h-full flex-col justify-center px-6 py-12 lg:px-8"}
       (div {:className "sm:mx-auto sm:w-full sm:max-w-sm"}
         (h2 {:className "mt-10 text-center text-2xl font-bold leading-9 tracking-tight text-gray-900"}
@@ -42,12 +41,11 @@
             (p {:className "text-sm text-red-700"} error-msg)))
         (if success
           (div {:className "rounded-md bg-green-50 p-4 mb-4"}
-            (p {:className "text-sm text-green-700"} "Account created! Check your email to verify.")
+            (p {:className "text-sm text-green-700"} (str "Account created! Your username is " created-username " \u2014 you can change it later in settings."))
             (a {:href "/login" :className "mt-2 inline-block text-sm font-semibold text-indigo-600 hover:text-indigo-500"}
               "Sign in"))
           (form {:onSubmit (fn [e] (.preventDefault e) (submit this))}
             (input-field "email" "Email" "email" email #(comp/set-state! this {:email (.. % -target -value)}))
-            (input-field "username" "Username" "text" username #(comp/set-state! this {:username (.. % -target -value)}))
             (input-field "password" "Password" "password" password #(comp/set-state! this {:password (.. % -target -value)}))
             (input-field "confirm-password" "Confirm password" "password" confirm-password #(comp/set-state! this {:confirm-password (.. % -target -value)}))
             (div {:className "mt-6"}

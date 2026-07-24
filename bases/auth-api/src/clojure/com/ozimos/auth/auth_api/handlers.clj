@@ -47,9 +47,9 @@
 (defn login [deps]
   (fn [{:keys [body-params]}]
     (let [{:keys [user-store token-encoder session-store]} deps
-          {:keys [username password]} body-params
+          {:keys [identifier password]} body-params
           {:keys [encoder]} token-encoder
-          user-record (user/find-by-username user-store username)]
+          user-record (user/find-by-identifier user-store identifier)]
       (if (and user-record
                (user/matches-password? user-store password (:pwd-hash user-record)))
         (let [issuer "com.ozimos.auth"
@@ -67,8 +67,8 @@
            :body {:access-token access-token
                   :refresh-token refresh-token
                   :expires-in access-ttl}})
-        {:status 401
-         :body {:errors {:credentials ["Invalid username or password"]}}}))))
+{:status 401
+          :body {:errors {:credentials ["Invalid username/email or password"]}}}))))
 
 (defn refresh [deps]
   (fn [{:keys [body-params]}]
@@ -134,7 +134,7 @@
   (fn [{:keys [body-params]}]
     (let [{:keys [email]} body-params
           {:keys [user-store]} deps
-          user-record (user/find-by-username user-store email)]
+          user-record (user/find-by-email user-store email)]
       (when user-record
         (user/create-reset-token! user-store (:id user-record)))
       {:status 200 :body {:message "If the email exists, a reset link has been sent"}})))

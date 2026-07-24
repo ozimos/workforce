@@ -21,13 +21,13 @@
     [["/api"
       ["/auth"
        ["/register"
-        {:post {:summary "Register a new user"
-                :parameters {:body reg-schema/register-request}
-                :handler (handlers/register deps)
-                :responses {201 {:body [:map [:id int?] [:username :string] [:email :string] [:verified boolean?]]}
-                            409 {:body [:map [:errors [:map]]]}}}}]
+{:post {:summary "Register a new user"
+                 :parameters {:body reg-schema/register-request}
+                 :handler (handlers/register deps)
+                 :responses {201 {:body [:map [:id int?] [:username {:optional true} :string] [:email :string] [:verified boolean?]]}
+                             409 {:body [:map [:errors [:map]]]}}}}]
        ["/login"
-        {:post {:summary "Login with username/password"
+        {:post {:summary "Login with email/username and password"
                 :parameters {:body reg-schema/login-request}
                 :handler (handlers/login deps)
                 :responses {200 {:body [:map [:access-token :string] [:refresh-token :string] [:expires-in int?]]}

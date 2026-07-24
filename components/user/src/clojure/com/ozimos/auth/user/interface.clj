@@ -4,7 +4,8 @@
 
 (defn register!
   "Register a new user. Returns [true user] on success, [false {:errors ...}] on failure.
-   `input` is a map with :username, :email, :password, optionally :roles."
+   `input` is a map with :email, :password, optionally :username and :roles.
+   If :username is omitted, one is auto-derived from the email local-part."
   [deps input]
   (core/register! deps input))
 
@@ -12,6 +13,17 @@
   "Look up a user by username. Returns user map or nil."
   [deps username]
   (core/find-by-username deps username))
+
+(defn find-by-email
+  "Look up a user by email. Returns user map or nil."
+  [deps email]
+  (core/find-by-email deps email))
+
+(defn find-by-identifier
+  "Look up a user by email or username. Tries email first, falls back to username.
+   Returns user map or nil."
+  [deps identifier]
+  (core/find-by-identifier deps identifier))
 
 (defn find-by-id
   "Look up a user by id. Returns user map or nil."
