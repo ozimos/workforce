@@ -19,3 +19,5 @@ node_modules
 /.lsp
 /pom.xml
 /.shadow-cljs
+ssr-output/
+jar-manifest/
