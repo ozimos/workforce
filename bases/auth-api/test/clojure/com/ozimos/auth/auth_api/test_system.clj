@@ -2,55 +2,71 @@
   (:require
    [com.ozimos.auth.auth-api.system]
    [com.ozimos.auth.config.interface :as config]
-   [com.ozimos.auth.rama.core]
-   [com.ozimos.auth.rama.module]
-   [com.ozimos.auth.revocation.core]
-   [com.ozimos.auth.security.core]
-   [com.ozimos.auth.session.core]
-   [com.ozimos.auth.token.core]
-   [com.ozimos.auth.user.core]
-   [com.rpl.rama :as ramaapi]
-   [com.rpl.rama.path :refer [keypath]]
-   [integrant.core :as ig]))
+   [com.ozimos.auth.rama.core :as rama-core]
+   [integrant.core :as ig]
+   [integrant.repl.state :as irs]))
 
-(defonce system
-  (delay
-    (let [cfg (-> (config/load-config :dev)
-                  (assoc-in [:adapter/jetty :port] 0))
-          sys (ig/init cfg)
-          server (-> sys :adapter/jetty :server)
-          port (-> server .getConnectors first .getLocalPort)]
-      (println "Test system started on port" port)
-      (.addShutdownHook (Runtime/getRuntime)
-        (Thread. (fn [] (ig/halt! sys) (println "Test system halted"))))
-      {:system sys :port port})))
+(defonce sys-atom (atom nil))
+
+(defn get-sys []
+  (or irs/system @sys-atom))
+
+(defmacro with-sys [& body]
+  `(let [~'sys (get-sys)]
+     ~@body))
+
+(defn start-system
+  "Initialize a fresh integrant system with the :test profile."
+  []
+  (let [cfg (config/load-config :test)
+        sys (ig/init cfg)]
+    (reset! sys-atom sys)
+    sys))
+
+(defn stop-system
+  "Halt the current integrant system and clear the stored reference."
+  []
+  (when-let [sys (or irs/system @sys-atom)]
+    (ig/halt! sys)
+    (reset! sys-atom nil)))
+
+(defn setup
+  [_project-name]
+  (start-system))
+
+(defn teardown
+  [_project-name]
+  (stop-system))
 
 (defn get-port
-  []
-  (:port @system))
+  "Get the port the Jetty server is listening on."
+  [sys]
+  (let [server (-> sys :adapter/jetty :server)]
+    (-> server .getConnectors first .getLocalPort)))
 
 (defn get-base-url
-  []
-  (str "http://localhost:" (get-port)))
+  [sys]
+  (str "http://localhost:" (get-port sys)))
 
 (defn user-store
-  []
-  (-> @system :system :user/store))
+  "Get store deps containing :rama from the running system."
+  [sys]
+  {:rama (:rama/cluster sys)})
 
 (defn rama-cluster
-  []
-  (:cluster-manager (-> @system :system :rama/cluster)))
+  [sys]
+  (:cluster-manager (-> sys :rama/cluster)))
 
 (defn module-name
   []
-  (com.ozimos.auth.rama.core/module-name))
+  (rama-core/module-name))
 
 (defn pstate
-  [name]
-  (let [cmgr (rama-cluster)]
-    (com.ozimos.auth.rama.core/pstate cmgr (module-name) name)))
+  [sys name]
+  (let [cmgr (rama-cluster sys)]
+    (rama-core/pstate cmgr (module-name) name)))
 
 (defn depot
-  [name]
-  (let [cmgr (rama-cluster)]
-    (com.ozimos.auth.rama.core/depot cmgr (module-name) name)))
+  [sys name]
+  (let [cmgr (rama-cluster sys)]
+    (rama-core/depot cmgr (module-name) name)))

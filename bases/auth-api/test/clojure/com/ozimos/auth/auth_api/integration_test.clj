@@ -1,13 +1,22 @@
 (ns com.ozimos.auth.auth-api.integration-test
   (:require
    [clojure.string :as string]
-   [clojure.test :refer [deftest is testing]]
+   [clojure.test :refer [deftest is testing use-fixtures]]
    [com.ozimos.auth.auth-api.test-system :as ts]
    [hato.client :as http]
    [jsonista.core :as json]))
 
+(def ^:dynamic *base-url* nil)
+
+(defn system-fixture [tests]
+  (ts/with-sys
+    (binding [*base-url* (ts/get-base-url sys)]
+      (tests))))
+
+(use-fixtures :once system-fixture)
+
 (defn base-url []
-  (ts/get-base-url))
+  *base-url*)
 
 (defn- short-suffix []
   (-> (java.util.UUID/randomUUID) str (.replace "-" "") (.substring 0 12)))
@@ -112,9 +121,9 @@
         (is (= 401 (:status resp)))
         (is (get-in resp [:body "errors"]))))
 
-(let [login-resp (post-json (str (base-url) "/api/auth/login")
-                                 {:identifier (:username user)
-                                  :password (:password user)})
+    (let [login-resp (post-json (str (base-url) "/api/auth/login")
+                       {:identifier (:username user)
+                        :password (:password user)})
           access-token (get-in login-resp [:body "access-token"])
           refresh-token (get-in login-resp [:body "refresh-token"])]
 
@@ -158,8 +167,8 @@
           reg-resp (post-json (str (base-url) "/api/auth/register") user)]
       (is (= 201 (:status reg-resp)))
       (let [login-resp (post-json (str (base-url) "/api/auth/login")
-                                   {:identifier (:email user)
-                                    :password (:password user)})]
+                         {:identifier (:email user)
+                          :password (:password user)})]
         (is (= 200 (:status login-resp)))
         (is (string? (get-in login-resp [:body "access-token"])))
         (is (string? (get-in login-resp [:body "refresh-token"])))))))
@@ -167,9 +176,9 @@
 (deftest ^:integration logout-everywhere-test
   (let [user (random-user)
         _ (post-json (str (base-url) "/api/auth/register") user)
-login-resp (post-json (str (base-url) "/api/auth/login")
-                               {:identifier (:username user)
-                                :password (:password user)})
+        login-resp (post-json (str (base-url) "/api/auth/login")
+                     {:identifier (:username user)
+                      :password (:password user)})
         access-token (get-in login-resp [:body "access-token"])]
 
     (testing "POST /api/auth/logout-everywhere revokes all sessions"
@@ -233,3 +242,120 @@ login-resp (post-json (str (base-url) "/api/auth/login")
                   :password "CorrectHorseBatteryStaple1!"})]
       (is (= 401 (:status resp)))
       (is (get-in resp [:body "errors"])))))
+
+(defn- auth-header [token]
+  {"Authorization" (str "Bearer " token)})
+
+(defn- query-eql
+  "Send an EQL query to the /api/query endpoint."
+  ([url eql-string]
+   (query-eql url eql-string nil))
+  ([url eql-string token]
+   (let [body {:eql eql-string}
+         headers (if token (auth-header token) {})
+         resp (post-json url body headers)]
+     resp)))
+
+(deftest ^:integration org-query-flow-test
+  (let [url (base-url)
+        user {:username (str "orgflow-" (short-suffix))
+              :email (str "orgflow-" (short-suffix) "@example.com")
+              :password "P@ssword123"}
+        reg-resp (post-json (str url "/api/auth/register") user)]
+    (is (= 201 (:status reg-resp)))
+
+    (testing "POST /api/auth/login for org flow user"
+      (let [login-resp (post-json (str url "/api/auth/login")
+                         {:identifier (:username user)
+                          :password (:password user)})
+            token (get-in login-resp [:body "access-token"])]
+        (is (string? token) "access-token should be present")
+
+        (testing "POST /api/query current-user resolver returns user info"
+          (let [resp (query-eql (str url "/api/query")
+                       "[:current-user/id :current-user/username]"
+                       token)]
+            (is (= 200 (:status resp)))
+            (is (true? (get-in resp [:body "ok"])))
+            (is (some? (get-in resp [:body "data" "current-user/id"])))
+            (is (= (:username user) (get-in resp [:body "data" "current-user/username"])))))
+
+        (testing "POST /api/query create-org mutation"
+          (let [org-name (str "OrgFlow-" (short-suffix))
+                resp (query-eql (str url "/api/query")
+                       (str "[(org/create {:org/name \"" org-name "\"})]")
+                       token)]
+            (println "\ncreate-org mutation response:" (pr-str resp))
+            (is (= 200 (:status resp)))
+            (is (true? (get-in resp [:body "ok"])))))
+
+        (testing "POST /api/query user/orgs resolver"
+          (let [resp (query-eql (str url "/api/query")
+                       "[{:user/orgs [:org/id :org/name :org/role :org/status]}]"
+                       token)
+                orgs (get-in resp [:body "data" "user/orgs"])]
+            (println "user/orgs response:" (pr-str resp))
+            (is (= 200 (:status resp)))
+            (is (true? (get-in resp [:body "ok"])))
+            (is (some? orgs) "user/orgs should be present")
+            (is (some #(= "ADMIN" (get % "org/role")) orgs) "admin role should be present")))
+
+        (testing "POST /api/query active-org resolver"
+          (let [resp (query-eql (str url "/api/query")
+                       "[{:user/active-org [:org/id :org/name :org/role]}]"
+                       token)
+                active (get-in resp [:body "data" "user/active-org"])]
+            (println "active-org response:" (pr-str resp))
+            (is (= 200 (:status resp)))
+            (is (true? (get-in resp [:body "ok"])))
+            (is (some? active) "active-org should be set after creating org")))
+
+        (testing "POST /api/query with no auth token returns 401"
+          (let [resp (query-eql (str url "/api/query")
+                       "[:current-user/id]")]
+            (is (or (= 401 (:status resp))
+                    (= 403 (:status resp)))
+                "unauthenticated query should return 401 or 403")))))))
+
+(deftest ^:integration org-invite-join-http-test
+  (let [url (base-url)
+        owner {:username (str "invowner-" (short-suffix))
+               :email (str "invowner-" (short-suffix) "@example.com")
+               :password "P@ssword123"}
+        joiner {:username (str "invjoiner-" (short-suffix))
+                :email (str "invjoiner-" (short-suffix) "@example.com")
+                :password "P@ssword123"}
+        owner-reg (post-json (str url "/api/auth/register") owner)
+        joiner-reg (post-json (str url "/api/auth/register") joiner)
+        owner-login (post-json (str url "/api/auth/login")
+                      {:identifier (:username owner)
+                       :password (:password owner)})
+        owner-token (get-in owner-login [:body "access-token"])
+        joiner-login (post-json (str url "/api/auth/login")
+                       {:identifier (:username joiner)
+                        :password (:password joiner)})
+        joiner-token (get-in joiner-login [:body "access-token"])]
+    (is (= 201 (:status owner-reg)))
+    (is (= 201 (:status joiner-reg)))
+    (is (string? owner-token) "owner should have access-token")
+    (is (string? joiner-token) "joiner should have access-token")
+
+    (testing "Owner creates org via query endpoint"
+      (let [org-name (str "InvOrg-" (short-suffix))
+            resp (query-eql (str url "/api/query")
+                   (str "[(org/create {:org/name \"" org-name "\"})]")
+                   owner-token)]
+        (is (= 200 (:status resp)))
+        (is (true? (get-in resp [:body "ok"])))))))
+
+(deftest ^:integration query-endpoint-auth-test
+  (let [url (base-url)]
+    (testing "POST /api/query with invalid token returns errors"
+      (let [resp (post-json (str url "/api/query")
+                   {:eql "[:current-user/id]"}
+                   {"Authorization" "Bearer invalid.jwt.token"})]
+        (println "invalid token query response:" (pr-str resp))
+        (is (or (= 401 (:status resp))
+                (= 403 (:status resp))
+                (= 400 (:status resp)))
+            "invalid token should return an error status code")))))
