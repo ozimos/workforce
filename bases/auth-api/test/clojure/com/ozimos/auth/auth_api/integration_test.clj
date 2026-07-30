@@ -359,3 +359,36 @@
                 (= 403 (:status resp))
                 (= 400 (:status resp)))
             "invalid token should return an error status code")))))
+
+(deftest ^:integration username-update-test
+  (let [url (base-url)
+        user (random-user)
+        reg-resp (post-json (str url "/api/auth/register") user)]
+    (is (= 201 (:status reg-resp)))
+
+    (let [login-resp (post-json (str url "/api/auth/login")
+                       {:identifier (:username user)
+                        :password (:password user)})
+          token (get-in login-resp [:body "access-token"])
+          new-uname (str "updated-" (short-suffix))]
+      (is (string? token) "access-token should be present")
+
+      (testing "POST /api/auth/profile/username updates the username"
+        (let [resp (post-json (str url "/api/auth/profile/username")
+                     {:new-username new-uname}
+                     (auth-header token))]
+          (println "profile/username response:" (pr-str resp))
+          (is (= 200 (:status resp)))
+          (is (= new-uname (get-in resp [:body "username"])))))
+
+      (testing "Login with new username works"
+        (let [new-login-resp (post-json (str url "/api/auth/login")
+                               {:identifier new-uname
+                                :password (:password user)})]
+          (is (= 200 (:status new-login-resp)))))
+
+      (testing "POST /api/auth/profile/username without auth returns 401"
+        (let [resp (post-json (str url "/api/auth/profile/username")
+                     {:new-username (str "unauth-" (short-suffix))})]
+          (is (= 401 (:status resp)))
+          (is (get-in resp [:body "errors"])))))))

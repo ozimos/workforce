@@ -269,3 +269,72 @@
         (is (some? (:errors result)) "should include errors"))
 
       (println "=== end org-full-lifecycle-test ==="))))
+
+(deftest ^:integration update-username-test
+  (testing "update-username! changes the username in the system"
+    (let [suffix (short-suffix)
+          email (str "up-" suffix "@test.com")
+          pwd "P@ssword123"
+          [ok1 user] (user/register! *system* {:email email :password pwd})]
+      (is ok1 "user should register")
+      (let [old-uname (:username user)
+            new-uname (str "updated-" suffix)]
+
+        (println "\n=== update-username-test ===")
+
+        ;; Successful change
+        (let [[ok2 result] (user/update-username! *system* (:id user) new-uname)]
+          (println "update ok:" ok2 "result:" (pr-str result))
+          (is ok2 "update-username! should succeed")
+          (is (= new-uname result) "username should be updated"))
+
+        ;; Verify via find-by-username
+        (let [found (user/find-by-username *system* new-uname)]
+          (is (some? found) "should find user by new username")
+          (is (= (:id user) (:id found)) "user-id should match")
+          (is (= new-uname (:username found)) "username should match"))
+
+        ;; Verify old username no longer resolvable
+        (let [found-old (user/find-by-username *system* old-uname)]
+          (is (nil? found-old) "old username should not be resolvable"))
+
+        (println "=== end update-username-test ==="))))
+
+  (testing "update-username! validates username format"
+    (let [suffix (short-suffix)
+          [ok1 user] (user/register! *system*
+                       {:email (str "val-" suffix "@test.com")
+                        :password "P@ssword123"})]
+      (is ok1 "user should register")
+
+      ;; Too short
+      (let [[ok2 result] (user/update-username! *system* (:id user) "ab")]
+        (println "too-short ok:" ok2 "result:" (pr-str result))
+        (is (not ok2) "username that is too short should fail")
+        (is (some? (:errors result)) "failure should include :errors"))
+
+      ;; Invalid characters
+      (let [[ok3 result] (user/update-username! *system* (:id user) "bad user!")]
+        (println "invalid-chars ok:" ok3 "result:" (pr-str result))
+        (is (not ok3) "username with invalid characters should fail")
+        (is (some? (:errors result)) "failure should include :errors"))
+
+      (println "=== end update-username-format-test ===")))
+
+  (testing "update-username! rejects taken username"
+    (let [suffix (short-suffix)
+          [ok1 user1] (user/register! *system*
+                        {:email (str "conflict1-" suffix "@test.com")
+                         :password "P@ssword123"})
+          [ok2 user2] (user/register! *system*
+                        {:email (str "conflict2-" suffix "@test.com")
+                         :password "P@ssword123"})]
+      (is (and ok1 ok2) "both users should register")
+      (let [shared-name (str "shared-name-" suffix)
+            [_] (user/update-username! *system* (:id user1) shared-name)
+            [ok3 result] (user/update-username! *system* (:id user2) shared-name)]
+        (println "conflict ok:" ok3 "result:" (pr-str result))
+        (is (not ok3) "claiming taken username should fail")
+        (is (some? (:errors result)) "failure should include :errors"))
+
+      (println "=== end update-username-conflict-test ==="))))

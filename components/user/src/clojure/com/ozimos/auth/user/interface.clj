@@ -50,6 +50,12 @@
   [deps plain encoded]
   (core/matches-password? deps plain encoded))
 
+(defn update-username!
+  "Update a user's username. Returns [true new-username] on success,
+   [false {:errors ...}] on failure."
+  [deps user-id new-username]
+  (core/update-username! deps user-id new-username))
+
 (defn create-reset-token!
   "Generate a password reset token and store in Rama. Returns the token string."
   [deps user-id]

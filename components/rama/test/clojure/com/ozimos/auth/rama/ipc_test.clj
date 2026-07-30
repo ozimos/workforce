@@ -122,6 +122,72 @@
 
       (println "=== end session-end-cleanup-test ==="))))
 
+(deftest ^:integration username-change-test
+  (testing "Username change updates $$username->id and $$profiles"
+    (let [registration-depot (rama/foreign-depot *ipc* *module-name* "*registration-depot")
+          username-change-depot (rama/foreign-depot *ipc* *module-name* "*username-change-depot")
+          uid->id (rama/foreign-pstate *ipc* *module-name* "$$username->id")
+          profiles (rama/foreign-pstate *ipc* *module-name* "$$profiles")
+          suffix (str (java.util.UUID/randomUUID))
+          old-uname (str "oldname-" suffix)
+          new-uname (str "newname-" suffix)
+          email (str old-uname "@test.com")
+          reg-result (rama/foreign-append! registration-depot
+                       (mod/->Registration (str (java.util.UUID/randomUUID))
+                         old-uname "hash" email ["ROLE_USER"]))]
+      (println "\n=== username-change-test ===")
+      (let [user-id (get reg-result "auth")]
+        (is (some? user-id) "registration should return a user-id")
+        (Thread/sleep 2000)
+
+        ;; Verify old username
+        (let [stored-id (rama/foreign-select-one (keypath old-uname) uid->id)]
+          (is (= user-id stored-id) "old username should be in $$username->id"))
+
+        ;; Change username
+        (println "Changing username from" old-uname "to" new-uname)
+        (let [change-result (rama/foreign-append! username-change-depot
+                              (mod/->UsernameChange user-id new-uname))]
+          (println "username-change result:" (pr-str change-result))
+          (is (= :ok (get change-result "auth")) "username change should succeed"))
+        (Thread/sleep 2000)
+
+        ;; Verify old username removed
+        (let [stored-old (rama/foreign-select-one (keypath old-uname) uid->id)]
+          (println "$$username->id[" old-uname "]:" (pr-str stored-old))
+          (is (nil? stored-old) "old username should be removed from $$username->id"))
+
+        ;; Verify new username mapping
+        (let [stored-new (rama/foreign-select-one (keypath new-uname) uid->id)]
+          (println "$$username->id[" new-uname "]:" (pr-str stored-new))
+          (is (= user-id stored-new) "new username should be in $$username->id"))
+
+        ;; Verify profile updated
+        (let [profile (rama/foreign-select-one (keypath user-id :username) profiles)]
+          (println "$$profiles[" user-id " :username]:" (pr-str profile))
+          (is (= new-uname profile) "profile username should be updated"))
+
+        ;; Same-username change should succeed (no-op)
+        (let [same-result (rama/foreign-append! username-change-depot
+                            (mod/->UsernameChange user-id new-uname))]
+          (println "same-username change result:" (pr-str same-result))
+          (is (= :ok (get same-result "auth")) "same-username change should succeed"))
+
+        ;; Conflict: another user tries to claim new-uname
+        (let [other-suffix (str (java.util.UUID/randomUUID))
+              other-email (str "other-" other-suffix "@test.com")
+              other-result (rama/foreign-append! registration-depot
+                             (mod/->Registration (str (java.util.UUID/randomUUID))
+                               (str "other-" other-suffix) "hash" other-email ["ROLE_USER"]))
+              other-id (get other-result "auth")]
+          (is (some? other-id) "other user should register")
+          (Thread/sleep 2000)
+          (let [conflict-result (rama/foreign-append! username-change-depot
+                                  (mod/->UsernameChange other-id new-uname))]
+            (println "conflict username change result:" (pr-str conflict-result))
+            (is (= :taken (get conflict-result "auth")) "duplicate username should return :taken")))
+        (println "=== end username-change-test ===")))))
+
 (deftest ^:integration org-topology-test
   (testing "Full org lifecycle: create, invite, join, switch, update, remove"
     (let [create-depot (rama/foreign-depot *ipc* *module-name* "*org-create-depot")

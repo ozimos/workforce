@@ -8,6 +8,7 @@
 (defrecord Registration [uuid username pwd-hash email roles])
 (defrecord Verification [user-id])
 (defrecord PasswordChange [user-id new-pwd-hash])
+(defrecord UsernameChange [user-id new-username])
 (defrecord SessionStart [user-id session-id jti expires-at])
 (defrecord SessionEnd [session-id])
 (defrecord Revocation [jti expires-at])
@@ -28,6 +29,7 @@
   (declare-depot setup *registration-depot (hash-by :username))
   (declare-depot setup *verification-depot (hash-by :user-id))
   (declare-depot setup *password-change-depot (hash-by :user-id))
+  (declare-depot setup *username-change-depot (hash-by :user-id))
   (declare-depot setup *session-depot (hash-by :user-id))
   (declare-depot setup *session-end-depot (hash-by :session-id))
   (declare-depot setup *revoke-all-depot (hash-by :user-id))
@@ -147,6 +149,30 @@
                ;; Password change
                 (source> *password-change-depot :> {:keys [*user-id *new-pwd-hash]})
                 (local-transform> [(keypath *user-id :pwd-hash) (termval *new-pwd-hash)] $$profiles)
+
+               ;; Username change
+                (source> *username-change-depot :> {:keys [*user-id *new-username]})
+                (local-select> (keypath *user-id :username) $$profiles :> *old-username)
+                (<<if (not= *old-username *new-username)
+                      ;; Switch to new-username partition — check uniqueness
+                      (|hash *new-username)
+                      (local-select> (keypath *new-username) $$username->id :> *existing-id)
+                      (<<if (nil? *existing-id)
+                            ;; Clear old username mapping (guard against nil profile)
+                            (<<if (some? *old-username)
+                                  (|hash *old-username)
+                                  (local-transform> [(keypath *old-username) NONE>] $$username->id))
+                            ;; Set new username mapping
+                            (|hash *new-username)
+                            (local-transform> [(keypath *new-username) (termval *user-id)] $$username->id)
+                            ;; Update profile
+                            (|hash *user-id)
+                            (local-transform> [(keypath *user-id :username) (termval *new-username)] $$profiles)
+                            (ack-return> :ok)
+                            (else>)
+                            (ack-return> :taken))
+                      (else>)
+                      (ack-return> :ok))
 
                ;; Session start
                (source> *session-depot :> {:keys [*user-id *session-id *jti *expires-at]})

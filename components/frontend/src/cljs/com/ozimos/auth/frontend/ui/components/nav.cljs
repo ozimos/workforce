@@ -22,6 +22,7 @@
           (a {:href "/create-org" :className "text-sm font-medium text-gray-600 hover:text-indigo-600"} "Create Org")
           (a {:href "/join-org" :className "text-sm font-medium text-gray-600 hover:text-indigo-600"} "Join Org"))
         (div {:className "flex items-center gap-4"}
+          (a {:href "/profile" :className "text-sm font-semibold text-indigo-600 hover:text-indigo-500"} "Profile")
           (span {:className "text-sm text-gray-500"}
             (or (and (exists? js/localStorage) (.getItem js/localStorage "username")) "User"))
           (button {:onClick logout

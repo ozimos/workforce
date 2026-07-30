@@ -25,6 +25,19 @@
   (let [encoder (or (:password-encoder deps) (make-encoder))]
     (.matches ^PasswordEncoder encoder plain encoded)))
 
+(defn update-username! [{:keys [rama] :as deps} user-id new-username]
+  (if-not (m/validate schema/username new-username)
+    [false {:errors {:new-username ["Must be 3–32 characters, letters, numbers, underscores, or hyphens."]}}]
+    (let [cmgr (:cluster-manager rama)
+          mod-name (rama/module-name)
+          depot (rama/depot cmgr mod-name "*username-change-depot")
+          result (ramaapi/foreign-append! depot
+                   (rama/->UsernameChange user-id new-username))]
+      (case (get result "auth")
+        :ok    [true new-username]
+        :taken [false {:errors {:new-username ["Username already taken."]}}]
+        [false {:errors {:new-username ["Update failed."]}}]))))
+
 (defn- derive-username-from-email
   ([email]
    (derive-username-from-email email ""))

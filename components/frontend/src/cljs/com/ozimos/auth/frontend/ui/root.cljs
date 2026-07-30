@@ -9,6 +9,7 @@
    [com.ozimos.auth.frontend.ui.pages.join-org :as join-org]
    [com.ozimos.auth.frontend.ui.pages.login :as login]
    [com.ozimos.auth.frontend.ui.pages.org-dashboard :as org-dashboard]
+   [com.ozimos.auth.frontend.ui.pages.profile :as profile]
    [com.ozimos.auth.frontend.ui.pages.register :as register]
    [com.ozimos.auth.frontend.ui.pages.reset-password :as reset-password]
    [com.ozimos.auth.frontend.ui.pages.verify :as verify]))
@@ -21,6 +22,7 @@
       (= path "/create-org") :route/create-org
       (= path "/join-org") :route/join-org
       (= path "/org-dashboard") :route/org-dashboard
+      (= path "/profile") :route/profile
       (= path "/forgot-password") :route/forgot-password
       (.startsWith path "/reset-password") :route/reset-password
       (.startsWith path "/verify") :route/verify

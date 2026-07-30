@@ -34,6 +34,7 @@
 (def ->Registration com.ozimos.auth.rama.module/->Registration)
 (def ->Verification com.ozimos.auth.rama.module/->Verification)
 (def ->PasswordChange com.ozimos.auth.rama.module/->PasswordChange)
+(def ->UsernameChange com.ozimos.auth.rama.module/->UsernameChange)
 (def ->SessionStart com.ozimos.auth.rama.module/->SessionStart)
 (def ->SessionEnd com.ozimos.auth.rama.module/->SessionEnd)
 (def ->Revocation com.ozimos.auth.rama.module/->Revocation)
