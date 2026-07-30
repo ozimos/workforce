@@ -1,0 +1,5 @@
+{:paths ["src/clojure" "resources"]
+ :deps {com.wsscode/pathom3 {:mvn/version "2025.01.16-alpha"}
+        integrant/integrant {:mvn/version "1.0.0"}}
+ :aliases {:test {:extra-paths ["test/clojure"]
+                  :extra-deps {org.clojure/test.check {:mvn/version "1.1.1"}}}}}
