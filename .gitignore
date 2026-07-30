@@ -21,3 +21,5 @@ node_modules
 /.shadow-cljs
 ssr-output/
 jar-manifest/
+/.dirge
+bun.lock

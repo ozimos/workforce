@@ -4,24 +4,24 @@
  :tasks
  {:requires ([babashka.process :refer [shell]])
   lint         (shell {:continue true} "clj-kondo" "--lint" "bases" "components" "projects" "development/src/clojure")
-   kondo-copy-configs (shell {:continue true} "clj-kondo" "--copy-configs" "--lint" "$(clojure -Spath -A:dev)" "--skip-warnings")
+  kondo-copy-configs (shell {:continue true} "clj-kondo" "--copy-configs" "--lint" "$(clojure -Spath -A:dev)" "--skip-warnings")
   fmt-check    (shell {:continue true} "standard-clj" "check" "bases" "components" "projects" "development/src/clojure")
   fmt-fix      (shell {:continue true} "standard-clj" "fix" "bases" "components" "projects" "development/src/clojure")
-   repl         {:override-builtin true
-                  :task (let [args (or (seq *command-line-args*) ["dev" "+rama"])]
-                          (apply shell "bin/launchpad" args))}
-    test         (let [args (or (seq *command-line-args*) ["test" "project:auth-service"])]
-                   (shell "clojure" "-X:deps" "prep" ":aliases" "[:dev :test :+rama :+default :poly]")
-                   (apply shell "clojure" "-M:dev:test:+rama:+default:poly" args))
-   css          (shell "npx" "tailwindcss" "-i" "components/frontend/src/css/tailwind.css" "-o" "bases/auth-api/resources/public/css/app.css")
-   css-watch    (shell "npx" "tailwindcss" "-i" "components/frontend/src/css/tailwind.css" "-o" "bases/auth-api/resources/public/css/app.css" "--watch")
-   fe           (shell "npx" "shadow-cljs" "compile" "app")
-   fe-watch     (shell "npx" "shadow-cljs" "watch" "app")
-   fe-ssr       (shell "npx" "shadow-cljs" "compile" "ssr")
-   fe-ssr-watch (shell "npx" "shadow-cljs" "watch" "ssr")
-   ssr-dev      (do (shell "npx" "shadow-cljs" "watch" "ssr")
-                    (shell "node" "ssr-server/server.js"))
-   ssr-start    (shell "node" "ssr-server/server.js")
-   build        (do (shell "npx" "tailwindcss" "-i" "components/frontend/src/css/tailwind.css" "-o" "bases/auth-api/resources/public/css/app.css")
-                    (shell "npx" "shadow-cljs" "compile" "app")
-                    (shell "npx" "shadow-cljs" "compile" "ssr"))}}
+  repl         {:override-builtin true
+                :task (let [args (or (seq *command-line-args*) ["dev" "+rama" "test"])]
+                        (apply shell "bin/launchpad" args))}
+  test         (let [args (or (seq *command-line-args*) ["test" "project:auth-service"])]
+                 (shell "clojure" "-X:deps" "prep" ":aliases" "[:dev :test :+rama :+default :poly]")
+                 (apply shell "clojure" "-M:dev:test:+rama:+default:poly" args))
+  css          (shell "npx" "tailwindcss" "-i" "components/frontend/src/css/tailwind.css" "-o" "bases/auth-api/resources/public/css/app.css")
+  css-watch    (shell "npx" "tailwindcss" "-i" "components/frontend/src/css/tailwind.css" "-o" "bases/auth-api/resources/public/css/app.css" "--watch")
+  fe           (shell "npx" "shadow-cljs" "compile" "app")
+  fe-watch     (shell "npx" "shadow-cljs" "watch" "app")
+  fe-ssr       (shell "npx" "shadow-cljs" "compile" "ssr")
+  fe-ssr-watch (shell "npx" "shadow-cljs" "watch" "ssr")
+  ssr-dev      (do (shell "npx" "shadow-cljs" "watch" "ssr")
+                   (shell "node" "ssr-server/server.js"))
+  ssr-start    (shell "node" "ssr-server/server.js")
+  build        (do (shell "npx" "tailwindcss" "-i" "components/frontend/src/css/tailwind.css" "-o" "bases/auth-api/resources/public/css/app.css")
+                   (shell "npx" "shadow-cljs" "compile" "app")
+                   (shell "npx" "shadow-cljs" "compile" "ssr"))}}

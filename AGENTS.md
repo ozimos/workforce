@@ -1,6 +1,7 @@
 Do not start a new clojure process when debugging 
 use `clj-nrepl-eval -h` to evaluate clojure code in the running repl
-repl port is in deps.local.edn or 4005
+
+repl port is in deps.local.edn or 4005 or  `clj-nrepl-eval --discover-ports` 
 only use clojure poly alias if the poly tool is not installed on the machine
 
 no need to reset the system if this is the first run after jvm start. just use "go"
