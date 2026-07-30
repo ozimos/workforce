@@ -41,7 +41,14 @@
             (p {:className "text-sm text-red-700"} error-msg)))
         (if success
           (div {:className "rounded-md bg-green-50 p-4 mb-4"}
-            (p {:className "text-sm text-green-700"} (str "Account created! Your username is " created-username " \u2014 you can change it later in settings."))
+            (p {:className "text-sm text-green-700"} "Account created! Check your email to verify.")
+            (div {:className "mt-4 space-y-2"}
+              (p {:className "text-sm text-gray-600"} "What would you like to do next?")
+              (div {:className "flex gap-3"}
+                (a {:href "/create-org" :className "flex-1 text-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500"}
+                  "Create Organization")
+                (a {:href "/join-org" :className "flex-1 text-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-700 ring-1 ring-inset ring-gray-300 hover:bg-gray-50"}
+                  "Join Organization")))
             (a {:href "/login" :className "mt-2 inline-block text-sm font-semibold text-indigo-600 hover:text-indigo-500"}
               "Sign in"))
           (form {:onSubmit (fn [e] (.preventDefault e) (submit this))}

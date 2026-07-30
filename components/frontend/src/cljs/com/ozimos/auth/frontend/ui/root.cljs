@@ -3,9 +3,12 @@
    [com.fulcrologic.fulcro.components :as comp :refer [defsc]]
    [com.fulcrologic.fulcro.dom :as dom :refer [div p]]
    [com.ozimos.auth.frontend.ui.components.nav :as nav]
+   [com.ozimos.auth.frontend.ui.pages.create-org :as create-org]
    [com.ozimos.auth.frontend.ui.pages.forgot-password :as forgot-password]
    [com.ozimos.auth.frontend.ui.pages.home :as home]
+   [com.ozimos.auth.frontend.ui.pages.join-org :as join-org]
    [com.ozimos.auth.frontend.ui.pages.login :as login]
+   [com.ozimos.auth.frontend.ui.pages.org-dashboard :as org-dashboard]
    [com.ozimos.auth.frontend.ui.pages.register :as register]
    [com.ozimos.auth.frontend.ui.pages.reset-password :as reset-password]
    [com.ozimos.auth.frontend.ui.pages.verify :as verify]))
@@ -15,6 +18,9 @@
   (let [path (or js/window.location.pathname "")]
     (cond
       (= path "/register") :route/register
+      (= path "/create-org") :route/create-org
+      (= path "/join-org") :route/join-org
+      (= path "/org-dashboard") :route/org-dashboard
       (= path "/forgot-password") :route/forgot-password
       (.startsWith path "/reset-password") :route/reset-password
       (.startsWith path "/verify") :route/verify
@@ -31,22 +37,23 @@
   (case page
     :route/login "/login"
     :route/register "/register"
+    :route/create-org "/create-org"
+    :route/join-org "/join-org"
+    :route/org-dashboard "/org-dashboard"
     :route/forgot-password "/forgot-password"
     :route/reset-password "/reset-password"
     :route/verify "/verify"
     :route/home "/"
     "/login"))
 
-;; Factories are created lazily (on first use) instead of at namespace-load
-;; time because shadow-cljs's :node-library target (used for the SSR validation
-;; harness) can reorder top-level component-class metadata attachment in a way
-;; that makes `comp/factory` blow up at import time. Creating them on first
-;; render sidesteps that ordering issue and is harmless in the browser build.
 (def nav-factory        (delay (comp/factory nav/NavBar)))
 (def login-factory      (delay (comp/factory login/Login)))
 (def register-factory   (delay (comp/factory register/Register)))
+(def create-org-factory (delay (comp/factory create-org/CreateOrg)))
+(def join-org-factory    (delay (comp/factory join-org/JoinOrg)))
+(def org-dashboard-factory (delay (comp/factory org-dashboard/OrgDashboard)))
 (def forgot-pw-factory  (delay (comp/factory forgot-password/ForgotPassword)))
-(def reset-pw-factory   (delay (comp/factory reset-password/ResetPassword)))
+(def reset-pw-factory    (delay (comp/factory reset-password/ResetPassword)))
 (def verify-factory     (delay (comp/factory verify/Verify)))
 (def home-factory       (delay (comp/factory home/Home)))
 
@@ -62,6 +69,9 @@
       (div {:key "page"} (case page
                            :route/login (@login-factory)
                            :route/register (@register-factory)
+                           :route/create-org (@create-org-factory)
+                           :route/join-org (@join-org-factory)
+                           :route/org-dashboard (@org-dashboard-factory)
                            :route/forgot-password (@forgot-pw-factory)
                            :route/reset-password (@reset-pw-factory)
                            :route/verify (@verify-factory)

@@ -31,6 +31,9 @@
   (cond
     (= path "/login")            "Sign In"
     (= path "/register")         "Create Account"
+    (= path "/create-org")       "Create Organization"
+    (= path "/join-org")         "Join Organization"
+    (= path "/org-dashboard")    "Organization Dashboard"
     (= path "/forgot-password")  "Forgot Password"
     (= path "/reset-password")   "Reset Password"
     (= path "/verify")           "Verify Account"
@@ -41,6 +44,9 @@
   (cond
     (= path "/login")            "Sign in to your account"
     (= path "/register")         "Create a new account"
+    (= path "/create-org")       "Create a new organization"
+    (= path "/join-org")         "Join an existing organization"
+    (= path "/org-dashboard")    "Manage your organization"
     (= path "/forgot-password")  "Reset your password"
     (= path "/reset-password")   "Set a new password"
     (= path "/verify")           "Verify your email address"

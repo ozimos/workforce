@@ -16,8 +16,11 @@
   (nav {:className "bg-white shadow-sm border-b border-gray-200"}
     (div {:className "mx-auto max-w-7xl px-4 sm:px-6 lg:px-8"}
       (div {:className "flex h-16 justify-between"}
-        (div {:className "flex items-center"}
-          (a {:href "/" :className "text-xl font-bold text-gray-900"} "Best Auth"))
+        (div {:className "flex items-center gap-6"}
+          (a {:href "/" :className "text-xl font-bold text-gray-900"} "Best Auth")
+          (a {:href "/org-dashboard" :className "text-sm font-medium text-gray-600 hover:text-indigo-600"} "Dashboard")
+          (a {:href "/create-org" :className "text-sm font-medium text-gray-600 hover:text-indigo-600"} "Create Org")
+          (a {:href "/join-org" :className "text-sm font-medium text-gray-600 hover:text-indigo-600"} "Join Org"))
         (div {:className "flex items-center gap-4"}
           (span {:className "text-sm text-gray-500"}
             (or (and (exists? js/localStorage) (.getItem js/localStorage "username")) "User"))
