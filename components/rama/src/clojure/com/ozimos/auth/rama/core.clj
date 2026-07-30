@@ -11,6 +11,12 @@
 (defonce ^:private ipc-instance
   (atom nil))
 
+(defn clear-ipc!
+  "Reset the cached IPC instance so the next ig/init creates a fresh cluster.
+   Used by test fixtures to avoid reusing a stale IPC whose module may have died."
+  []
+  (reset! ipc-instance nil))
+
 (defn module-name
   "Returns the full module name string for AuthModule."
   []

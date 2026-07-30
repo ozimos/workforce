@@ -5,8 +5,8 @@
    [com.ozimos.auth.schema.interface :as schema]
    [com.ozimos.auth.schema.interface.registration :as registration]
    [com.rpl.rama :as ramaapi]
-   [com.rpl.rama.path :refer [keypath]]
-[integrant.core :as ig]
+   [com.rpl.rama.path :refer [ALL keypath]]
+   [integrant.core :as ig]
    [malli.core :as m])
   (:import
    (java.util UUID)
@@ -146,7 +146,154 @@
         clear-depot (rama/depot cmgr mod-name "*clear-reset-token-depot")]
     (ramaapi/foreign-append! clear-depot (rama/->ClearResetToken token))))
 
-(defmethod ig/init-key :user/store [_ {:keys [rama] :as deps}]
-  (merge deps {:rama rama}))
+(defn- now-ms [] (System/currentTimeMillis))
 
-(defmethod ig/halt-key! :user/store [_ _])
+(defn create-org! [{:keys [rama] :as deps} input]
+  (let [{:keys [name owner-user-id]} input
+        cmgr (:cluster-manager rama)
+        mod-name (rama/module-name)
+        org-create-depot (rama/depot cmgr mod-name "*org-create-depot")
+        uuid (str (UUID/randomUUID))
+        created-at (now-ms)
+        ;; Check org name uniqueness
+        org-name->id (rama/pstate cmgr mod-name "$$org-name->id")
+        existing-org (ramaapi/foreign-select-one (keypath name) org-name->id)]
+    (if existing-org
+      [false {:errors {:name ["Organization name already taken"]}}]
+      (let [result (ramaapi/foreign-append! org-create-depot
+                     (rama/->OrgCreate uuid name owner-user-id created-at))]
+        (if-let [org-id (get result "auth")]
+          (let [org {:id org-id
+                     :name name
+                     :owner-user-id owner-user-id
+                     :created-at created-at}]
+            [true org])
+          [false {:errors {:name ["Organization name already taken"]}}])))))
+
+(defn find-org-by-id [{:keys [rama] :as deps} org-id]
+  (let [cmgr (:cluster-manager rama)
+        mod-name (rama/module-name)
+        orgs (rama/pstate cmgr mod-name "$$orgs")
+        org (ramaapi/foreign-select-one (keypath org-id) orgs)]
+    (when (:name org)
+      (assoc org :id org-id))))
+
+(defn find-orgs-for-user [{:keys [rama] :as deps} user-id]
+  (let [cmgr (:cluster-manager rama)
+        mod-name (rama/module-name)
+        user-orgs (rama/pstate cmgr mod-name "$$user-orgs")
+        memberships (rama/pstate cmgr mod-name "$$memberships")
+        orgs (rama/pstate cmgr mod-name "$$orgs")
+        org-ids (ramaapi/foreign-select [(keypath user-id) ALL] user-orgs)]
+    (->> org-ids
+         (map (fn [org-id]
+                (let [membership (ramaapi/foreign-select-one (keypath user-id org-id) memberships)
+                      org (ramaapi/foreign-select-one (keypath org-id) orgs)]
+                  {:id org-id
+                   :name (:name org)
+                   :role (:role membership)
+                   :status (:status membership)
+                   :joined-at (:joined-at membership)})))
+         (filter :name)
+         vec)))
+
+(defn invite-to-org! [{:keys [rama] :as deps} input]
+  (let [{:keys [org-id email role invited-by]} input
+        cmgr (:cluster-manager rama)
+        mod-name (rama/module-name)
+        invite-depot (rama/depot cmgr mod-name "*org-invite-depot")
+        invitation-id (str (UUID/randomUUID))
+        created-at (now-ms)
+        expires-at (+ created-at (* 7 24 60 60 1000))]
+    (ramaapi/foreign-append! invite-depot
+      (rama/->OrgInvite invitation-id org-id email role invited-by created-at expires-at))
+    [true {:invitation-id invitation-id}]))
+
+(defn join-org! [{:keys [rama] :as deps} input]
+  (let [{:keys [user-id invitation-id]} input
+        cmgr (:cluster-manager rama)
+        mod-name (rama/module-name)
+        invitations (rama/pstate cmgr mod-name "$$invitations")
+        invitation (ramaapi/foreign-select-one (keypath invitation-id) invitations)]
+    (if (nil? invitation)
+      [false {:errors {:invitation ["Invitation not found"]}}]
+      (if (= (:status invitation) "ACCEPTED")
+        [false {:errors {:invitation ["Invitation already accepted"]}}]
+        (if (< (:expires-at invitation) (now-ms))
+          [false {:errors {:invitation ["Invitation expired"]}}]
+          (let [join-depot (rama/depot cmgr mod-name "*org-join-depot")
+                joined-at (now-ms)]
+            (ramaapi/foreign-append! join-depot
+              (rama/->OrgJoin user-id invitation-id joined-at))
+            [true {:org-id (:org-id invitation)}]))))))
+
+(defn switch-org! [{:keys [rama] :as deps} user-id org-id]
+  (let [cmgr (:cluster-manager rama)
+        mod-name (rama/module-name)
+        switch-depot (rama/depot cmgr mod-name "*org-switch-depot")]
+    (ramaapi/foreign-append! switch-depot (rama/->OrgSwitch user-id org-id))
+    true))
+
+(defn get-active-org [{:keys [rama] :as deps} user-id]
+  (let [cmgr (:cluster-manager rama)
+        mod-name (rama/module-name)
+        active-org (rama/pstate cmgr mod-name "$$user-active-org")]
+    (ramaapi/foreign-select-one (keypath user-id) active-org)))
+
+(defn list-members [{:keys [rama] :as deps} org-id]
+  (let [cmgr (:cluster-manager rama)
+        mod-name (rama/module-name)
+        org-members (rama/pstate cmgr mod-name "$$org-members")
+        org-users (rama/pstate cmgr mod-name "$$org-users")
+        user-ids (ramaapi/foreign-select [(keypath org-id) ALL] org-users)]
+    (->> user-ids
+         (map (fn [uid]
+                (let [membership (ramaapi/foreign-select-one (keypath org-id uid) org-members)]
+                  {:user-id uid
+                   :role (:role membership)
+                   :status (:status membership)
+                   :joined-at (:joined-at membership)})))
+         (filter :role)
+         vec)))
+
+(defn update-member-role! [{:keys [rama] :as deps} org-id target-user-id new-role]
+  (let [cmgr (:cluster-manager rama)
+        mod-name (rama/module-name)
+        update-depot (rama/depot cmgr mod-name "*org-member-update-depot")]
+    (ramaapi/foreign-append! update-depot
+      (rama/->OrgMemberUpdate org-id target-user-id new-role))
+    true))
+
+(defn remove-member! [{:keys [rama] :as deps} org-id target-user-id]
+  (let [cmgr (:cluster-manager rama)
+        mod-name (rama/module-name)
+        remove-depot (rama/depot cmgr mod-name "*org-member-remove-depot")]
+    (ramaapi/foreign-append! remove-depot
+      (rama/->OrgMemberRemove org-id target-user-id))
+    true))
+
+(defn list-invitations-for-user [{:keys [rama] :as deps} email]
+  (let [cmgr (:cluster-manager rama)
+        mod-name (rama/module-name)
+        email->invitations (rama/pstate cmgr mod-name "$$email->invitations")
+        invitations (rama/pstate cmgr mod-name "$$invitations")
+        orgs (rama/pstate cmgr mod-name "$$orgs")
+        invitation-ids (ramaapi/foreign-select [(keypath email) ALL] email->invitations)]
+    (->> invitation-ids
+         (map (fn [inv-id]
+                (let [inv (ramaapi/foreign-select-one (keypath inv-id) invitations)
+                      org (ramaapi/foreign-select-one (keypath (:org-id inv)) orgs)]
+                  {:invitation/id inv-id
+                   :invitation/org-id (:org-id inv)
+                   :invitation/org-name (:name org)
+                   :invitation/role (:role inv)
+                   :invitation/status (:status inv)
+                   :invitation/expires-at (:expires-at inv)})))
+         (filter #(= (:invitation/status %) "PENDING"))
+         vec)))
+
+(defn get-membership [{:keys [rama] :as deps} user-id org-id]
+  (let [cmgr (:cluster-manager rama)
+        mod-name (rama/module-name)
+        memberships (rama/pstate cmgr mod-name "$$memberships")]
+    (ramaapi/foreign-select-one (keypath user-id org-id) memberships)))
