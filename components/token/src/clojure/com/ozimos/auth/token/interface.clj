@@ -4,13 +4,18 @@
 
 (defn issue-access-token
   "Issue a short-lived access JWT. Returns the token string.
-   `encoder` is a JwtEncoder instance.
-   - subject: user-id as string
-   - roles: set of role strings
-   - jti: unique token id (UUID string)
-   - ttl-seconds: time-to-live"
-  [encoder issuer subject roles jti ttl-seconds]
-  (core/issue-access-token encoder issuer subject roles jti ttl-seconds))
+    `encoder` is a JwtEncoder instance.
+    - subject: user-id as string
+    - roles: set of role strings
+    - jti: unique token id (UUID string)
+    - ttl-seconds: time-to-live
+    Optionally:
+    - org-id: Long (org context for this token)
+    - org-role: String (user's role in the org)"
+  ([encoder issuer subject roles jti ttl-seconds]
+   (core/issue-access-token encoder issuer subject roles jti ttl-seconds))
+  ([encoder issuer subject roles jti ttl-seconds org-id org-role]
+   (core/issue-access-token encoder issuer subject roles jti ttl-seconds org-id org-role)))
 
 (defn issue-refresh-token
   "Issue a long-lived refresh JWT. Returns the token string."

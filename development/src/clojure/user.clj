@@ -12,6 +12,7 @@
          'com.ozimos.auth.revocation.core
          'com.ozimos.auth.token.core
          'com.ozimos.auth.security.core
+         'com.ozimos.auth.pathom.core
          'com.ozimos.auth.auth-api.system)
 
 (set-prep! (fn [] ((requiring-resolve 'com.ozimos.auth.auth-api.system/load-config) :dev)))
@@ -31,7 +32,7 @@
                  "components/revocation/src/clojure"
                  "components/token/src/clojure"
                  "components/security/src/clojure"
-                 "components/user/src/clojure"]
+                 "components/pathom/src/clojure"]
       :no-reload '#{user}
       :output   :verbose})
     ((resolve 'virgil/watch-and-recompile)

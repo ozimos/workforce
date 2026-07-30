@@ -43,6 +43,3 @@
                           "The token has been revoked"
                           "https://tools.ietf.org/html/rfc6750#section-6.6"))
           (OAuth2TokenValidatorResult/success))))))
-
-(defmethod ig/init-key :revocation/validator [_ {:keys [rama]}]
-  {:rama rama})

@@ -41,8 +41,3 @@
         mod-name (rama/module-name)
         user-sessions-pstate (rama/pstate cmgr mod-name "$$user-sessions")]
     (ramaapi/foreign-select [(keypath user-id) ALL] user-sessions-pstate {:pkey user-id})))
-
-(defmethod ig/init-key :session/store [_ {:keys [rama] :as deps}]
-  (merge deps {:rama rama}))
-
-(defmethod ig/halt-key! :session/store [_ _])

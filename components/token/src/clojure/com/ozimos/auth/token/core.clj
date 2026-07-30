@@ -54,16 +54,20 @@
 
 (defn issue-access-token
   (^String [^JwtEncoder encoder issuer subject roles jti ttl-seconds]
+   (issue-access-token encoder issuer subject roles jti ttl-seconds nil nil))
+  (^String [^JwtEncoder encoder issuer subject roles jti ttl-seconds org-id org-role]
    (let [now (Instant/now)
-         claims (-> (JwtClaimsSet/builder)
-                    (.issuer issuer)
-                    (.subject subject)
-                    (.id jti)
-                    (.issuedAt now)
-                    (.expiresAt (.plusSeconds now ttl-seconds))
-                    (.claim "roles" (vec roles))
-                    (.claim "type" "access")
-                    (.build))
+         claims (cond-> (-> (JwtClaimsSet/builder)
+                            (.issuer issuer)
+                            (.subject subject)
+                            (.id jti)
+                            (.issuedAt now)
+                            (.expiresAt (.plusSeconds now ttl-seconds))
+                            (.claim "roles" (vec roles))
+                            (.claim "type" "access"))
+                  (some? org-id) (.claim "org-id" (str org-id))
+                  (some? org-role) (.claim "org-role" org-role)
+                  true (.build))
          header (-> (JwsHeader/with SignatureAlgorithm/RS256) (.build))]
      (.getTokenValue (.encode encoder (JwtEncoderParameters/from header claims))))))
 
@@ -94,11 +98,12 @@
 
 (defmethod ig/halt-key! :token/encoder [_ _])
 
-(defmethod ig/init-key :token/decoder [_ {:keys [encoder rsa-key-id revocation-validator]
+(defmethod ig/init-key :token/decoder [_ {:keys [encoder rsa-key-id rama revocation-validator]
                                           :or {rsa-key-id "auth-template-key-1"}}]
   (let [key (or (:rsa-key encoder) (gen-rsa-key rsa-key-id))
-        validator (when revocation-validator
-                    (revocation/validator revocation-validator))
+        validator-deps (or revocation-validator (when rama {:rama rama}))
+        validator (when validator-deps
+                    (revocation/validator validator-deps))
         decoder (make-decoder key validator)]
     {:decoder decoder
      :rsa-key key}))

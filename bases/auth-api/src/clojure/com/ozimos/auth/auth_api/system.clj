@@ -3,6 +3,7 @@
    [com.ozimos.auth.config.interface :as config]
    [com.ozimos.auth.rama.interface :as rama]
    [com.ozimos.auth.security.interface :as security]
+   [com.ozimos.auth.token.interface :as token]
    [integrant.core :as ig]
    [ring.adapter.jetty :as jetty])
   (:import
@@ -57,8 +58,8 @@
       ((ns-resolve (find-ns 'com.ozimos.auth.auth-api.routes) 'app) routes-deps))))
 
 (defmethod ig/init-key :adapter/jetty
-  [_ {:keys [port host handler filter-chain-proxy]}]
-  (let [routes-deps (:routes handler)
+  [_ {:keys [port host filter-chain-proxy handler] :as deps}]
+  (let [routes-deps (or (:routes handler) deps)
         ring-handler (build-ring-handler routes-deps)
         app-ctx (:app-context filter-chain-proxy)
         opts {:port port
@@ -74,16 +75,6 @@
 (defmethod ig/halt-key! :adapter/jetty [_ {:keys [server]}]
   (when server
     (.stop ^Server server)))
-
-(defmethod ig/init-key :handler/app [_ {:keys [routes] :as deps}]
-  deps)
-
-(defmethod ig/halt-key! :handler/app [_ _])
-
-(defmethod ig/init-key :handler/routes [_ deps]
-  deps)
-
-(defmethod ig/halt-key! :handler/routes [_ _])
 
 (defmethod ig/init-key :cleanup/scheduler
   [_ {:keys [rama interval-ms]}]

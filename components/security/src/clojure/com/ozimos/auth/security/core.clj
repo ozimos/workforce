@@ -45,10 +45,11 @@
   ^FilterChainProxy [app-ctx]
   (.getBean app-ctx "springSecurityFilterChain" FilterChainProxy))
 
-(defmethod ig/init-key :security/app-context [_ {:keys [jwt-decoder user-store]}]
+(defmethod ig/init-key :security/app-context [_ {:keys [jwt-decoder rama user-store]}]
   (let [decoder (:decoder jwt-decoder)
+        user-deps (or user-store (when rama {:rama rama}))
         find-user-fn (fn [username]
-                       ((requiring-resolve 'com.ozimos.auth.user.interface/find-by-username) user-store username))
+                       ((requiring-resolve 'com.ozimos.auth.user.interface/find-by-username) user-deps username))
         deps {:jwt-decoder decoder
               :find-user-fn find-user-fn}
         ctx (build-application-context deps)
