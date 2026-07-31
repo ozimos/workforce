@@ -43,7 +43,7 @@
                   :email (:email user)
                   :verified (:verified user)}})
         {:status 409
-         :body {:errors (second result)}}))))
+         :body (second result)}))))
 
 (defn login [deps]
   (fn [{:keys [body-params]}]
@@ -59,8 +59,8 @@
               active-org-id (user/get-active-org deps (:id user-record))
               active-org-role (when active-org-id
                                 (:role (user/get-membership deps (:id user-record) active-org-id)))
-              access-jti (str (UUID/randomUUID))
-              refresh-jti (str (UUID/randomUUID))
+              access-jti (str (random-uuid))
+              refresh-jti (str (random-uuid))
               access-ttl 900
               refresh-ttl 604800
               access-token (if (and active-org-id active-org-role)
@@ -97,8 +97,8 @@
                       active-org-id (user/get-active-org deps parsed-id)
                       active-org-role (when active-org-id
                                         (:role (user/get-membership deps parsed-id active-org-id)))
-                      new-access-jti (str (UUID/randomUUID))
-                      new-refresh-jti (str (UUID/randomUUID))
+                      new-access-jti (str (random-uuid))
+                      new-refresh-jti (str (random-uuid))
                       issuer "com.ozimos.auth"
                       access-token (if (and active-org-id active-org-role)
                                      (token/issue-access-token encoder issuer sub roles new-access-jti 900 active-org-id active-org-role)
