@@ -10,7 +10,9 @@
     (let [eql [(list 'user/update-username {:user/new-username new-username})]]
       (-> (json/fetch-json "/api/query" "POST" {:eql (pr-str eql)})
           (.then (fn [{:keys [status body]}]
-                   (let [res (get-in body [:data 'user/update-username])
+                   (let [res (or (get-in body [:data :user/update-username])
+                                 (get-in body [:data 'user/update-username])
+                                 (get-in body [:data "user/update-username"]))
                          errs (:user/errors res)]
                      (if (and (= 200 status) res (not errs))
                        (do

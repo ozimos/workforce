@@ -396,6 +396,14 @@
                                 :password (:password user)})]
           (is (= 200 (:status new-login-resp)))))
 
+      (testing "Querying current-user returns the newly saved username"
+        (let [query-resp (post-json (str url "/api/query")
+                           {:eql (pr-str '[:current-user/username])}
+                           (auth-header token))
+              curr-user-res (get-in query-resp [:body "data" "current-user/username"])]
+          (is (= 200 (:status query-resp)))
+          (is (= new-uname curr-user-res) "current-user/username should match the updated username")))
+
       (testing "POST /api/query user/update-username without auth returns error"
         (let [eql-str (pr-str [(list 'user/update-username {:user/new-username (str "unauth-" (short-suffix))})])
               resp (post-json (str url "/api/query")
