@@ -236,10 +236,17 @@
       (is (= 401 (:status resp)))
       (is (get-in resp [:body "errors"]))))
 
-  (testing "POST /api/auth/login with non-existent user returns 401"
+  (testing "POST /api/auth/login with non-existent username returns 401"
     (let [resp (post-json (str (base-url) "/api/auth/login")
                  {:identifier "nonexistent"
                   :password "CorrectHorseBatteryStaple1!"})]
+      (is (= 401 (:status resp)))
+      (is (get-in resp [:body "errors"]))))
+
+  (testing "POST /api/auth/login with non-existent email returns 401 without throwing 500"
+    (let [resp (post-json (str (base-url) "/api/auth/login")
+                 {:identifier "tovieye.ozi@gmail.com"
+                  :password "overtake-septum-thesis-confusing-chest-eaten"})]
       (is (= 401 (:status resp)))
       (is (get-in resp [:body "errors"])))))
 

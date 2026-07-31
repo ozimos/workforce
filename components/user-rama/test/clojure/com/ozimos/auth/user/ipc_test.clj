@@ -99,6 +99,18 @@
         (is (= (:username user) (:username found)) "usernames should match"))
       (println "=== end auto-derive-username-test ==="))))
 
+(deftest ^:integration find-nonexistent-user-test
+  (testing "find-by-username, find-by-email, and find-by-identifier return nil for unregistered users without throwing exceptions"
+    (let [suffix (short-suffix)
+          nonexistent-email (str "nonexistent-" suffix "@example.com")
+          nonexistent-username (str "nonexistent-" suffix)]
+      (println "\n=== find-nonexistent-user-test ===")
+      (is (nil? (user/find-by-username *system* nonexistent-username)) "find-by-username on non-existent user should return nil")
+      (is (nil? (user/find-by-email *system* nonexistent-email)) "find-by-email on non-existent user should return nil")
+      (is (nil? (user/find-by-identifier *system* nonexistent-email)) "find-by-identifier on non-existent email should return nil")
+      (is (nil? (user/find-by-identifier *system* nonexistent-username)) "find-by-identifier on non-existent username should return nil")
+      (println "=== end find-nonexistent-user-test ==="))))
+
 (deftest ^:integration duplicate-registration-test
   (testing "register! with duplicate username returns error"
     (let [suffix (short-suffix)

@@ -80,8 +80,18 @@
                        (inc attempt))
                 [false {:errors {:username ["Username already taken."]}}]))))))))
 
+(defn- safe-select-one [path pstate]
+  (try
+    (ramaapi/foreign-select-one path pstate)
+    (catch Throwable t
+      (if (or (instance? rpl.rama.generated.ObjectMissingException t)
+              (instance? rpl.rama.generated.ObjectMissingException (.getCause t))
+              (clojure.string/includes? (str t) "ObjectMissingException"))
+        nil
+        (throw t)))))
+
 (defn- read-profile [profiles user-id]
-  (let [profile (ramaapi/foreign-select-one (keypath user-id) profiles)]
+  (let [profile (safe-select-one (keypath user-id) profiles)]
     (when (:username profile)
       (update profile :roles set))))
 
@@ -90,7 +100,7 @@
         mod-name (rama/module-name)
         username->id (rama/pstate cmgr mod-name "$$username->id")
         profiles (rama/pstate cmgr mod-name "$$profiles")
-        user-id (ramaapi/foreign-select-one (keypath username) username->id)]
+        user-id (safe-select-one (keypath username) username->id)]
     (when user-id
       (let [profile (read-profile profiles user-id)]
         (when profile
@@ -109,7 +119,7 @@
         mod-name (rama/module-name)
         email->id (rama/pstate cmgr mod-name "$$email->id")
         profiles (rama/pstate cmgr mod-name "$$profiles")
-        user-id (ramaapi/foreign-select-one (keypath email) email->id)]
+        user-id (safe-select-one (keypath email) email->id)]
     (when user-id
       (let [profile (read-profile profiles user-id)]
         (when profile
@@ -146,7 +156,7 @@
   (let [cmgr (:cluster-manager rama)
         mod-name (rama/module-name)
         reset-pstate (rama/pstate cmgr mod-name "$$reset-tokens")
-        entry (ramaapi/foreign-select-one (keypath token) reset-pstate)]
+        entry (safe-select-one (keypath token) reset-pstate)]
     (when entry
       (let [now (System/currentTimeMillis)]
         (when (< (:expires-at entry) now)
@@ -170,7 +180,7 @@
         created-at (now-ms)
         ;; Check org name uniqueness
         org-name->id (rama/pstate cmgr mod-name "$$org-name->id")
-        existing-org (ramaapi/foreign-select-one (keypath name) org-name->id)]
+        existing-org (safe-select-one (keypath name) org-name->id)]
     (if existing-org
       [false {:errors {:name ["Organization name already taken"]}}]
       (let [result (ramaapi/foreign-append! org-create-depot
@@ -187,7 +197,7 @@
   (let [cmgr (:cluster-manager rama)
         mod-name (rama/module-name)
         orgs (rama/pstate cmgr mod-name "$$orgs")
-        org (ramaapi/foreign-select-one (keypath org-id) orgs)]
+        org (safe-select-one (keypath org-id) orgs)]
     (when (:name org)
       (assoc org :id org-id))))
 
@@ -200,8 +210,8 @@
         org-ids (ramaapi/foreign-select [(keypath user-id) ALL] user-orgs)]
     (->> org-ids
          (map (fn [org-id]
-                (let [membership (ramaapi/foreign-select-one (keypath user-id org-id) memberships)
-                      org (ramaapi/foreign-select-one (keypath org-id) orgs)]
+                (let [membership (safe-select-one (keypath user-id org-id) memberships)
+                      org (safe-select-one (keypath org-id) orgs)]
                   {:id org-id
                    :name (:name org)
                    :role (:role membership)
@@ -227,7 +237,7 @@
         cmgr (:cluster-manager rama)
         mod-name (rama/module-name)
         invitations (rama/pstate cmgr mod-name "$$invitations")
-        invitation (ramaapi/foreign-select-one (keypath invitation-id) invitations)]
+        invitation (safe-select-one (keypath invitation-id) invitations)]
     (if (nil? invitation)
       [false {:errors {:invitation ["Invitation not found"]}}]
       (if (= (:status invitation) "ACCEPTED")
@@ -251,7 +261,7 @@
   (let [cmgr (:cluster-manager rama)
         mod-name (rama/module-name)
         active-org (rama/pstate cmgr mod-name "$$user-active-org")]
-    (ramaapi/foreign-select-one (keypath user-id) active-org)))
+    (safe-select-one (keypath user-id) active-org)))
 
 (defn list-members [{:keys [rama] :as deps} org-id]
   (let [cmgr (:cluster-manager rama)
@@ -261,7 +271,7 @@
         user-ids (ramaapi/foreign-select [(keypath org-id) ALL] org-users)]
     (->> user-ids
          (map (fn [uid]
-                (let [membership (ramaapi/foreign-select-one (keypath org-id uid) org-members)]
+                (let [membership (safe-select-one (keypath org-id uid) org-members)]
                   {:user-id uid
                    :role (:role membership)
                    :status (:status membership)
@@ -294,8 +304,8 @@
         invitation-ids (ramaapi/foreign-select [(keypath email) ALL] email->invitations)]
     (->> invitation-ids
          (map (fn [inv-id]
-                (let [inv (ramaapi/foreign-select-one (keypath inv-id) invitations)
-                      org (ramaapi/foreign-select-one (keypath (:org-id inv)) orgs)]
+                (let [inv (safe-select-one (keypath inv-id) invitations)
+                      org (safe-select-one (keypath (:org-id inv)) orgs)]
                   {:invitation/id inv-id
                    :invitation/org-id (:org-id inv)
                    :invitation/org-name (:name org)
@@ -309,4 +319,4 @@
   (let [cmgr (:cluster-manager rama)
         mod-name (rama/module-name)
         memberships (rama/pstate cmgr mod-name "$$memberships")]
-    (ramaapi/foreign-select-one (keypath user-id org-id) memberships)))
+    (safe-select-one (keypath user-id org-id) memberships)))
