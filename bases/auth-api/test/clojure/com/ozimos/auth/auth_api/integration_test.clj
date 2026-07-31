@@ -40,7 +40,8 @@
 
 (defn- parse-ring-response [resp]
   (if (instance? java.io.InputStream (:body resp))
-    (update resp :body m/decode-response-body)
+    (let [s (slurp (:body resp))]
+      (assoc resp :body (when (seq s) (clojure.edn/read-string s))))
     resp))
 
 (defn- post-edn
