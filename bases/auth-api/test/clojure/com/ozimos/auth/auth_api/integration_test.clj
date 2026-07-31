@@ -19,7 +19,7 @@
   *base-url*)
 
 (defn- short-suffix []
-  (-> (java.util.UUID/randomUUID) str (.replace "-" "") (.substring 0 12)))
+  (-> (random-uuid) str (.replace "-" "") (.substring 0 12)))
 
 (defn- random-user []
   (let [suffix (short-suffix)]
@@ -192,7 +192,7 @@
   (let [user (random-user)
         register-resp (post-json (str (base-url) "/api/auth/register") user)
         user-id (get-in register-resp [:body "id"])
-        reset-token (str (java.util.UUID/randomUUID))
+        reset-token (str (random-uuid))
         expiry (+ (System/currentTimeMillis) (* 15 60 1000))]
 
     (testing "POST /api/auth/forgot-password with valid email returns 200"
@@ -224,7 +224,7 @@
           (is (= 200 (:status fg)))))
 
       (let [resp (post-json (str (base-url) "/api/auth/reset-password")
-                            {:token (str (java.util.UUID/randomUUID))
+                            {:token (str (random-uuid))
                              :password "NewP@ssword456"})]
         (is (= 400 (:status resp)))
         (is (get-in resp [:body "errors"]))))))
@@ -404,3 +404,38 @@
                   (= 403 (:status resp))
                   (= 400 (:status resp)))
               "unauthenticated query should return an error status code"))))))
+
+(deftest ^:integration auto-token-refresh-integration-test
+  (testing "Full token refresh workflow: login -> expired/invalid token query failure -> refresh token -> retried query succeeds"
+    (let [url (base-url)
+          user (random-user)
+          _ (post-json (str url "/api/auth/register") user)
+          login-resp (post-json (str url "/api/auth/login")
+                       {:identifier (:email user)
+                        :password (:password user)})
+          refresh-token (get-in login-resp [:body "refresh-token"])
+          garbage-access-token "not-a-valid-access-token"]
+
+      (is (string? refresh-token) "login should return refresh-token")
+
+      (testing "Step 1: Request with garbage/expired access-token fails with 401"
+        (let [query-resp (post-json (str url "/api/query")
+                           {:eql (pr-str '[(user/update-username {:user/new-username "refreshed-uname"})])}
+                           (auth-header garbage-access-token))]
+          (is (= 401 (:status query-resp)))
+          (is (= ["Not authenticated"] (get-in query-resp [:body "errors" "auth"])))))
+
+      (testing "Step 2: Refreshing token via POST /api/auth/refresh returns new access-token"
+        (let [refresh-resp (post-json (str url "/api/auth/refresh")
+                             {:refresh-token refresh-token})
+              new-access-token (get-in refresh-resp [:body "access-token"])]
+          (is (= 200 (:status refresh-resp)))
+          (is (string? new-access-token) "refresh should return new access-token")
+
+          (testing "Step 3: Retrying query with new access-token succeeds"
+            (let [retry-resp (post-json (str url "/api/query")
+                               {:eql (pr-str '[(user/update-username {:user/new-username "refreshed-uname"})])}
+                               (auth-header new-access-token))
+                  result (get-in retry-resp [:body "data" "user/update-username"])]
+              (is (= 200 (:status retry-resp)))
+              (is (= "refreshed-uname" (get result "current-user/username"))))))))))

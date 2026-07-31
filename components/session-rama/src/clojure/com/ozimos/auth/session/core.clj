@@ -11,7 +11,7 @@
   (let [cmgr (:cluster-manager rama)
         mod-name (rama/module-name)
         session-depot (rama/depot cmgr mod-name "*session-depot")
-        session-id (str (UUID/randomUUID))]
+        session-id (str (random-uuid))]
     (ramaapi/foreign-append! session-depot
       (rama/->SessionStart user-id session-id jti expires-at))
     session-id))

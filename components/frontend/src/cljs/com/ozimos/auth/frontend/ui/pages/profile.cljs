@@ -7,11 +7,8 @@
 (defn- update-username [this]
   (let [{:keys [new-username]} (comp/get-state this)]
     (comp/set-state! this {:error-msg nil :success-msg nil :loading true})
-    (let [token (when (exists? js/localStorage) (.getItem js/localStorage "access-token"))
-          headers {"Content-Type" "application/json"
-                   "Authorization" (str "Bearer " token)}
-          eql [(list 'user/update-username {:user/new-username new-username})]]
-      (-> (json/fetch-json "/api/query" "POST" {:eql (pr-str eql)} headers)
+    (let [eql [(list 'user/update-username {:user/new-username new-username})]]
+      (-> (json/fetch-json "/api/query" "POST" {:eql (pr-str eql)})
           (.then (fn [{:keys [status body]}]
                    (let [res (get-in body [:data 'user/update-username])
                          errs (:user/errors res)]

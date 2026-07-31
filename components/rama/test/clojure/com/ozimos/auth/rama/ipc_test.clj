@@ -33,10 +33,10 @@
 (deftest ^:integration id-format-test
   (testing "ModuleUniqueIdPState.genId() returns expected format via foreign-append!"
     (let [depot (rama/foreign-depot *ipc* *module-name* "*registration-depot")
-          uname (str "id-format-" (java.util.UUID/randomUUID))
+          uname (str "id-format-" (random-uuid))
           email (str uname "@test.com")
           result (rama/foreign-append! depot
-                   (mod/->Registration (str (java.util.UUID/randomUUID))
+                   (mod/->Registration (str (random-uuid))
                      uname "hash" email ["ROLE_USER"]))]
       (println "\n=== id-format-test ===")
       (println "foreign-append! result type:" (type result))
@@ -50,12 +50,12 @@
     (let [depot (rama/foreign-depot *ipc* *module-name* "*registration-depot")
           uid->id (rama/foreign-pstate *ipc* *module-name* "$$username->id")
           profiles (rama/foreign-pstate *ipc* *module-name* "$$profiles")
-          suffix (str (java.util.UUID/randomUUID))
+          suffix (str (random-uuid))
           uname (str "roundtrip-" suffix)
           email (str uname "@test.com")
           pwd-hash "bcrypt-hash"
           roles []
-          reg (mod/->Registration (str (java.util.UUID/randomUUID))
+          reg (mod/->Registration (str (random-uuid))
                 uname pwd-hash email roles)
           user-id (rama/foreign-append! depot reg)]
 
@@ -77,7 +77,7 @@
 
 (deftest ^:integration session-end-cleanup-test
   (testing "Session-end clears $$sessions entry"
-    (let [suffix (str (java.util.UUID/randomUUID))
+    (let [suffix (str (random-uuid))
           depots {:registration (rama/foreign-depot *ipc* *module-name* "*registration-depot")
                   :session (rama/foreign-depot *ipc* *module-name* "*session-depot")
                   :session-end (rama/foreign-depot *ipc* *module-name* "*session-end-depot")}
@@ -85,10 +85,10 @@
           uname (str "session-cleanup-" suffix)
           email (str uname "@test.com")
           user-id (get (rama/foreign-append! (:registration depots)
-                         (mod/->Registration (str (java.util.UUID/randomUUID))
+                         (mod/->Registration (str (random-uuid))
                            uname "hash" email ["ROLE_USER"])) "auth")
-          session-id (str (java.util.UUID/randomUUID))
-          jti (str (java.util.UUID/randomUUID))
+          session-id (str (random-uuid))
+          jti (str (random-uuid))
           expires-at (+ (System/currentTimeMillis) 3600000)]
 
       (println "\n=== session-end-cleanup-test ===")
@@ -128,12 +128,12 @@
           username-change-depot (rama/foreign-depot *ipc* *module-name* "*username-change-depot")
           uid->id (rama/foreign-pstate *ipc* *module-name* "$$username->id")
           profiles (rama/foreign-pstate *ipc* *module-name* "$$profiles")
-          suffix (str (java.util.UUID/randomUUID))
+          suffix (str (random-uuid))
           old-uname (str "oldname-" suffix)
           new-uname (str "newname-" suffix)
           email (str old-uname "@test.com")
           reg-result (rama/foreign-append! registration-depot
-                       (mod/->Registration (str (java.util.UUID/randomUUID))
+                       (mod/->Registration (str (random-uuid))
                          old-uname "hash" email ["ROLE_USER"]))]
       (println "\n=== username-change-test ===")
       (let [user-id (get reg-result "auth")]
@@ -174,10 +174,10 @@
           (is (= :ok (get same-result "auth")) "same-username change should succeed"))
 
         ;; Conflict: another user tries to claim new-uname
-        (let [other-suffix (str (java.util.UUID/randomUUID))
+        (let [other-suffix (str (random-uuid))
               other-email (str "other-" other-suffix "@test.com")
               other-result (rama/foreign-append! registration-depot
-                             (mod/->Registration (str (java.util.UUID/randomUUID))
+                             (mod/->Registration (str (random-uuid))
                                (str "other-" other-suffix) "hash" other-email ["ROLE_USER"]))
               other-id (get other-result "auth")]
           (is (some? other-id) "other user should register")
@@ -191,8 +191,8 @@
 (deftest ^:integration org-topology-test
   (testing "Full org lifecycle: create, invite, join, switch, update, remove"
     (let [create-depot (rama/foreign-depot *ipc* *module-name* "*org-create-depot")
-          uuid (str (java.util.UUID/randomUUID))
-          org-name (str "org-e2e-" (java.util.UUID/randomUUID))
+          uuid (str (random-uuid))
+          org-name (str "org-e2e-" (random-uuid))
           owner-uid 10001
           created-at (System/currentTimeMillis)]
 
@@ -229,7 +229,7 @@
 
       ;; Invite
       (let [invite-depot (rama/foreign-depot *ipc* *module-name* "*org-invite-depot")
-            inv-id (str (java.util.UUID/randomUUID))
+            inv-id (str (random-uuid))
             org-id (rama/foreign-select-one (keypath org-name) (rama/foreign-pstate *ipc* *module-name* "$$org-name->id"))
             inv-result (rama/foreign-append! invite-depot (mod/->OrgInvite inv-id org-id "joiner@test.com" "MEMBER" owner-uid (System/currentTimeMillis) (+ (System/currentTimeMillis) 604800000)))]
         (println "invite result:" (pr-str inv-result))

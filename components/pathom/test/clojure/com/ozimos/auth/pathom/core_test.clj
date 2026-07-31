@@ -18,7 +18,7 @@
 (use-fixtures :once system-fixture)
 
 (defn- short-suffix []
-  (-> (java.util.UUID/randomUUID) str (.replace "-" "") (.substring 0 12)))
+  (-> (random-uuid) str (.replace "-" "") (.substring 0 12)))
 
 (defn- register-user []
   (let [suffix (short-suffix)

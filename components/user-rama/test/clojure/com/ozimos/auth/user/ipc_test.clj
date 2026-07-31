@@ -11,7 +11,7 @@
 (def ^:dynamic *system* nil)
 
 (defn short-suffix []
-  (-> (java.util.UUID/randomUUID) str (.replace "-" "") (.substring 0 12)))
+  (-> (random-uuid) str (.replace "-" "") (.substring 0 12)))
 
 (defn ipc-fixture
   [tests]
@@ -161,7 +161,7 @@
           uname (str "idem-" suffix)
           email (str uname "@test.com")
           pwd-hash "bcrypt-hash"
-          known-uuid (str (java.util.UUID/randomUUID))
+          known-uuid (str (random-uuid))
           cmgr (-> *system* :rama :cluster-manager)
           mod-name (rama/get-module-name mod/AuthModule)
           reg-depot (rama/foreign-depot cmgr mod-name "*registration-depot")

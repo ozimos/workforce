@@ -65,7 +65,7 @@
       (let [base-username (or (:username input) (derive-username-from-email email))]
         (loop [username base-username
                attempt 1]
-          (let [uuid (str (UUID/randomUUID))
+          (let [uuid (str (random-uuid))
                 result (ramaapi/foreign-append! reg-depot
                          (rama/->Registration uuid username pwd-hash email roles))]
             (if-let [user-id (get result "auth")]
@@ -147,7 +147,7 @@
   (let [cmgr (:cluster-manager rama)
         mod-name (rama/module-name)
         reset-depot (rama/depot cmgr mod-name "*reset-token-depot")
-        token (str (java.util.UUID/randomUUID))
+        token (str (random-uuid))
         expires-at (+ (System/currentTimeMillis) (* 15 60 1000))]
     (ramaapi/foreign-append! reset-depot (rama/->ResetToken token user-id expires-at))
     token))
@@ -176,7 +176,7 @@
         cmgr (:cluster-manager rama)
         mod-name (rama/module-name)
         org-create-depot (rama/depot cmgr mod-name "*org-create-depot")
-        uuid (str (UUID/randomUUID))
+        uuid (str (random-uuid))
         created-at (now-ms)
         ;; Check org name uniqueness
         org-name->id (rama/pstate cmgr mod-name "$$org-name->id")
@@ -225,7 +225,7 @@
         cmgr (:cluster-manager rama)
         mod-name (rama/module-name)
         invite-depot (rama/depot cmgr mod-name "*org-invite-depot")
-        invitation-id (str (UUID/randomUUID))
+        invitation-id (str (random-uuid))
         created-at (now-ms)
         expires-at (+ created-at (* 7 24 60 60 1000))]
     (ramaapi/foreign-append! invite-depot
