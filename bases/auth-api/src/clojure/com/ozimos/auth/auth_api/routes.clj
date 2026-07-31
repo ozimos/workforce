@@ -62,13 +62,7 @@
                 :parameters {:body reg-schema/reset-password-request}
                 :handler (handlers/reset-password deps)
                 :responses {200 {:body [:map [:message :string]]}
-                            400 {:body [:map [:errors [:map]]]}}}}]
-       ["/profile/username"
-        {:post {:summary "Update username"
-                :parameters {:body reg-schema/update-username-request}
-                :handler (handlers/update-username deps)
-                :responses {200 {:body [:map [:username :string]]}
-                            409 {:body [:map [:errors [:map]]]}}}}]]
+                            400 {:body [:map [:errors [:map]]]}}}}]]
       ["/query"
        {:post {:summary "Pathom query endpoint (app logic)"
                :handler (handlers/query deps)

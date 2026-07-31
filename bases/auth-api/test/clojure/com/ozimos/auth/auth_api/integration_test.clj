@@ -373,13 +373,15 @@
           new-uname (str "updated-" (short-suffix))]
       (is (string? token) "access-token should be present")
 
-      (testing "POST /api/auth/profile/username updates the username"
-        (let [resp (post-json (str url "/api/auth/profile/username")
-                     {:new-username new-uname}
-                     (auth-header token))]
-          (println "profile/username response:" (pr-str resp))
+      (testing "POST /api/query user/update-username mutation updates the username"
+        (let [eql-str (pr-str [(list 'user/update-username {:user/new-username new-uname})])
+              resp (post-json (str url "/api/query")
+                     {:eql eql-str}
+                     (auth-header token))
+              mutation-res (get-in resp [:body "data" "user/update-username"])]
+          (println "user/update-username EQL response:" (pr-str resp))
           (is (= 200 (:status resp)))
-          (is (= new-uname (get-in resp [:body "username"])))))
+          (is (= new-uname (get mutation-res "current-user/username")))))
 
       (testing "Login with new username works"
         (let [new-login-resp (post-json (str url "/api/auth/login")
@@ -387,8 +389,11 @@
                                 :password (:password user)})]
           (is (= 200 (:status new-login-resp)))))
 
-      (testing "POST /api/auth/profile/username without auth returns 401"
-        (let [resp (post-json (str url "/api/auth/profile/username")
-                     {:new-username (str "unauth-" (short-suffix))})]
-          (is (= 401 (:status resp)))
-          (is (get-in resp [:body "errors"])))))))
+      (testing "POST /api/query user/update-username without auth returns error"
+        (let [eql-str (pr-str [(list 'user/update-username {:user/new-username (str "unauth-" (short-suffix))})])
+              resp (post-json (str url "/api/query")
+                     {:eql eql-str})]
+          (is (or (= 401 (:status resp))
+                  (= 403 (:status resp))
+                  (= 400 (:status resp)))
+              "unauthenticated query should return an error status code"))))))

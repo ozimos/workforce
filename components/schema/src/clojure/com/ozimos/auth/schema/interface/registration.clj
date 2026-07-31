@@ -25,14 +25,6 @@
   [:map
    [:email schema/email]])
 
-(def update-username-request
-  [:map
-   [:new-username schema/username]])
-
-(def update-username-response
-  [:map
-   [:username :string]])
-
 (def reset-password-request
   [:map
    [:token :string]

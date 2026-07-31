@@ -161,19 +161,6 @@
             {:status 400 :body {:errors {:token [(.getMessage e)]}}}
             (throw e)))))))
 
-(defn update-username [deps]
-  (fn [request]
-    (let [token-decoder (:token-decoder deps)
-          auth-user (get-auth-user request token-decoder)]
-      (if auth-user
-        (let [{:keys [body-params]} request
-              {:keys [new-username]} body-params
-              result (user/update-username! deps (:user-id auth-user) new-username)]
-          (if (first result)
-            {:status 200 :body {:username (second result)}}
-            {:status 409 :body {:errors (second result)}}))
-        {:status 401 :body {:errors {:auth ["Not authenticated"]}}}))))
-
 (defn query [deps]
   (fn [{:keys [body-params] :as request}]
     (let [{:keys [token-decoder]} deps
