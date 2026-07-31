@@ -28,8 +28,9 @@
                  "components/schema/src/clojure"
                  "components/config/src/clojure"
                  "components/rama/src/clojure"
-                 "components/session/src/clojure"
-                 "components/revocation/src/clojure"
+                 "components/user-rama/src/clojure"
+                 "components/session-rama/src/clojure"
+                 "components/revocation-rama/src/clojure"
                  "components/token/src/clojure"
                  "components/security/src/clojure"
                  "components/pathom/src/clojure"]

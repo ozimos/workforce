@@ -2,22 +2,22 @@
              "clojars" {:url "https://clojars.org/repo/"}
              "rpl"     {:url "https://nexus.redplanetlabs.com/repository/maven-public-releases/"}}
 
- :deps {poly/schema      {:local/root "../../components/schema"}
-        poly/config      {:local/root "../../components/config"}
-        poly/rama        {:local/root "../../components/rama"}
-        poly/user        {:local/root "../../components/user"}
-        poly/session     {:local/root "../../components/session"}
-        poly/revocation  {:local/root "../../components/revocation"}
-        poly/token       {:local/root "../../components/token"}
-        poly/security    {:local/root "../../components/security"}
-        poly/pathom      {:local/root "../../components/pathom"}
+ :deps {poly/schema          {:local/root "../../components/schema"}
+        poly/config          {:local/root "../../components/config"}
+        poly/rama            {:local/root "../../components/rama"}
+        poly/user-rama       {:local/root "../../components/user-rama"}
+        poly/session-rama    {:local/root "../../components/session-rama"}
+        poly/revocation-rama {:local/root "../../components/revocation-rama"}
+        poly/token           {:local/root "../../components/token"}
+        poly/security        {:local/root "../../components/security"}
+        poly/pathom          {:local/root "../../components/pathom"}
 
-        poly/auth-api    {:local/root "../../bases/auth-api"}
+        poly/auth-api        {:local/root "../../bases/auth-api"}
 
         org.clojure/clojure {:mvn/version "1.12.4"}}
 
  :aliases {:test {:extra-paths ["../../components/rama/test/clojure"
-                                "../../components/user/test/clojure"
+                                "../../components/user-rama/test/clojure"
                                 "../../components/pathom/test/clojure"
                                 "../../bases/auth-api/test/clojure"]
                   :extra-deps {hato/hato {:mvn/version "1.0.0"}

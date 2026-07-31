@@ -9,14 +9,15 @@
                      hato/hato {:mvn/version "1.0.0"}
                      metosin/jsonista {:mvn/version "0.3.14"}
 
-                     poly/schema      {:local/root "components/schema"}
-                     poly/config      {:local/root "components/config"}
-                     poly/rama       {:local/root "components/rama"}
-                     poly/session    {:local/root "components/session"}
-                     poly/revocation {:local/root "components/revocation"}
-                     poly/token      {:local/root "components/token"}
-                     poly/security   {:local/root "components/security"}
-                     poly/pathom     {:local/root "components/pathom"}
+                     poly/schema          {:local/root "components/schema"}
+                     poly/config          {:local/root "components/config"}
+                     poly/rama            {:local/root "components/rama"}
+                     poly/user-rama       {:local/root "components/user-rama"}
+                     poly/session-rama    {:local/root "components/session-rama"}
+                     poly/revocation-rama {:local/root "components/revocation-rama"}
+                     poly/token           {:local/root "components/token"}
+                     poly/security        {:local/root "components/security"}
+                     poly/pathom          {:local/root "components/pathom"}
 
                      poly/auth-api   {:local/root "bases/auth-api"}
 
@@ -39,8 +40,8 @@
   :test {:extra-paths ["components/schema/test/clojure"
                        "components/config/test/clojure"
                        "components/rama/test/clojure"
-                       "components/session/test/clojure"
-                       "components/revocation/test/clojure"
+                       "components/session-rama/test/clojure"
+                       "components/revocation-rama/test/clojure"
                        "components/token/test/clojure"
                        "components/security/test/clojure"
                        "components/pathom/test/clojure"
@@ -49,25 +50,25 @@
                       hato/hato {:mvn/version "1.0.0"}
                       metosin/jsonista {:mvn/version "0.3.14"}}}
 
-  :+rama {:extra-deps {poly/user {:local/root "components/user"}}
-          :extra-paths ["components/user/test/clojure"]}
+  :+rama {:extra-deps {poly/user-rama {:local/root "components/user-rama"}}
+          :extra-paths ["components/user-rama/test/clojure"]}
 
-  :+default {:extra-deps {poly/schema      {:local/root "components/schema"}
-                          poly/config     {:local/root "components/config"}
-                          poly/rama       {:local/root "components/rama"}
-                          poly/user       {:local/root "components/user"}
-                          poly/session    {:local/root "components/session"}
-                          poly/revocation {:local/root "components/revocation"}
-                          poly/token      {:local/root "components/token"}
-                          poly/security   {:local/root "components/security"}
-                          poly/pathom     {:local/root "components/pathom"}
-                          poly/auth-api   {:local/root "bases/auth-api"}}
+  :+default {:extra-deps {poly/schema          {:local/root "components/schema"}
+                          poly/config          {:local/root "components/config"}
+                          poly/rama            {:local/root "components/rama"}
+                          poly/user-rama       {:local/root "components/user-rama"}
+                          poly/session-rama    {:local/root "components/session-rama"}
+                          poly/revocation-rama {:local/root "components/revocation-rama"}
+                          poly/token           {:local/root "components/token"}
+                          poly/security        {:local/root "components/security"}
+                          poly/pathom          {:local/root "components/pathom"}
+                          poly/auth-api        {:local/root "bases/auth-api"}}
              :extra-paths ["development/src/clojure" "development/resources"
                            "target/classes"
                            "components/rama/test/clojure"
-                           "components/user/test/clojure"
-                           "components/session/test/clojure"
-                           "components/revocation/test/clojure"
+                           "components/user-rama/test/clojure"
+                           "components/session-rama/test/clojure"
+                           "components/revocation-rama/test/clojure"
                            "components/token/test/clojure"
                            "components/security/test/clojure"
                            "bases/auth-api/test/clojure"
