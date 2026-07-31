@@ -201,6 +201,20 @@
       (user/remove-member! user-store org-id target-user-id)
       {:success true})))
 
+(pco/defmutation update-username-mutation
+  "Update the authenticated user's username."
+  [env {:user/keys [new-username]}]
+  {::pco/op-name 'user/update-username
+   ::pco/params [:user/new-username]
+   ::pco/output [:current-user/id :current-user/username :user/errors]}
+  (let [user-id (require-auth env)
+        user-store (get-user-store (:deps env))
+        [ok res] (user/update-username! user-store user-id new-username)]
+    (if ok
+      {:current-user/id user-id
+       :current-user/username res}
+      {:user/errors res})))
+
 (def registry
   [current-user-resolver
    user-orgs-resolver
@@ -208,6 +222,7 @@
    org-members-resolver
    user-invitations-resolver
    org-by-id-resolver
+   update-username-mutation
    create-org-mutation
    invite-to-org-mutation
    join-org-mutation

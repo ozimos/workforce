@@ -217,3 +217,18 @@
                  (unauthenticated-ex? e)))
           "create-org mutation should throw for anonymous")
       (println "=== end mutate-unauthenticated-test ==="))))
+
+(deftest ^:integration update-username-mutation-test
+  (testing "Updating username via Pathom EQL mutation"
+    (let [user (register-user)
+          user-id (:id user)
+          env (pathom/build-env *deps* {:user-id user-id})
+          new-uname (str "eql-uname-" (short-suffix))
+          res (pathom/process env [(list 'user/update-username {:user/new-username new-uname})])
+          mutation-res (get res 'user/update-username)]
+      (println "\n=== update-username-mutation-test ===")
+      (println "result:" (pr-str mutation-res))
+      (is (= user-id (:current-user/id mutation-res)))
+      (is (= new-uname (:current-user/username mutation-res)))
+      (is (nil? (:user/errors mutation-res)))
+      (println "=== end update-username-mutation-test ==="))))
