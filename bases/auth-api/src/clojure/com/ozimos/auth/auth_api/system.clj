@@ -57,11 +57,13 @@
       (require 'com.ozimos.auth.auth-api.routes)
       ((ns-resolve (find-ns 'com.ozimos.auth.auth-api.routes) 'app) routes-deps))))
 
+(defmethod ig/init-key :router/ring
+  [_ deps]
+  (build-ring-handler deps))
+
 (defmethod ig/init-key :adapter/jetty
-  [_ {:keys [port host filter-chain-proxy handler] :as deps}]
-  (let [routes-deps (or (:routes handler) deps)
-        ring-handler (build-ring-handler routes-deps)
-        app-ctx (:app-context filter-chain-proxy)
+  [_ {:keys [port host filter-chain-proxy handler]}]
+  (let [app-ctx (:app-context filter-chain-proxy)
         opts {:port port
               :host host
               :join? false
@@ -69,7 +71,7 @@
         opts (if app-ctx
                (assoc opts :configurator (spring-security-configurator app-ctx))
                opts)
-        server (jetty/run-jetty ring-handler opts)]
+        server (jetty/run-jetty handler opts)]
     {:server server}))
 
 (defmethod ig/halt-key! :adapter/jetty [_ {:keys [server]}]

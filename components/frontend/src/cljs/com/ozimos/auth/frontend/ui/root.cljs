@@ -42,6 +42,7 @@
     :route/create-org "/create-org"
     :route/join-org "/join-org"
     :route/org-dashboard "/org-dashboard"
+    :route/profile "/profile"
     :route/forgot-password "/forgot-password"
     :route/reset-password "/reset-password"
     :route/verify "/verify"
@@ -58,6 +59,7 @@
 (def reset-pw-factory    (delay (comp/factory reset-password/ResetPassword)))
 (def verify-factory     (delay (comp/factory verify/Verify)))
 (def home-factory       (delay (comp/factory home/Home)))
+(def profile-factory    (delay (comp/factory profile/Profile)))
 
 (defsc Root [_ _]
   {:query []}
@@ -78,5 +80,6 @@
                            :route/reset-password (@reset-pw-factory)
                            :route/verify (@verify-factory)
                            :route/home (@home-factory)
+                           :route/profile (@profile-factory)
                            (div {:className "flex items-center justify-center h-64"}
                              (p {:className "text-gray-500"} "Loading...")))))))

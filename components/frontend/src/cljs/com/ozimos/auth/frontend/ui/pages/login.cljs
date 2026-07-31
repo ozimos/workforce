@@ -13,6 +13,9 @@
                    (do
                      (.setItem js/localStorage "access-token" (:access-token body))
                      (.setItem js/localStorage "refresh-token" (:refresh-token body))
+                     (when-let [u (:user body)]
+                       (when (:email u) (.setItem js/localStorage "email" (:email u)))
+                       (when (:username u) (.setItem js/localStorage "username" (:username u))))
                      (set! js/window.location.pathname "/"))
                    (comp/set-state! this {:error-msg (or (-> body :errors :credentials first)
                                                          "Invalid email/username or password")})))))))

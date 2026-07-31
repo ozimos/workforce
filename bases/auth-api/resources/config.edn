@@ -19,12 +19,15 @@
  {:rama #ig/ref :rama/cluster
   :interval-ms 300000}
 
+ :router/ring
+ {:rama #ig/ref :rama/cluster
+  :token-encoder #ig/ref :token/encoder
+  :token-decoder #ig/ref :token/decoder}
+
  :adapter/jetty
  {:port #profile {:dev #or [#env JETTY_DEV_PORT 8080]
                   :test #or [#env JETTY_TEST_PORT 8081]
                   :prod #or [#env JETTY_PROD_PORT 8080]}
   :host "0.0.0.0"
   :filter-chain-proxy #ig/ref :security/app-context
-  :rama #ig/ref :rama/cluster
-  :token-encoder #ig/ref :token/encoder
-  :token-decoder #ig/ref :token/decoder}}
+  :handler #ig/ref :router/ring}}

@@ -12,67 +12,76 @@
    [reitit.ring.middleware.parameters :as parameters]
    [ring.middleware.resource :refer [wrap-resource]]))
 
+(defn wrap-inject-system
+  "Reitit compile-time middleware that injects `system` into every incoming request map as `:system`."
+  [system]
+  {:name ::inject-system
+   :compile (fn [_ _]
+              (fn [handler]
+                (fn [request]
+                  (handler (assoc request :system system)))))})
+
 (defn router
   "Build the reitit router with all auth routes.
-   `deps` contains component instances needed by handlers.
-   For Milestone B, deps is a map with :echo? true to use echo handlers."
+   `deps` contains component instances needed by handlers."
   [deps]
   (ring/router
     [["/api"
       ["/auth"
        ["/register"
         {:post {:summary "Register a new user"
-                         :parameters {:body reg-schema/register-request}
-                         :handler (handlers/register deps)
-                         :responses {201 {:body [:map [:id int?] [:username {:optional true} :string] [:email :string] [:verified boolean?]]}
-                                     409 {:body [:map [:errors [:map]]]}}}}]
+                :parameters {:body reg-schema/register-request}
+                :handler handlers/register
+                :responses {201 {:body [:map [:id int?] [:username {:optional true} :string] [:email :string] [:verified boolean?]]}
+                            409 {:body [:map [:errors [:map]]]}}}}]
        ["/login"
         {:post {:summary "Login with email/username and password"
                 :parameters {:body reg-schema/login-request}
-                :handler (handlers/login deps)
+                :handler handlers/login
                 :responses {200 {:body [:map [:access-token :string] [:refresh-token :string] [:expires-in int?]]}
                             401 {:body [:map [:errors [:map]]]}}}}]
        ["/refresh"
         {:post {:summary "Refresh access token"
                 :parameters {:body reg-schema/refresh-request}
-                :handler (handlers/refresh deps)
+                :handler handlers/refresh
                 :responses {200 {:body [:map [:access-token :string] [:refresh-token :string] [:expires-in int?]]}
                             401 {:body [:map [:errors [:map]]]}}}}]
        ["/logout"
         {:post {:summary "Logout (revoke current session)"
-                :handler (handlers/logout deps)
+                :handler handlers/logout
                 :responses {200 {:body [:map [:message :string]]}}}}]
        ["/logout-everywhere"
         {:post {:summary "Logout from all devices"
-                :handler (handlers/logout-everywhere deps)
+                :handler handlers/logout-everywhere
                 :responses {200 {:body [:map [:message :string]]}}}}]
        ["/verify"
         {:post {:summary "Verify account with token"
                 :parameters {:body reg-schema/verify-request}
-                :handler (handlers/verify deps)
+                :handler handlers/verify
                 :responses {200 {:body [:map [:message :string]]}
                             400 {:body [:map [:errors [:map]]]}}}}]
        ["/forgot-password"
         {:post {:summary "Request password reset email"
                 :parameters {:body reg-schema/forgot-password-request}
-                :handler (handlers/forgot-password deps)
+                :handler handlers/forgot-password
                 :responses {200 {:body [:map [:message :string]]}}}}]
        ["/reset-password"
         {:post {:summary "Reset password with token"
                 :parameters {:body reg-schema/reset-password-request}
-                :handler (handlers/reset-password deps)
+                :handler handlers/reset-password
                 :responses {200 {:body [:map [:message :string]]}
                             400 {:body [:map [:errors [:map]]]}}}}]]
       ["/query"
        {:post {:summary "Pathom query endpoint (app logic)"
-               :handler (handlers/query deps)
+               :handler handlers/query
                :responses {200 {:body [:map [:ok boolean?] [:query :any]]}}}}]
       ["/health"
        {:get {:summary "Health check"
               :handler handlers/health}}]]]
     {:data {:muuntaja m/instance
             :coercion rcm/coercion
-            :middleware [parameters/parameters-middleware
+            :middleware [(wrap-inject-system deps)
+                         parameters/parameters-middleware
                          muuntaja/format-negotiate-middleware
                          muuntaja/format-response-middleware
                          (exception/create-exception-middleware
