@@ -9,18 +9,23 @@
     (comp/set-state! this {:error-msg nil :success-msg nil :loading true})
     (let [token (when (exists? js/localStorage) (.getItem js/localStorage "access-token"))
           headers {"Content-Type" "application/json"
-                   "Authorization" (str "Bearer " token)}]
-      (-> (json/fetch-json "/api/auth/profile/username" "POST" {:new-username new-username} headers)
+                   "Authorization" (str "Bearer " token)}
+          eql [(list 'user/update-username {:user/new-username new-username})]]
+      (-> (json/fetch-json "/api/query" "POST" {:eql (pr-str eql)} headers)
           (.then (fn [{:keys [status body]}]
-                   (if (= 200 status)
-                     (do
-                       (.setItem js/localStorage "username" (:username body))
+                   (let [res (get-in body [:data 'user/update-username])
+                         errs (:user/errors res)]
+                     (if (and (= 200 status) res (not errs))
+                       (do
+                         (when-let [uname (:current-user/username res)]
+                           (.setItem js/localStorage "username" uname))
+                         (comp/set-state! this
+                           {:new-username "" :success-msg "Username updated!" :error-msg nil :loading false}))
                        (comp/set-state! this
-                         {:new-username "" :success-msg "Username updated!" :error-msg nil :loading false}))
-                     (comp/set-state! this
-                       {:error-msg (or (-> body :errors :new-username first)
-                                       "Failed to update username")
-                        :loading false}))))))))
+                         {:error-msg (or (-> errs :new-username first)
+                                         (-> body :errors :auth first)
+                                         "Failed to update username")
+                          :loading false})))))))))
 
 (defsc Profile [this _props]
   {:query [:new-username :error-msg :success-msg :loading]
