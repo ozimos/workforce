@@ -4,7 +4,8 @@
    [clojure.test :refer [deftest is testing use-fixtures]]
    [com.ozimos.auth.auth-api.test-system :as ts]
    [hato.client :as http]
-   [jsonista.core :as json]))
+   [jsonista.core :as json]
+   [muuntaja.core :as m]))
 
 (def ^:dynamic *sys* nil)
 (def ^:dynamic *base-url* nil)
@@ -37,6 +38,11 @@
 (defn- auth-header [token]
   {"authorization" (str "Bearer " token)})
 
+(defn- parse-ring-response [resp]
+  (if (instance? java.io.InputStream (:body resp))
+    (update resp :body m/decode-response-body)
+    resp))
+
 (defn- post-edn
   "Executes an in-memory Ring request against (:router/ring *sys*) using EDN format negotiation.
    Returns the response map with parsed native Clojure data in `:body`."
@@ -51,7 +57,7 @@
                               headers)
               :body-params body-params}
          resp (handler req)]
-     resp)))
+     (parse-ring-response resp))))
 
 (defn- get-edn
   "Executes an in-memory Ring GET request against (:router/ring *sys*) using EDN format negotiation."
@@ -64,7 +70,7 @@
               :headers (merge {"accept" "application/edn"}
                               headers)}
          resp (handler req)]
-     resp)))
+     (parse-ring-response resp))))
 
 (defn- query-eql
   "Send an EQL query to the /api/query endpoint in-memory."
