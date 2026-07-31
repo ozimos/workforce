@@ -168,8 +168,10 @@
   [{:keys [body-params system] :as request}]
   (let [{:keys [token-decoder]} system
         base-env (or (:pathom-env system) (pathom/build-env system))
-        query (or (:query body-params)
-                  (some-> (:eql body-params) edn/read-string))
+        query (cond
+                (:query body-params) (:query body-params)
+                (string? (:eql body-params)) (edn/read-string (:eql body-params))
+                :else (:eql body-params))
         auth-user (get-auth-user request token-decoder)
         auth (when auth-user {:user-id (:user-id auth-user)})
         env (if auth
