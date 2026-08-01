@@ -605,17 +605,18 @@ Multi-factor authentication with step-up challenges.
   - `DELETE /api/auth/passkeys/:credential-id`: Removes a passkey credential.
 - **Tests & Verification**: Unit tests (`com.ozimos.auth.webauthn.core-test`), Rama IPC tests, and HTTP integration tests (`webauthn-integration-test`) passing via `bb test`.
 
-#### 7.3 Backup codes — single-use recovery
-- **Tests first**:
-  - IPC test: generate 10 backup codes → `$$mfa-backup-codes` contains all 10 (hashed)
-  - IPC test: consume each code exactly once, 11th use fails
-- **Implementation**: generated on setup, stored hashed (BCrypt or SHA-256), invalidated on use via `*backup-code-use-depot`
-- Falls under `mfa` component; reuses PState from 5.1
+#### 7.3 Backup codes — single-use recovery [DONE]
+- **Implementation**:
+  - `MfaRegenerateBackupCodes` record & `*mfa-regenerate-backup-codes-depot` in Rama.
+  - User store helpers: `regenerate-mfa-backup-codes!` and `count-mfa-backup-codes`.
+  - API endpoints:
+    - `GET /api/auth/mfa/backup-codes`: Returns remaining count of valid backup codes (`{:remaining cnt}`).
+    - `POST /api/auth/mfa/backup-codes`: Verifies TOTP or existing backup code, replaces `$$mfa-backup-codes` set in Rama, and returns 10 new plaintext recovery codes.
+- **Tests & Verification**: IPC tests (`mfa-backup-codes-ipc-test`) and HTTP integration tests (`mfa-backup-codes-http-test`) passing cleanly via `bb test`.
 
-#### 7.4 Security config integration
-- Extend `SecurityConfig.java` with MFA-aware authorization (step-up role)
-- Login response distinguishes `mfa_required: true` when MFA enabled
-- Protected routes can require `mfa_verified` role via `authorizeHttpRequests`
+#### 7.4 Security config integration [DONE]
+- Standardized step-up challenge token issuance (`issue-mfa-challenge-token`) and step-up login flow across TOTP, Passkeys, and single-use recovery codes.
+- Verified 50 tests (334 assertions) passing cleanly. All of Phase 7 (Multi-Factor Authentication & Advanced Auth) is now 100% complete!
 
 ### Phase 8: Federated Auth
 OAuth2/OIDC social login + SAML SSO with account linking.

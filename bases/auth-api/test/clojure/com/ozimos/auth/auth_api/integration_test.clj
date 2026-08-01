@@ -530,3 +530,44 @@
       (testing "Step 4: DELETE /api/auth/passkeys/:id removes passkey"
         (let [del-resp (delete-edn "/api/auth/passkeys/nonexistent-id" (auth-header token))]
           (is (= 200 (:status del-resp))))))))
+
+(deftest ^:integration mfa-backup-codes-http-test
+  (testing "MFA Backup Codes status and regeneration HTTP flow"
+    (let [user (random-user)
+          _ (post-edn "/api/auth/register" user)
+          login-resp (post-edn "/api/auth/login" {:identifier (:username user) :password (:password user)})
+          token (get-in login-resp [:body :access-token])
+
+          ;; Setup MFA
+          setup-resp (post-edn "/api/auth/mfa/setup" {} (auth-header token))
+          secret (get-in setup-resp [:body :secret])
+          backup-codes (get-in setup-resp [:body :backup-codes])
+          curr-step (quot (quot (System/currentTimeMillis) 1000) 30)
+          totp (mfa/calculate-totp secret curr-step)
+          _ (post-edn "/api/auth/mfa/verify-setup" {:code totp} (auth-header token))]
+
+      (testing "Step 1: GET /api/auth/mfa/backup-codes returns 10 initial codes count"
+        (let [status-resp (get-edn "/api/auth/mfa/backup-codes" (auth-header token))]
+          (is (= 200 (:status status-resp)))
+          (is (= 10 (get-in status-resp [:body :remaining])))))
+
+      (testing "Step 2: Consume 1 backup code via 2FA login -> count decreases to 9"
+        (let [login-resp2 (post-edn "/api/auth/login" {:identifier (:username user) :password (:password user)})
+              mfa-token (get-in login-resp2 [:body :mfa-token])
+              code (first backup-codes)
+              mfa-login (post-edn "/api/auth/mfa/login" {:mfa-token mfa-token :code code})
+              _ (is (= 200 (:status mfa-login)))
+              status-resp2 (get-edn "/api/auth/mfa/backup-codes" (auth-header token))]
+          (is (= 200 (:status status-resp2)))
+          (is (= 9 (get-in status-resp2 [:body :remaining])))))
+
+      (testing "Step 3: Regenerate backup codes with valid TOTP code"
+        (let [new-step (quot (quot (System/currentTimeMillis) 1000) 30)
+              new-totp (mfa/calculate-totp secret new-step)
+              regen-resp (post-edn "/api/auth/mfa/backup-codes" {:code new-totp} (auth-header token))
+              new-codes (get-in regen-resp [:body :backup-codes])]
+          (is (= 200 (:status regen-resp)))
+          (is (= 10 (count new-codes)))
+          (is (not= backup-codes new-codes))
+          (let [status-resp3 (get-edn "/api/auth/mfa/backup-codes" (auth-header token))]
+            (is (= 10 (get-in status-resp3 [:body :remaining])))))))))

@@ -293,6 +293,31 @@
         {:status 400 :body {:errors {:code ["Invalid 6-digit TOTP code or backup code"]}}}))
     {:status 401 :body {:errors {:auth ["Not authenticated"]}}}))
 
+(defn mfa-backup-codes-status
+  [{:keys [system] :as request}]
+  (if-let [auth-user (get-auth-user request (:token-decoder system))]
+    (let [cnt (user/count-mfa-backup-codes system (:user-id auth-user))]
+      {:status 200 :body {:remaining cnt}})
+    {:status 401 :body {:errors {:auth ["Not authenticated"]}}}))
+
+(defn mfa-backup-codes-regenerate
+  [{:keys [body-params system] :as request}]
+  (if-let [auth-user (get-auth-user request (:token-decoder system))]
+    (let [{:keys [code]} body-params
+          user-id (:user-id auth-user)
+          encrypted-secret (user/get-mfa-secret system user-id)
+          secret (when encrypted-secret (mfa/decrypt-secret encrypted-secret))
+          backup-hashes (user/get-mfa-backup-codes system user-id)
+          totp-valid? (and secret (mfa/verify-totp secret code))
+          matching-backup-hash (when (and (not totp-valid?) (seq backup-hashes))
+                                 (mfa/verify-backup-code code backup-hashes))]
+      (if (or totp-valid? matching-backup-hash)
+        (let [{:keys [plaintext hashes]} (mfa/generate-backup-codes)]
+          (user/regenerate-mfa-backup-codes! system user-id hashes)
+          {:status 200 :body {:backup-codes plaintext}})
+        {:status 400 :body {:errors {:code ["Invalid 6-digit TOTP code or backup code"]}}}))
+    {:status 401 :body {:errors {:auth ["Not authenticated"]}}}))
+
 (defn passkey-register-begin
   [{:keys [system] :as request}]
   (if-let [auth-user (get-auth-user request (:token-decoder system))]

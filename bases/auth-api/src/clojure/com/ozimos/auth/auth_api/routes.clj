@@ -86,7 +86,13 @@
         ["/disable"
          {:post {:summary "Disable MFA using TOTP or backup code"
                  :parameters {:body reg-schema/mfa-disable-request}
-                 :handler handlers/mfa-disable}}]]
+                 :handler handlers/mfa-disable}}]
+        ["/backup-codes"
+         {:get {:summary "Get remaining backup codes count"
+                :handler handlers/mfa-backup-codes-status}
+          :post {:summary "Regenerate 10 new backup codes (requires valid TOTP or backup code)"
+                 :parameters {:body reg-schema/mfa-disable-request}
+                 :handler handlers/mfa-backup-codes-regenerate}}]]
        ["/passkeys"
         [""
          {:get {:summary "List user registered passkeys"
