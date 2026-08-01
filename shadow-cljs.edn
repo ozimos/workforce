@@ -1,4 +1,4 @@
-{:source-paths ["components/frontend/src/cljs"]
+{:source-paths ["components/frontend/src/cljs" "components/frontend/test/cljs"]
  :dependencies [[com.fulcrologic/fulcro "3.9.5"]]
  :builds {:app {:target :browser
                 :output-dir "bases/auth-api/resources/public/js"
@@ -11,4 +11,8 @@
                 :output-to "ssr-output/ssr.js"
                 :exports {:render-page-html com.ozimos.auth.frontend.ssr/render-page-html}
                 :compiler {:external-json-modules? true}
-                :modules {:ssr {:entries [com.ozimos.auth.frontend.ssr]}}}}}
+                :modules {:ssr {:entries [com.ozimos.auth.frontend.ssr]}}}
+          :test {:target :node-test
+                 :output-to "target/frontend-test.js"
+                 :main com.ozimos.auth.frontend.test-runner/main
+                 :autorun true}}}

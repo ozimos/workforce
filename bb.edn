@@ -19,6 +19,7 @@
   fe-watch     (shell "pnpm" "exec" "shadow-cljs" "watch" "app")
   fe-ssr       (shell "pnpm" "exec" "shadow-cljs" "compile" "ssr")
   fe-ssr-watch (shell "pnpm" "exec" "shadow-cljs" "watch" "ssr")
+  fe-test      (shell "pnpm" "exec" "shadow-cljs" "compile" "test")
   ssr-dev      (do (shell "pnpm" "exec" "shadow-cljs" "watch" "ssr")
                    (shell "node" "ssr-server/server.js"))
   ssr-start    (shell "node" "ssr-server/server.js")
