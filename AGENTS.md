@@ -14,6 +14,14 @@ use the ?<- macro to test expressions in the repl
 
 docs on rama clojure api can be found at https://redplanetlabs.com/clojuredoc/com.rpl.rama.html
 
+do not write code like this
+
+```(or (get-in body [:data :user/update-username])
+                                 (get-in body [:data 'user/update-username])
+                                 (get-in body [:data "user/update-username"]))```
+
+identify the particular path that the data actually flows in (if necessary by using the repl) and then only include that path
+
 ## Frontend / SSR topology
 
 Jetty (:8080) is the **primary** server: serves `/api/*` and the SPA (static
