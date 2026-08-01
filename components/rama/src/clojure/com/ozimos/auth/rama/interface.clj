@@ -48,3 +48,6 @@
 (def ->OrgSwitch com.ozimos.auth.rama.module/->OrgSwitch)
 (def ->OrgMemberUpdate com.ozimos.auth.rama.module/->OrgMemberUpdate)
 (def ->OrgMemberRemove com.ozimos.auth.rama.module/->OrgMemberRemove)
+(def ->MfaSetup com.ozimos.auth.rama.module/->MfaSetup)
+(def ->MfaDisable com.ozimos.auth.rama.module/->MfaDisable)
+(def ->MfaConsumeBackupCode com.ozimos.auth.rama.module/->MfaConsumeBackupCode)

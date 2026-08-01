@@ -16,6 +16,9 @@
 (defrecord ClearRevocation [jti])
 (defrecord ResetToken [token user-id expires-at])
 (defrecord ClearResetToken [token])
+(defrecord MfaSetup [user-id encrypted-secret backup-code-hashes])
+(defrecord MfaDisable [user-id])
+(defrecord MfaConsumeBackupCode [user-id code-hash])
 
 (defrecord OrgCreate [uuid name owner-user-id created-at])
 (defrecord OrgInvite [invitation-id org-id email role invited-by created-at expires-at])
@@ -37,6 +40,9 @@
   (declare-depot setup *clear-revocation-depot (hash-by :jti))
   (declare-depot setup *reset-token-depot (hash-by :token))
   (declare-depot setup *clear-reset-token-depot (hash-by :token))
+  (declare-depot setup *mfa-setup-depot (hash-by :user-id))
+  (declare-depot setup *mfa-disable-depot (hash-by :user-id))
+  (declare-depot setup *mfa-consume-backup-code-depot (hash-by :user-id))
   (declare-depot setup *org-create-depot (hash-by :owner-user-id))
   (declare-depot setup *org-invite-depot (hash-by :org-id))
   (declare-depot setup *org-join-depot (hash-by :user-id))
@@ -70,6 +76,14 @@
                     {String Long})
     (declare-pstate s $$reset-tokens
                     {String (fixed-keys-schema {:user-id Long :expires-at Long})})
+
+    ;; MFA: user-id -> encrypted TOTP secret
+    (declare-pstate s $$mfa-secrets {Long String})
+    ;; MFA: user-id -> boolean flag
+    (declare-pstate s $$mfa-enabled {Long Boolean})
+    ;; MFA: user-id -> set of hashed backup codes
+    (declare-pstate s $$mfa-backup-codes
+                    {Long (set-schema String {:subindex? true})})
 
     ;; Organizations: org-id -> {name, owner-user-id, created-at}
     (declare-pstate s $$orgs
@@ -229,6 +243,24 @@
                  ;; Clear reset token
                  (source> *clear-reset-token-depot :> {:keys [*token]})
                  (local-transform> [(keypath *token) NONE>] $$reset-tokens)
+
+                 ;; MFA setup & enable
+                 (source> *mfa-setup-depot :> {:keys [*user-id *encrypted-secret *backup-code-hashes]})
+                 (local-transform> [(keypath *user-id) (termval *encrypted-secret)] $$mfa-secrets)
+                 (local-transform> [(keypath *user-id) (termval true)] $$mfa-enabled)
+                 (local-transform> [(keypath *user-id) NONE>] $$mfa-backup-codes)
+                 (ops/explode *backup-code-hashes :> *code-hash)
+                 (local-transform> [(keypath *user-id) NONE-ELEM (termval *code-hash)] $$mfa-backup-codes)
+
+                 ;; MFA disable
+                 (source> *mfa-disable-depot :> {:keys [*user-id]})
+                 (local-transform> [(keypath *user-id) NONE>] $$mfa-secrets)
+                 (local-transform> [(keypath *user-id) (termval false)] $$mfa-enabled)
+                 (local-transform> [(keypath *user-id) NONE>] $$mfa-backup-codes)
+
+                 ;; Consume backup code
+                 (source> *mfa-consume-backup-code-depot :> {:keys [*user-id *code-hash]})
+                 (local-transform> [(keypath *user-id) NONE-ELEM (termval *code-hash)] $$mfa-backup-codes)
 
                 ;; Organization creation
                 (source> *org-create-depot :> {:keys [*uuid *name *owner-user-id *created-at]})

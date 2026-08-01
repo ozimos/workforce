@@ -320,3 +320,48 @@
         mod-name (rama/module-name)
         memberships (rama/pstate cmgr mod-name "$$memberships")]
     (safe-select-one (keypath user-id org-id) memberships)))
+
+;; --- MFA Functions ---
+
+(defn mfa-enabled? [{:keys [rama] :as deps} user-id]
+  (let [cmgr (:cluster-manager rama)
+        mod-name (rama/module-name)
+        mfa-enabled-pstate (rama/pstate cmgr mod-name "$$mfa-enabled")]
+    (true? (safe-select-one (keypath user-id) mfa-enabled-pstate))))
+
+(defn setup-mfa! [{:keys [rama] :as deps} user-id encrypted-secret backup-code-hashes]
+  (let [cmgr (:cluster-manager rama)
+        mod-name (rama/module-name)
+        setup-depot (rama/depot cmgr mod-name "*mfa-setup-depot")]
+    (ramaapi/foreign-append! setup-depot
+      (rama/->MfaSetup user-id encrypted-secret backup-code-hashes))
+    true))
+
+(defn disable-mfa! [{:keys [rama] :as deps} user-id]
+  (let [cmgr (:cluster-manager rama)
+        mod-name (rama/module-name)
+        disable-depot (rama/depot cmgr mod-name "*mfa-disable-depot")]
+    (ramaapi/foreign-append! disable-depot
+      (rama/->MfaDisable user-id))
+    true))
+
+(defn get-mfa-secret [{:keys [rama] :as deps} user-id]
+  (let [cmgr (:cluster-manager rama)
+        mod-name (rama/module-name)
+        mfa-secrets (rama/pstate cmgr mod-name "$$mfa-secrets")]
+    (safe-select-one (keypath user-id) mfa-secrets)))
+
+(defn get-mfa-backup-codes [{:keys [rama] :as deps} user-id]
+  (let [cmgr (:cluster-manager rama)
+        mod-name (rama/module-name)
+        mfa-backup-codes (rama/pstate cmgr mod-name "$$mfa-backup-codes")
+        codes (ramaapi/foreign-select [(keypath user-id) ALL] mfa-backup-codes)]
+    (set codes)))
+
+(defn consume-mfa-backup-code! [{:keys [rama] :as deps} user-id code-hash]
+  (let [cmgr (:cluster-manager rama)
+        mod-name (rama/module-name)
+        consume-depot (rama/depot cmgr mod-name "*mfa-consume-backup-code-depot")]
+    (ramaapi/foreign-append! consume-depot
+      (rama/->MfaConsumeBackupCode user-id code-hash))
+    true))

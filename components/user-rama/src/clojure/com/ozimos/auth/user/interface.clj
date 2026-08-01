@@ -140,3 +140,33 @@
    Returns {:role :status :joined-at} or nil."
   [deps user-id org-id]
   (core/get-membership deps user-id org-id))
+
+(defn mfa-enabled?
+  "Check if MFA is enabled for a user."
+  [deps user-id]
+  (core/mfa-enabled? deps user-id))
+
+(defn setup-mfa!
+  "Setup MFA for a user with encrypted secret and backup code hashes."
+  [deps user-id encrypted-secret backup-code-hashes]
+  (core/setup-mfa! deps user-id encrypted-secret backup-code-hashes))
+
+(defn disable-mfa!
+  "Disable MFA for a user."
+  [deps user-id]
+  (core/disable-mfa! deps user-id))
+
+(defn get-mfa-secret
+  "Get a user's encrypted MFA secret string."
+  [deps user-id]
+  (core/get-mfa-secret deps user-id))
+
+(defn get-mfa-backup-codes
+  "Get a user's set of hashed backup codes."
+  [deps user-id]
+  (core/get-mfa-backup-codes deps user-id))
+
+(defn consume-mfa-backup-code!
+  "Remove a used backup code hash."
+  [deps user-id code-hash]
+  (core/consume-mfa-backup-code! deps user-id code-hash))
