@@ -17,10 +17,11 @@
     (catch :default e
       (js/console.error "Fulcro remount failed:" e))))
 
-(.addEventListener js/window "error"
-  (fn [e] (js/console.error "Uncaught error:" (.-error e) (.-message e))))
+(when (exists? js/window)
+  (.addEventListener js/window "error"
+    (fn [e] (js/console.error "Uncaught error:" (.-error e) (.-message e))))
 
-(.addEventListener js/window "unhandledrejection"
-  (fn [e] (js/console.error "Unhandled rejection:" (.-reason e))))
+  (.addEventListener js/window "unhandledrejection"
+    (fn [e] (js/console.error "Unhandled rejection:" (.-reason e))))
 
-(init)
+  (init))

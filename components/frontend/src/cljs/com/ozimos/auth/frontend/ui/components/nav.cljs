@@ -27,12 +27,21 @@
                        (.setItem js/localStorage "username" u))
                      (comp/set-state! this {:fetched true}))))))))
 
+(defn uncompleted-steps-count
+  "Calculate uncompleted security steps for a user map."
+  [user]
+  (if (get user :user/mfa-enabled? false)
+    0
+    1))
+
 (defsc NavBar [this _props]
   {:query [:fetched]
    :initial-state {:fetched false}
    :componentDidMount (fn [this] (fetch-user-info! this))}
   (let [email (and (exists? js/localStorage) (.getItem js/localStorage "email"))
         username (and (exists? js/localStorage) (.getItem js/localStorage "username"))
+        mfa-enabled? (and (exists? js/localStorage) (= "true" (.getItem js/localStorage "mfa-enabled")))
+        uncompleted-count (uncompleted-steps-count {:user/mfa-enabled? mfa-enabled?})
         effective-username (if (seq username) username "_")
         label (if (seq email)
                 (str email " | " effective-username)
@@ -56,7 +65,11 @@
                 (dom/path {:strokeLinecap "round"
                            :strokeLinejoin "round"
                            :d "M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z"}))
-              label)
+              label
+              (when (> uncompleted-count 0)
+                (dom/span {:id "security-steps-badge"
+                           :className "inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 ml-1"}
+                  (str uncompleted-count))))
             (button {:onClick logout
                      :className "rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-700 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50"}
               "Log out")))))))
