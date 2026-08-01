@@ -3,6 +3,7 @@
    [clojure.string :as string]
    [clojure.test :refer [deftest is testing use-fixtures]]
    [com.ozimos.auth.auth-api.test-system :as ts]
+   [com.ozimos.auth.mfa.interface :as mfa]
    [hato.client :as http]
    [jsonista.core :as json]
    [muuntaja.core :as m]))
@@ -421,3 +422,80 @@
                   result (get-in retry-resp [:body :data :user/update-username])]
               (is (= 200 (:status retry-resp)))
               (is (= "refreshed-uname" (:current-user/username result))))))))))
+
+(deftest ^:integration totp-mfa-integration-test
+  (testing "Full TOTP MFA lifecycle: setup -> verify-setup -> login step-up -> 2FA challenge verify -> backup code fallback -> disable"
+    (let [user (random-user)
+          _ (post-edn "/api/auth/register" user)
+          login-resp1 (post-edn "/api/auth/login" {:identifier (:username user) :password (:password user)})
+          token1 (get-in login-resp1 [:body :access-token])]
+      (is (string? token1) "initial login returns access-token")
+
+      (testing "Step 1: POST /api/auth/mfa/setup returns secret, QR URL, and backup codes"
+        (let [setup-resp (post-edn "/api/auth/mfa/setup" {} (auth-header token1))
+              body (:body setup-resp)
+              secret (:secret body)
+              backup-codes (:backup-codes body)]
+          (is (= 200 (:status setup-resp)))
+          (is (string? secret))
+          (is (string/includes? (:otpauth-url body) "otpauth://totp/"))
+          (is (= 10 (count backup-codes)))
+
+          (testing "Step 2: POST /api/auth/mfa/verify-setup with invalid code fails"
+            (let [bad-verify (post-edn "/api/auth/mfa/verify-setup" {:code "000000"} (auth-header token1))]
+              (is (= 400 (:status bad-verify)))))
+
+          (testing "Step 3: POST /api/auth/mfa/verify-setup with valid code enables MFA"
+            (let [curr-step (quot (quot (System/currentTimeMillis) 1000) 30)
+                  valid-code (mfa/calculate-totp secret curr-step)
+                  good-verify (post-edn "/api/auth/mfa/verify-setup" {:code valid-code} (auth-header token1))]
+              (is (= 200 (:status good-verify)))
+              (is (= "MFA enabled successfully" (get-in good-verify [:body :message])))))
+
+          (testing "Step 4: Subsequent POST /api/auth/login triggers 2FA step-up challenge"
+            (let [login-resp2 (post-edn "/api/auth/login" {:identifier (:username user) :password (:password user)})
+                  body2 (:body login-resp2)
+                  mfa-token (:mfa-token body2)]
+              (is (= 200 (:status login-resp2)))
+              (is (true? (:mfa-required body2)))
+              (is (string? mfa-token))
+
+              (testing "Step 5: POST /api/auth/mfa/login with wrong code returns 401"
+                (let [bad-login (post-edn "/api/auth/mfa/login" {:mfa-token mfa-token :code "123456"})]
+                  (is (= 401 (:status bad-login)))))
+
+              (testing "Step 6: POST /api/auth/mfa/login with valid TOTP code completes login"
+                (let [curr-step (quot (quot (System/currentTimeMillis) 1000) 30)
+                      valid-code (mfa/calculate-totp secret curr-step)
+                      good-mfa-login (post-edn "/api/auth/mfa/login" {:mfa-token mfa-token :code valid-code})
+                      body3 (:body good-mfa-login)]
+                  (is (= 200 (:status good-mfa-login)))
+                  (is (string? (:access-token body3)))
+                  (is (string? (:refresh-token body3)))))
+
+              (testing "Step 7: Login using a single-use backup code"
+                (let [login-resp3 (post-edn "/api/auth/login" {:identifier (:username user) :password (:password user)})
+                      mfa-token3 (get-in login-resp3 [:body :mfa-token])
+                      backup-code (first backup-codes)
+                      backup-login (post-edn "/api/auth/mfa/login" {:mfa-token mfa-token3 :code backup-code})]
+                  (is (= 200 (:status backup-login)))
+                  (is (string? (get-in backup-login [:body :access-token])))))
+
+              (testing "Step 8: Re-using the same backup code fails"
+                (let [login-resp4 (post-edn "/api/auth/login" {:identifier (:username user) :password (:password user)})
+                      mfa-token4 (get-in login-resp4 [:body :mfa-token])
+                      backup-code (first backup-codes)
+                      reuse-login (post-edn "/api/auth/mfa/login" {:mfa-token mfa-token4 :code backup-code})]
+                  (is (= 401 (:status reuse-login)))))
+
+              (testing "Step 9: Disable MFA"
+                (let [curr-step (quot (quot (System/currentTimeMillis) 1000) 30)
+                      valid-code (mfa/calculate-totp secret curr-step)
+                      disable-resp (post-edn "/api/auth/mfa/disable" {:code valid-code} (auth-header token1))]
+                  (is (= 200 (:status disable-resp)))
+                  (is (= "MFA disabled successfully" (get-in disable-resp [:body :message])))))
+
+              (testing "Step 10: Regular login works directly after disabling MFA"
+                (let [normal-login (post-edn "/api/auth/login" {:identifier (:username user) :password (:password user)})]
+                  (is (= 200 (:status normal-login)))
+                  (is (string? (get-in normal-login [:body :access-token]))))))))))))

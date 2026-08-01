@@ -1,6 +1,7 @@
 (ns com.ozimos.auth.auth-api.handlers
   (:require
    [clojure.edn :as edn]
+   [com.ozimos.auth.mfa.interface :as mfa]
    [com.ozimos.auth.pathom.interface :as pathom]
    [com.ozimos.auth.revocation.interface :as revocation]
    [com.ozimos.auth.schema.interface :as schema]
@@ -55,27 +56,32 @@
              (user/matches-password? system password (:pwd-hash user-record)))
       (let [issuer "com.ozimos.auth"
             sub (str (:id user-record))
-            roles (:roles user-record)
-            active-org-id (user/get-active-org system (:id user-record))
-            active-org-role (when active-org-id
-                              (:role (user/get-membership system (:id user-record) active-org-id)))
-            access-jti (str (random-uuid))
-            refresh-jti (str (random-uuid))
-            access-ttl 900
-            refresh-ttl 604800
-            access-token (if (and active-org-id active-org-role)
-                           (token/issue-access-token encoder issuer sub roles access-jti access-ttl active-org-id active-org-role)
-                           (token/issue-access-token encoder issuer sub roles access-jti access-ttl))
-            refresh-token (token/issue-refresh-token encoder issuer sub refresh-jti refresh-ttl)
-            expires-at (+ (System/currentTimeMillis) (* refresh-ttl 1000))]
-        (session/create! system (:id user-record) access-jti expires-at)
-        {:status 200
-         :body {:access-token access-token
-                :refresh-token refresh-token
-                :expires-in access-ttl
-                :user {:id (:id user-record)
-                       :username (:username user-record)
-                       :email (:email user-record)}}})
+            roles (:roles user-record)]
+        (if (user/mfa-enabled? system (:id user-record))
+          (let [mfa-token (token/issue-mfa-challenge-token encoder issuer sub 300)]
+            {:status 200
+             :body {:mfa-required true
+                    :mfa-token mfa-token}})
+          (let [active-org-id (user/get-active-org system (:id user-record))
+                active-org-role (when active-org-id
+                                  (:role (user/get-membership system (:id user-record) active-org-id)))
+                access-jti (str (random-uuid))
+                refresh-jti (str (random-uuid))
+                access-ttl 900
+                refresh-ttl 604800
+                access-token (if (and active-org-id active-org-role)
+                               (token/issue-access-token encoder issuer sub roles access-jti access-ttl active-org-id active-org-role)
+                               (token/issue-access-token encoder issuer sub roles access-jti access-ttl))
+                refresh-token (token/issue-refresh-token encoder issuer sub refresh-jti refresh-ttl)
+                expires-at (+ (System/currentTimeMillis) (* refresh-ttl 1000))]
+            (session/create! system (:id user-record) access-jti expires-at)
+            {:status 200
+             :body {:access-token access-token
+                    :refresh-token refresh-token
+                    :expires-in access-ttl
+                    :user {:id (:id user-record)
+                           :username (:username user-record)
+                           :email (:email user-record)}}})))
       {:status 401
        :body {:errors {:credentials ["Invalid username/email or password"]}}})))
 
@@ -189,6 +195,101 @@
             {:status 400 :body {:errors {:query [(.getMessage e)]}}})))
       (catch Exception e
         {:status 400 :body {:errors {:query [(.getMessage e)]}}}))))
+
+(defn mfa-setup
+  [{:keys [system] :as request}]
+  (if-let [auth-user (get-auth-user request (:token-decoder system))]
+    (let [user-record (user/find-by-id system (:user-id auth-user))
+          secret (mfa/generate-secret)
+          encrypted-secret (mfa/encrypt-secret secret)
+          {:keys [plaintext hashes]} (mfa/generate-backup-codes)
+          otpauth-url (mfa/generate-otpauth-url secret (:email user-record) "BestAuth")]
+      (user/setup-mfa! system (:user-id auth-user) encrypted-secret hashes)
+      {:status 200
+       :body {:secret secret
+              :otpauth-url otpauth-url
+              :backup-codes plaintext}})
+    {:status 401 :body {:errors {:auth ["Not authenticated"]}}}))
+
+(defn mfa-verify-setup
+  [{:keys [body-params system] :as request}]
+  (if-let [auth-user (get-auth-user request (:token-decoder system))]
+    (let [{:keys [code]} body-params
+          encrypted-secret (user/get-mfa-secret system (:user-id auth-user))]
+      (if (and encrypted-secret
+               (let [secret (mfa/decrypt-secret encrypted-secret)]
+                 (mfa/verify-totp secret code)))
+        {:status 200 :body {:message "MFA enabled successfully"}}
+        {:status 400 :body {:errors {:code ["Invalid 6-digit TOTP code"]}}}))
+    {:status 401 :body {:errors {:auth ["Not authenticated"]}}}))
+
+(defn mfa-login
+  [{:keys [body-params system]}]
+  (let [{:keys [token-decoder token-encoder]} system
+        {:keys [mfa-token code]} body-params
+        {:keys [decoder]} token-decoder
+        {:keys [encoder]} token-encoder]
+    (try
+      (let [jwt (token/decode decoder mfa-token)
+            type (.getClaim jwt "type")
+            sub (.getSubject jwt)
+            parsed-id (parse-user-id sub)]
+        (if (or (not= type "mfa-challenge") (nil? parsed-id))
+          {:status 401 :body {:errors {:mfa-token ["Invalid 2FA challenge token"]}}}
+          (let [encrypted-secret (user/get-mfa-secret system parsed-id)
+                secret (when encrypted-secret (mfa/decrypt-secret encrypted-secret))
+                backup-hashes (user/get-mfa-backup-codes system parsed-id)
+                totp-valid? (and secret (mfa/verify-totp secret code))
+                matching-backup-hash (when (and (not totp-valid?) (seq backup-hashes))
+                                       (mfa/verify-backup-code code backup-hashes))]
+            (if (or totp-valid? matching-backup-hash)
+              (do
+                (when matching-backup-hash
+                  (user/consume-mfa-backup-code! system parsed-id matching-backup-hash))
+                (let [user-record (user/find-by-id system parsed-id)
+                      issuer "com.ozimos.auth"
+                      roles (:roles user-record)
+                      active-org-id (user/get-active-org system parsed-id)
+                      active-org-role (when active-org-id
+                                        (:role (user/get-membership system parsed-id active-org-id)))
+                      access-jti (str (random-uuid))
+                      refresh-jti (str (random-uuid))
+                      access-ttl 900
+                      refresh-ttl 604800
+                      access-token (if (and active-org-id active-org-role)
+                                     (token/issue-access-token encoder issuer sub roles access-jti access-ttl active-org-id active-org-role)
+                                     (token/issue-access-token encoder issuer sub roles access-jti access-ttl))
+                      refresh-token (token/issue-refresh-token encoder issuer sub refresh-jti refresh-ttl)
+                      expires-at (+ (System/currentTimeMillis) (* refresh-ttl 1000))]
+                  (session/create! system parsed-id access-jti expires-at)
+                  {:status 200
+                   :body {:access-token access-token
+                          :refresh-token refresh-token
+                          :expires-in access-ttl
+                          :user {:id (:id user-record)
+                                 :username (:username user-record)
+                                 :email (:email user-record)}}}))
+              {:status 401 :body {:errors {:code ["Invalid 6-digit TOTP code or backup code"]}}}))))
+      (catch Exception _
+        {:status 401 :body {:errors {:mfa-token ["Invalid 2FA challenge token"]}}}))))
+
+(defn mfa-disable
+  [{:keys [body-params system] :as request}]
+  (if-let [auth-user (get-auth-user request (:token-decoder system))]
+    (let [{:keys [code]} body-params
+          user-id (:user-id auth-user)
+          encrypted-secret (user/get-mfa-secret system user-id)
+          secret (when encrypted-secret (mfa/decrypt-secret encrypted-secret))
+          backup-hashes (user/get-mfa-backup-codes system user-id)
+          totp-valid? (and secret (mfa/verify-totp secret code))
+          matching-backup-hash (when (and (not totp-valid?) (seq backup-hashes))
+                                 (mfa/verify-backup-code code backup-hashes))]
+      (if (or totp-valid? matching-backup-hash)
+        (do
+          (user/disable-mfa! system user-id)
+          {:status 200 :body {:message "MFA disabled successfully"}})
+        {:status 400 :body {:errors {:code ["Invalid 6-digit TOTP code or backup code"]}}}))
+    {:status 401 :body {:errors {:auth ["Not authenticated"]}}}))
 
 (defn health [_]
   {:status 200 :body {:status "ok"}})

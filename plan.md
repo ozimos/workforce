@@ -575,28 +575,21 @@ Allow authenticated users to change their display username from a dedicated `/pr
 ### Phase 7: MFA (TOTP, Passkeys/WebAuthn, Backup Codes)
 Multi-factor authentication with step-up challenges.
 
-#### 7.1 TOTP (RFC 6238) — primary MFA
-- **Tests first**:
-  - IPC test: register TOTP secret for a user, assert `$$mfa-secrets` contains encrypted secret
-  - IPC test: verify valid 6-digit code against registered secret → success
-  - IPC test: verify invalid code → failure
-  - IPC test: consume backup code → marked used, second use fails
-  - IPC test: disable MFA clears `$$mfa-secrets` and `$$mfa-backup-codes`
-  - Integration test: login requires MFA step when MFA enabled → returns challenge token → `POST /mfa/verify` completes login
-- **Implementation**:
-  - New `mfa` component: `src/clojure/com/ozimos/auth/mfa/{core.clj,interface.clj}`
-  - Deps: `dev.samsta.ring-jwt` or `java-otp` library for TOTP generation/validation
-  - New depots: `*mfa-setup-depot` (hash-by :user-id), `*mfa-verify-depot` (hash-by :user-id), `*mfa-disable-depot` (hash-by :user-id), `*backup-code-use-depot` (hash-by :user-id)
-  - New PStates:
-    - `$$mfa-secrets {Long String}` — encrypted TOTP secret per user (AES-GCM with system key)
-    - `$$mfa-backup-codes {Long (set-schema String {:subindex? true})}` — hashed backup codes per user
-    - `$$mfa-enabled {Long Boolean}` — whether MFA is enabled for user
-  - Endpoints:
-    - `POST /api/auth/mfa/setup` — generate secret, return as QR code URI (otpauth://)
-    - `POST /api/auth/mfa/verify` — validate 6-digit code; on success, mark MFA enabled
-    - `POST /api/auth/mfa/disable` — clear MFA state (requires current code)
-    - `POST /api/auth/mfa/backup-codes` — regenerate backup codes
-- **REPL checkpoint**: before integrating, experiment with the TOTP library in the REPL — generate a secret, derive the current 6-digit code, validate it. Confirm encryption/decryption round-trip for secret storage.
+#### 7.1 TOTP (RFC 6238) — primary MFA [DONE]
+- **Component**: Created `components/mfa` with RFC 4648 Base32 encoding/decoding, RFC 6238 TOTP computation (6-digit, 30s step, HMAC-SHA1, clock drift tolerance [-1, 0, +1]), `otpauth://` QR URI generation, AES-GCM secret encryption at rest, and 10 single-use BCrypt hashed recovery backup codes.
+- **Rama Depots & PStates**:
+  - `*mfa-setup-depot`, `*mfa-disable-depot`, `*mfa-consume-backup-code-depot`
+  - `$$mfa-secrets {Long String}` (encrypted Base32 secret at rest)
+  - `$$mfa-enabled {Long Boolean}` (MFA status flag)
+  - `$$mfa-backup-codes {Long (set-schema String {:subindex? true})}` (hashed single-use backup codes)
+- **Token Component**: Added `issue-mfa-challenge-token` (5-minute TTL challenge token with `"type" "mfa-challenge"`).
+- **API Endpoints**:
+  - `POST /api/auth/login`: When MFA is enabled, returns `200` with `{:mfa-required true :mfa-token challenge-token}`.
+  - `POST /api/auth/mfa/setup`: Generates secret, QR URI, and 10 recovery backup codes.
+  - `POST /api/auth/mfa/verify-setup`: Verifies 6-digit TOTP code and activates MFA.
+  - `POST /api/auth/mfa/login`: Validates 2FA challenge token + TOTP or single-use backup code to issue final JWT tokens.
+  - `POST /api/auth/mfa/disable`: Validates TOTP/backup code and disables MFA.
+- **Tests & Verification**: Unit tests (`com.ozimos.auth.mfa.core-test`), Rama IPC tests, and full E2E HTTP integration tests (`totp-mfa-integration-test`) passing via `bb test`.
 
 #### 7.2 WebAuthn / Passkeys — public-key credentials
 - **Tests first**:

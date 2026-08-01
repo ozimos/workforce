@@ -47,3 +47,16 @@
    [:username :string]
    [:email :string]
    [:verified :boolean]])
+
+(def mfa-verify-setup-request
+  [:map
+   [:code :string]])
+
+(def mfa-login-request
+  [:map
+   [:mfa-token :string]
+   [:code :string]])
+
+(def mfa-disable-request
+  [:map
+   [:code :string]])

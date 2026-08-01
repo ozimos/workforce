@@ -70,14 +70,30 @@
                 :parameters {:body reg-schema/reset-password-request}
                 :handler handlers/reset-password
                 :responses {200 {:body [:map [:message :string]]}
-                            400 {:body [:map [:errors [:map]]]}}}}]]
+                            400 {:body [:map [:errors [:map]]]}}}}]
+       ["/mfa"
+        ["/setup"
+         {:post {:summary "Generate TOTP MFA secret and QR URL"
+                 :handler handlers/mfa-setup}}]
+        ["/verify-setup"
+         {:post {:summary "Verify 6-digit TOTP code and enable MFA"
+                 :parameters {:body reg-schema/mfa-verify-setup-request}
+                 :handler handlers/mfa-verify-setup}}]
+        ["/login"
+         {:post {:summary "Verify 2FA challenge token + TOTP/backup code to complete login"
+                 :parameters {:body reg-schema/mfa-login-request}
+                 :handler handlers/mfa-login}}]
+        ["/disable"
+         {:post {:summary "Disable MFA using TOTP or backup code"
+                 :parameters {:body reg-schema/mfa-disable-request}
+                 :handler handlers/mfa-disable}}]]
       ["/query"
        {:post {:summary "Pathom query endpoint (app logic)"
                :handler handlers/query
                :responses {200 {:body [:map [:ok boolean?] [:query :any]]}}}}]
       ["/health"
        {:get {:summary "Health check"
-              :handler handlers/health}}]]]
+              :handler handlers/health}}]]]]
     {:data {:muuntaja m/instance
             :coercion rcm/coercion
             :middleware [(wrap-inject-system deps)
