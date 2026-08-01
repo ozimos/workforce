@@ -171,6 +171,16 @@
   [deps user-id code-hash]
   (core/consume-mfa-backup-code! deps user-id code-hash))
 
+(defn regenerate-mfa-backup-codes!
+  "Replace a user's backup code hashes."
+  [deps user-id backup-code-hashes]
+  (core/regenerate-mfa-backup-codes! deps user-id backup-code-hashes))
+
+(defn count-mfa-backup-codes
+  "Return count of remaining backup codes."
+  [deps user-id]
+  (core/count-mfa-backup-codes deps user-id))
+
 (defn register-passkey!
   "Register a WebAuthn passkey credential."
   [deps user-id credential-id public-key-cose sign-count user-handle nickname]

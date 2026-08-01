@@ -350,3 +350,14 @@
         (is (some? (:errors result)) "failure should include :errors"))
 
       (println "=== end update-username-conflict-test ==="))))
+
+(deftest ^:integration mfa-backup-codes-ipc-test
+  (testing "mfa backup codes setup, consumption, regeneration, and count"
+    (let [user-id 99001
+          hashes #{"hash1" "hash2" "hash3"}
+          _ (user/setup-mfa! *system* user-id "encrypted-secret" hashes)]
+      (is (= 3 (user/count-mfa-backup-codes *system* user-id)))
+      (is (user/consume-mfa-backup-code! *system* user-id "hash1"))
+      (is (= 2 (user/count-mfa-backup-codes *system* user-id)))
+      (is (user/regenerate-mfa-backup-codes! *system* user-id #{"new1" "new2" "new3" "new4"}))
+      (is (= 4 (user/count-mfa-backup-codes *system* user-id))))))

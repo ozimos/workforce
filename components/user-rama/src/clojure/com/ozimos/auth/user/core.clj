@@ -366,6 +366,17 @@
       (rama/->MfaConsumeBackupCode user-id code-hash))
     true))
 
+(defn regenerate-mfa-backup-codes! [{:keys [rama] :as deps} user-id backup-code-hashes]
+  (let [cmgr (:cluster-manager rama)
+        mod-name (rama/module-name)
+        regen-depot (rama/depot cmgr mod-name "*mfa-regenerate-backup-codes-depot")]
+    (ramaapi/foreign-append! regen-depot
+      (rama/->MfaRegenerateBackupCodes user-id backup-code-hashes))
+    true))
+
+(defn count-mfa-backup-codes [deps user-id]
+  (count (get-mfa-backup-codes deps user-id)))
+
 ;; --- WebAuthn / Passkey Functions ---
 
 (defn register-passkey! [{:keys [rama] :as deps} user-id credential-id public-key-cose sign-count user-handle nickname]
