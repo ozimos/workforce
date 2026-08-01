@@ -170,3 +170,23 @@
   "Remove a used backup code hash."
   [deps user-id code-hash]
   (core/consume-mfa-backup-code! deps user-id code-hash))
+
+(defn register-passkey!
+  "Register a WebAuthn passkey credential."
+  [deps user-id credential-id public-key-cose sign-count user-handle nickname]
+  (core/register-passkey! deps user-id credential-id public-key-cose sign-count user-handle nickname))
+
+(defn update-passkey-sign-count!
+  "Update sign count for a WebAuthn passkey."
+  [deps user-id credential-id new-sign-count]
+  (core/update-passkey-sign-count! deps user-id credential-id new-sign-count))
+
+(defn remove-passkey!
+  "Remove a registered WebAuthn passkey."
+  [deps user-id credential-id]
+  (core/remove-passkey! deps user-id credential-id))
+
+(defn list-passkeys-for-user
+  "List all registered WebAuthn passkeys for a user."
+  [deps user-id]
+  (core/list-passkeys-for-user deps user-id))

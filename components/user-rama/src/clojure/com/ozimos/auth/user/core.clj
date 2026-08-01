@@ -365,3 +365,39 @@
     (ramaapi/foreign-append! consume-depot
       (rama/->MfaConsumeBackupCode user-id code-hash))
     true))
+
+;; --- WebAuthn / Passkey Functions ---
+
+(defn register-passkey! [{:keys [rama] :as deps} user-id credential-id public-key-cose sign-count user-handle nickname]
+  (let [cmgr (:cluster-manager rama)
+        mod-name (rama/module-name)
+        register-depot (rama/depot cmgr mod-name "*webauthn-register-depot")
+        created-at (System/currentTimeMillis)]
+    (ramaapi/foreign-append! register-depot
+      (rama/->WebAuthnRegister user-id credential-id public-key-cose sign-count user-handle nickname created-at))
+    true))
+
+(defn update-passkey-sign-count! [{:keys [rama] :as deps} user-id credential-id new-sign-count]
+  (let [cmgr (:cluster-manager rama)
+        mod-name (rama/module-name)
+        sign-count-depot (rama/depot cmgr mod-name "*webauthn-sign-count-depot")]
+    (ramaapi/foreign-append! sign-count-depot
+      (rama/->WebAuthnUpdateSignCount user-id credential-id new-sign-count))
+    true))
+
+(defn remove-passkey! [{:keys [rama] :as deps} user-id credential-id]
+  (let [cmgr (:cluster-manager rama)
+        mod-name (rama/module-name)
+        remove-depot (rama/depot cmgr mod-name "*webauthn-remove-depot")]
+    (ramaapi/foreign-append! remove-depot
+      (rama/->WebAuthnRemoveCredential user-id credential-id))
+    true))
+
+(defn list-passkeys-for-user [{:keys [rama] :as deps} user-id]
+  (let [cmgr (:cluster-manager rama)
+        mod-name (rama/module-name)
+        credentials-pstate (rama/pstate cmgr mod-name "$$webauthn-credentials")
+        creds-map (safe-select-one (keypath user-id) credentials-pstate)]
+    (mapv (fn [[cred-id data]]
+            (assoc data :credential-id cred-id))
+          creds-map)))

@@ -19,6 +19,9 @@
 (defrecord MfaSetup [user-id encrypted-secret backup-code-hashes])
 (defrecord MfaDisable [user-id])
 (defrecord MfaConsumeBackupCode [user-id code-hash])
+(defrecord WebAuthnRegister [user-id credential-id public-key-cose sign-count user-handle nickname created-at])
+(defrecord WebAuthnUpdateSignCount [user-id credential-id new-sign-count])
+(defrecord WebAuthnRemoveCredential [user-id credential-id])
 
 (defrecord OrgCreate [uuid name owner-user-id created-at])
 (defrecord OrgInvite [invitation-id org-id email role invited-by created-at expires-at])
@@ -43,6 +46,9 @@
   (declare-depot setup *mfa-setup-depot (hash-by :user-id))
   (declare-depot setup *mfa-disable-depot (hash-by :user-id))
   (declare-depot setup *mfa-consume-backup-code-depot (hash-by :user-id))
+  (declare-depot setup *webauthn-register-depot (hash-by :user-id))
+  (declare-depot setup *webauthn-sign-count-depot (hash-by :user-id))
+  (declare-depot setup *webauthn-remove-depot (hash-by :user-id))
   (declare-depot setup *org-create-depot (hash-by :owner-user-id))
   (declare-depot setup *org-invite-depot (hash-by :org-id))
   (declare-depot setup *org-join-depot (hash-by :user-id))
@@ -84,6 +90,14 @@
     ;; MFA: user-id -> set of hashed backup codes
     (declare-pstate s $$mfa-backup-codes
                     {Long (set-schema String {:subindex? true})})
+
+    ;; WebAuthn: user-id -> {credential-id -> {public-key, sign-count, user-handle, nickname, created-at}}
+    (declare-pstate s $$webauthn-credentials
+                    {Long {String (fixed-keys-schema {:public-key String
+                                                      :sign-count Long
+                                                      :user-handle String
+                                                      :nickname String
+                                                      :created-at Long})}})
 
     ;; Organizations: org-id -> {name, owner-user-id, created-at}
     (declare-pstate s $$orgs
@@ -260,7 +274,28 @@
 
                  ;; Consume backup code
                  (source> *mfa-consume-backup-code-depot :> {:keys [*user-id *code-hash]})
-                 (local-transform> [(keypath *user-id) NONE-ELEM (termval *code-hash)] $$mfa-backup-codes)
+                 (local-transform> [(keypath *user-id *code-hash) NONE>] $$mfa-backup-codes)
+
+                 ;; WebAuthn register
+                 (source> *webauthn-register-depot :> {:keys [*user-id *credential-id *public-key-cose *sign-count *user-handle *nickname *created-at]})
+                 (|hash *user-id)
+                 (local-transform> [(keypath *user-id *credential-id)
+                                    (multi-path [:public-key (termval *public-key-cose)]
+                                                [:sign-count (termval *sign-count)]
+                                                [:user-handle (termval *user-handle)]
+                                                [:nickname (termval *nickname)]
+                                                [:created-at (termval *created-at)])]
+                                   $$webauthn-credentials)
+
+                 ;; WebAuthn update sign count
+                 (source> *webauthn-sign-count-depot :> {:keys [*user-id *credential-id *new-sign-count]})
+                 (|hash *user-id)
+                 (local-transform> [(keypath *user-id *credential-id :sign-count) (termval *new-sign-count)] $$webauthn-credentials)
+
+                 ;; WebAuthn remove credential
+                 (source> *webauthn-remove-depot :> {:keys [*user-id *credential-id]})
+                 (|hash *user-id)
+                 (local-transform> [(keypath *user-id *credential-id) NONE>] $$webauthn-credentials)
 
                 ;; Organization creation
                 (source> *org-create-depot :> {:keys [*uuid *name *owner-user-id *created-at]})
