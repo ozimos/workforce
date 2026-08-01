@@ -553,11 +553,13 @@
 
           ;; Setup MFA
           setup-resp (post-edn "/api/auth/mfa/setup" {} (auth-header token))
+          _ (Thread/sleep 100)
           secret (get-in setup-resp [:body :secret])
           backup-codes (get-in setup-resp [:body :backup-codes])
           curr-step (quot (quot (System/currentTimeMillis) 1000) 30)
           totp (mfa/calculate-totp secret curr-step)
-          _ (post-edn "/api/auth/mfa/verify-setup" {:code totp} (auth-header token))]
+          _ (post-edn "/api/auth/mfa/verify-setup" {:code totp} (auth-header token))
+          _ (Thread/sleep 100)]
 
       (testing "Step 1: GET /api/auth/mfa/backup-codes returns 10 initial codes count"
         (let [status-resp (get-edn "/api/auth/mfa/backup-codes" (auth-header token))]
@@ -570,6 +572,7 @@
               code (first backup-codes)
               mfa-login (post-edn "/api/auth/mfa/login" {:mfa-token mfa-token :code code})
               _ (is (= 200 (:status mfa-login)))
+              _ (Thread/sleep 100)
               status-resp2 (get-edn "/api/auth/mfa/backup-codes" (auth-header token))]
           (is (= 200 (:status status-resp2)))
           (is (= 9 (get-in status-resp2 [:body :remaining])))))
@@ -578,6 +581,7 @@
         (let [new-step (quot (quot (System/currentTimeMillis) 1000) 30)
               new-totp (mfa/calculate-totp secret new-step)
               regen-resp (post-edn "/api/auth/mfa/backup-codes" {:code new-totp} (auth-header token))
+              _ (Thread/sleep 100)
               new-codes (get-in regen-resp [:body :backup-codes])]
           (is (= 200 (:status regen-resp)))
           (is (= 10 (count new-codes)))

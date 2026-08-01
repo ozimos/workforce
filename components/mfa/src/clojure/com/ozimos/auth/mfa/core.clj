@@ -35,23 +35,25 @@
 (defn decode-base32
   "Decode a Base32 string into a byte array (RFC 4648)."
   [^String base32-str]
-  (let [clean-str (-> base32-str string/upper-case (string/replace #"=" ""))
-        len (.length clean-str)
-        out-bytes (byte-array (quot (* len 5) 8))]
-    (loop [i 0 index 0 current-byte 0 out-idx 0]
-      (if (< i len)
-        (let [ch (.charAt clean-str i)
-              val (.indexOf base32-alphabet (int ch))]
-          (if (= val -1)
-            (throw (IllegalArgumentException. (str "Invalid Base32 char: " ch)))
-            (let [index' (+ index 5)]
-              (if (>= index' 8)
-                (let [index'' (- index' 8)
-                      b (bit-or current-byte (bit-shift-right val index''))]
-                  (aset-byte out-bytes out-idx (byte b))
-                  (recur (inc i) index'' (bit-and (bit-shift-left val (- 8 index'')) 0xff) (inc out-idx)))
-                (recur (inc i) index' (bit-or current-byte (bit-shift-left val (- 8 index'))) out-idx)))))
-        out-bytes))))
+  (if (nil? base32-str)
+    (byte-array 0)
+    (let [clean-str (-> base32-str string/upper-case (string/replace #"=" ""))
+          len (.length clean-str)
+          out-bytes (byte-array (quot (* len 5) 8))]
+      (loop [i 0 index 0 current-byte 0 out-idx 0]
+        (if (< i len)
+          (let [ch (.charAt clean-str i)
+                val (.indexOf base32-alphabet (int ch))]
+            (if (= val -1)
+              (throw (IllegalArgumentException. (str "Invalid Base32 char: " ch)))
+              (let [index' (+ index 5)]
+                (if (>= index' 8)
+                  (let [index'' (- index' 8)
+                        b (bit-or current-byte (bit-shift-right val index''))]
+                    (aset-byte out-bytes out-idx (byte b))
+                    (recur (inc i) index'' (bit-and (bit-shift-left val (- 8 index'')) 0xff) (inc out-idx)))
+                  (recur (inc i) index' (bit-or current-byte (bit-shift-left val (- 8 index'))) out-idx)))))
+          out-bytes)))))
 
 (defn generate-secret
   "Generate a 20-byte (160-bit) Base32 encoded TOTP secret."
@@ -71,24 +73,27 @@
 (defn calculate-totp
   "Calculate a 6-digit TOTP string for a given Base32 secret and time counter step (RFC 6238)."
   [^String secret-base32 ^long time-step]
-  (let [key-bytes (decode-base32 secret-base32)
-        msg-bytes (-> (ByteBuffer/allocate 8) (.putLong time-step) .array)
-        hash (hmac-sha1 key-bytes msg-bytes)
-        offset (bit-and (aget hash (dec (alength hash))) 0xf)
-        binary (bit-or
-                 (bit-shift-left (bit-and (aget hash offset) 0x7f) 24)
-                 (bit-shift-left (bit-and (aget hash (+ offset 1)) 0xff) 16)
-                 (bit-shift-left (bit-and (aget hash (+ offset 2)) 0xff) 8)
-                 (bit-and (aget hash (+ offset 3)) 0xff))
-        otp (mod binary 1000000)]
-    (String/format "%06d" (into-array Object [otp]))))
+  (if (nil? secret-base32)
+    ""
+    (let [key-bytes (decode-base32 secret-base32)
+          msg-bytes (-> (ByteBuffer/allocate 8) (.putLong time-step) .array)
+          hash (hmac-sha1 key-bytes msg-bytes)
+          offset (bit-and (aget hash (dec (alength hash))) 0xf)
+          binary (bit-or
+                   (bit-shift-left (bit-and (aget hash offset) 0x7f) 24)
+                   (bit-shift-left (bit-and (aget hash (+ offset 1)) 0xff) 16)
+                   (bit-shift-left (bit-and (aget hash (+ offset 2)) 0xff) 8)
+                   (bit-and (aget hash (+ offset 3)) 0xff))
+          otp (mod binary 1000000)]
+      (String/format "%06d" (into-array Object [otp])))))
 
 (defn verify-totp
   "Verify a 6-digit TOTP string against a Base32 secret across a clock drift window (step -1, 0, +1)."
   ([^String secret-base32 ^String code]
    (verify-totp secret-base32 code (System/currentTimeMillis)))
   ([^String secret-base32 ^String code ^long current-time-ms]
-   (when (and (string? code) (= 6 (.length code)))
+   (if (or (nil? secret-base32) (nil? code) (not= 6 (.length code)))
+     false
      (let [current-step (quot (quot current-time-ms 1000) 30)]
        (boolean
          (some (fn [step-offset]
