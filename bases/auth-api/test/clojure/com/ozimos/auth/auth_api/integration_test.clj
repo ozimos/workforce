@@ -45,12 +45,12 @@
     resp))
 
 (defn- post-edn
-  "Executes an in-memory Ring request against (:router/ring *sys*) using EDN format negotiation.
+  "Executes an in-memory Ring request against (:com.ozimos.auth.auth-api.system/router *sys*) using EDN format negotiation.
    Returns the response map with parsed native Clojure data in `:body`."
   ([uri body-params]
    (post-edn uri body-params {}))
   ([uri body-params headers]
-   (let [handler (:router/ring *sys*)
+   (let [handler (:com.ozimos.auth.auth-api.system/router *sys*)
          req {:request-method :post
               :uri uri
               :headers (merge {"content-type" "application/edn"
@@ -61,11 +61,11 @@
      (parse-ring-response resp))))
 
 (defn- get-edn
-  "Executes an in-memory Ring GET request against (:router/ring *sys*) using EDN format negotiation."
+  "Executes an in-memory Ring GET request against (:com.ozimos.auth.auth-api.system/router *sys*) using EDN format negotiation."
   ([uri]
    (get-edn uri {}))
   ([uri headers]
-   (let [handler (:router/ring *sys*)
+   (let [handler (:com.ozimos.auth.auth-api.system/router *sys*)
          req {:request-method :get
               :uri uri
               :headers (merge {"accept" "application/edn"}

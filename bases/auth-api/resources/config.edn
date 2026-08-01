@@ -19,7 +19,7 @@
  {:rama #ig/ref :rama/cluster
   :interval-ms 300000}
 
- :router/ring
+ :com.ozimos.auth.auth-api.system/router
  {:rama #ig/ref :rama/cluster
   :token-encoder #ig/ref :token/encoder
   :token-decoder #ig/ref :token/decoder}
@@ -30,4 +30,4 @@
                   :prod #or [#env JETTY_PROD_PORT 8080]}
   :host "0.0.0.0"
   :filter-chain-proxy #ig/ref :security/app-context
-  :handler #ig/ref :router/ring}}
+  :handler #ig/ref :com.ozimos.auth.auth-api.system/router}}
