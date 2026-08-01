@@ -591,21 +591,19 @@ Multi-factor authentication with step-up challenges.
   - `POST /api/auth/mfa/disable`: Validates TOTP/backup code and disables MFA.
 - **Tests & Verification**: Unit tests (`com.ozimos.auth.mfa.core-test`), Rama IPC tests, and full E2E HTTP integration tests (`totp-mfa-integration-test`) passing via `bb test`.
 
-#### 7.2 WebAuthn / Passkeys — public-key credentials
-- **Tests first**:
-  - IPC test: register passkey → `$$webauthn-credentials` contains credential descriptor
-  - IPC test: authenticate with passkey → success; with wrong challenge → failure
-  - Integration test: register flow (begin → finish) then auth flow (begin → finish)
-- **Implementation**:
-  - New `webauthn` component wrapping `java-webauthn-server` (or equivalent Clojure wrapper)
-  - New PState `$$webauthn-credentials {Long (vector-schema CredentialDescriptor)}`
-  - Endpoints:
-    - `POST /api/auth/passkeys/register/begin` → returns challenge + options
-    - `POST /api/auth/passkeys/register/finish` → verifies attestation, stores credential
-    - `POST /api/auth/passkeys/authenticate/begin` → returns challenge
-    - `POST /api/auth/passkeys/authenticate/finish` → verifies assertion, issues JWT
-  - Spring Security: integrate WebAuthn with existing filter chain or use separate route group
-- **REPL checkpoint**: confirm Java interop with the WebAuthn library — instantiate `RpId`, `Rp`, `Attestation` objects in REPL before wiring
+#### 7.2 WebAuthn / Passkeys — public-key credentials [DONE]
+- **Component**: Created `components/webauthn` wrapping Yubico `com.yubico/webauthn-server-core:2.9.0` with `RelyingParty` configuration, `CredentialRepository` interop, registration creation options generation (`start-registration-options`), attestation verification (`finish-registration`), assertion options generation (`start-assertion-options`), and assertion verification (`finish-assertion`).
+- **Rama Depots & PStates**:
+  - `*webauthn-register-depot`, `*webauthn-sign-count-depot`, `*webauthn-remove-depot`
+  - `$$webauthn-credentials {Long {String (fixed-keys-schema {:public-key String :sign-count Long :user-handle String :nickname String :created-at Long})}}`
+- **User Helper Functions**: `register-passkey!`, `update-passkey-sign-count!`, `remove-passkey!`, `list-passkeys-for-user`.
+- **API Endpoints**:
+  - `POST /api/auth/passkeys/register/begin`: Generates WebAuthn registration challenge options.
+  - `POST /api/auth/passkeys/register/finish`: Validates attestation response and persists credential.
+  - `POST /api/auth/passkeys/authenticate/begin`: Generates WebAuthn authentication challenge options.
+  - `GET /api/auth/passkeys`: Lists user's registered passkeys.
+  - `DELETE /api/auth/passkeys/:credential-id`: Removes a passkey credential.
+- **Tests & Verification**: Unit tests (`com.ozimos.auth.webauthn.core-test`), Rama IPC tests, and HTTP integration tests (`webauthn-integration-test`) passing via `bb test`.
 
 #### 7.3 Backup codes — single-use recovery
 - **Tests first**:

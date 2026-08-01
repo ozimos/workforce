@@ -9,6 +9,8 @@
    [com.ozimos.auth.session.interface :as session]
    [com.ozimos.auth.token.interface :as token]
    [com.ozimos.auth.user.interface :as user]
+   [com.ozimos.auth.webauthn.interface :as webauthn]
+   [jsonista.core :as json]
    [malli.core :as m])
   (:import
    (java.util UUID)))
@@ -289,6 +291,62 @@
           (user/disable-mfa! system user-id)
           {:status 200 :body {:message "MFA disabled successfully"}})
         {:status 400 :body {:errors {:code ["Invalid 6-digit TOTP code or backup code"]}}}))
+    {:status 401 :body {:errors {:auth ["Not authenticated"]}}}))
+
+(defn passkey-register-begin
+  [{:keys [system] :as request}]
+  (if-let [auth-user (get-auth-user request (:token-decoder system))]
+    (let [user-record (user/find-by-id system (:user-id auth-user))
+          rp (webauthn/make-relying-party {:rp-id "localhost"
+                                          :rp-name "BestAuth"
+                                          :origins "http://localhost:8080"})
+          creation-opts (webauthn/start-registration-options rp (:user-id auth-user) (:username user-record) (:email user-record))
+          opts-json (webauthn/creation-options-to-json creation-opts)]
+      {:status 200
+       :body {:options (json/read-value opts-json json/keyword-keys-object-mapper)
+              :options-json opts-json}})
+    {:status 401 :body {:errors {:auth ["Not authenticated"]}}}))
+
+(defn passkey-register-finish
+  [{:keys [body-params system] :as request}]
+  (if-let [auth-user (get-auth-user request (:token-decoder system))]
+    (let [{:keys [options-json response-json nickname]} body-params
+          rp (webauthn/make-relying-party {:rp-id "localhost"
+                                          :rp-name "BestAuth"
+                                          :origins "http://localhost:8080"})]
+      (try
+        (let [result (webauthn/finish-registration rp options-json response-json)
+              {:keys [credential-id public-key-cose sign-count user-handle]} result]
+          (user/register-passkey! system (:user-id auth-user) credential-id public-key-cose sign-count user-handle (or nickname "Passkey"))
+          {:status 200 :body {:message "Passkey registered successfully" :credential-id credential-id}})
+        (catch Exception e
+          {:status 400 :body {:errors {:passkey [(.getMessage e)]}}})))
+    {:status 401 :body {:errors {:auth ["Not authenticated"]}}}))
+
+(defn passkey-authenticate-begin
+  [{:keys [system]}]
+  (let [rp (webauthn/make-relying-party {:rp-id "localhost"
+                                          :rp-name "BestAuth"
+                                          :origins "http://localhost:8080"})
+        assertion-req (webauthn/start-assertion-options rp)
+        req-json (webauthn/assertion-request-to-json assertion-req)]
+    {:status 200
+     :body {:request (json/read-value req-json json/keyword-keys-object-mapper)
+            :request-json req-json}}))
+
+(defn passkey-list
+  [{:keys [system] :as request}]
+  (if-let [auth-user (get-auth-user request (:token-decoder system))]
+    (let [passkeys (user/list-passkeys-for-user system (:user-id auth-user))]
+      {:status 200 :body {:passkeys passkeys}})
+    {:status 401 :body {:errors {:auth ["Not authenticated"]}}}))
+
+(defn passkey-delete
+  [{:keys [path-params system] :as request}]
+  (if-let [auth-user (get-auth-user request (:token-decoder system))]
+    (let [cred-id (:credential-id path-params)]
+      (user/remove-passkey! system (:user-id auth-user) cred-id)
+      {:status 200 :body {:message "Passkey deleted successfully"}})
     {:status 401 :body {:errors {:auth ["Not authenticated"]}}}))
 
 (defn health [_]

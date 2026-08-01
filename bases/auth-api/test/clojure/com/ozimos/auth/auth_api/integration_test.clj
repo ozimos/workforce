@@ -499,3 +499,34 @@
                 (let [normal-login (post-edn "/api/auth/login" {:identifier (:username user) :password (:password user)})]
                   (is (= 200 (:status normal-login)))
                   (is (string? (get-in normal-login [:body :access-token]))))))))))))
+
+(deftest ^:integration webauthn-integration-test
+  (testing "WebAuthn / Passkeys lifecycle: register begin -> authenticate begin -> passkeys list -> delete"
+    (let [user (random-user)
+          _ (post-edn "/api/auth/register" user)
+          login-resp (post-edn "/api/auth/login" {:identifier (:username user) :password (:password user)})
+          token (get-in login-resp [:body :access-token])]
+      (is (string? token))
+
+      (testing "Step 1: POST /api/auth/passkeys/register/begin returns challenge options"
+        (let [reg-begin (post-edn "/api/auth/passkeys/register/begin" {} (auth-header token))
+              body (:body reg-begin)]
+          (is (= 200 (:status reg-begin)))
+          (is (some? (get-in body [:options :challenge])))
+          (is (string? (:options-json body)))))
+
+      (testing "Step 2: POST /api/auth/passkeys/authenticate/begin returns assertion options"
+        (let [auth-begin (post-edn "/api/auth/passkeys/authenticate/begin" {})
+              body (:body auth-begin)]
+          (is (= 200 (:status auth-begin)))
+          (is (some? (get-in body [:request :challenge])))
+          (is (string? (:request-json body)))))
+
+      (testing "Step 3: GET /api/auth/passkeys lists registered passkeys"
+        (let [list-resp (get-edn "/api/auth/passkeys" (auth-header token))]
+          (is (= 200 (:status list-resp)))
+          (is (vector? (get-in list-resp [:body :passkeys])))))
+
+      (testing "Step 4: DELETE /api/auth/passkeys/:id removes passkey"
+        (let [del-resp (delete-edn "/api/auth/passkeys/nonexistent-id" (auth-header token))]
+          (is (= 200 (:status del-resp))))))))

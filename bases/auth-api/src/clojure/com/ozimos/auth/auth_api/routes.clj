@@ -87,13 +87,31 @@
          {:post {:summary "Disable MFA using TOTP or backup code"
                  :parameters {:body reg-schema/mfa-disable-request}
                  :handler handlers/mfa-disable}}]]
+       ["/passkeys"
+        [""
+         {:get {:summary "List user registered passkeys"
+                :handler handlers/passkey-list}}]
+        ["/register"
+         ["/begin"
+          {:post {:summary "Begin passkey registration"
+                  :handler handlers/passkey-register-begin}}]
+         ["/finish"
+          {:post {:summary "Finish passkey registration"
+                  :handler handlers/passkey-register-finish}}]]
+        ["/authenticate"
+         ["/begin"
+          {:post {:summary "Begin passkey authentication"
+                  :handler handlers/passkey-authenticate-begin}}]]
+        ["/:credential-id"
+         {:delete {:summary "Delete a registered passkey"
+                   :handler handlers/passkey-delete}}]]]
       ["/query"
        {:post {:summary "Pathom query endpoint (app logic)"
                :handler handlers/query
                :responses {200 {:body [:map [:ok boolean?] [:query :any]]}}}}]
       ["/health"
        {:get {:summary "Health check"
-              :handler handlers/health}}]]]]
+              :handler handlers/health}}]]]
     {:data {:muuntaja m/instance
             :coercion rcm/coercion
             :middleware [(wrap-inject-system deps)
