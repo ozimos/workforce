@@ -453,6 +453,7 @@
           (is (string? secret))
           (is (string/includes? (:otpauth-url body) "otpauth://totp/"))
           (is (= 10 (count backup-codes)))
+          (Thread/sleep 100)
 
           (testing "Step 2: POST /api/auth/mfa/verify-setup with invalid code fails"
             (let [bad-verify (post-edn "/api/auth/mfa/verify-setup" {:code "000000"} (auth-header token1))]
