@@ -74,6 +74,19 @@
          resp (handler req)]
      (parse-ring-response resp))))
 
+(defn- delete-edn
+  "Executes an in-memory Ring DELETE request against (:com.ozimos.auth.auth-api.system/router *sys*) using EDN format negotiation."
+  ([uri]
+   (delete-edn uri {}))
+  ([uri headers]
+   (let [handler (:com.ozimos.auth.auth-api.system/router *sys*)
+         req {:request-method :delete
+              :uri uri
+              :headers (merge {"accept" "application/edn"}
+                              headers)}
+         resp (handler req)]
+     (parse-ring-response resp))))
+
 (defn- query-eql
   "Send an EQL query to the /api/query endpoint in-memory."
   ([eql-string]
