@@ -18,6 +18,7 @@
                      poly/token           {:local/root "components/token"}
                      poly/security        {:local/root "components/security"}
                      poly/pathom          {:local/root "components/pathom"}
+                     poly/mfa             {:local/root "components/mfa"}
 
                      poly/auth-api   {:local/root "bases/auth-api"}
 
@@ -45,6 +46,7 @@
                        "components/token/test/clojure"
                        "components/security/test/clojure"
                        "components/pathom/test/clojure"
+                       "components/mfa/test/clojure"
                        "bases/auth-api/test/clojure"]
          :extra-deps {org.clojure/test.check {:mvn/version "1.1.1"}
                       hato/hato {:mvn/version "1.0.0"}
@@ -62,6 +64,7 @@
                           poly/token           {:local/root "components/token"}
                           poly/security        {:local/root "components/security"}
                           poly/pathom          {:local/root "components/pathom"}
+                          poly/mfa             {:local/root "components/mfa"}
                           poly/auth-api        {:local/root "bases/auth-api"}}
              :extra-paths ["development/src/clojure" "development/resources"
                            "target/classes"
@@ -71,6 +74,7 @@
                            "components/revocation-rama/test/clojure"
                            "components/token/test/clojure"
                            "components/security/test/clojure"
+                           "components/mfa/test/clojure"
                            "bases/auth-api/test/clojure"
                            "components/schema/test/clojure"
                            "components/config/test/clojure"]}

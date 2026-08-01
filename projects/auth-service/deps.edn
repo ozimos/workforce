@@ -11,6 +11,7 @@
         poly/token           {:local/root "../../components/token"}
         poly/security        {:local/root "../../components/security"}
         poly/pathom          {:local/root "../../components/pathom"}
+        poly/mfa             {:local/root "../../components/mfa"}
 
         poly/auth-api        {:local/root "../../bases/auth-api"}
 
@@ -19,6 +20,7 @@
  :aliases {:test {:extra-paths ["../../components/rama/test/clojure"
                                 "../../components/user-rama/test/clojure"
                                 "../../components/pathom/test/clojure"
+                                "../../components/mfa/test/clojure"
                                 "../../bases/auth-api/test/clojure"]
                   :extra-deps {hato/hato {:mvn/version "1.0.0"}
                                metosin/jsonista {:mvn/version "0.3.14"}
