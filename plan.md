@@ -442,7 +442,7 @@ Polish outstanding items deferred from Phase 1-3 reviews.
   - Add `*reset-token-depot` (hash-by :token) and `$$reset-tokens {String {:user-id Long :expires-at Long}}` PState to AuthModule
   - Topology: append to depot → materialize token → user-id + expiry into PState
   - On reset: foreign-select-one to validate, foreign-append! a PasswordChange event, then clear the token entry
-  - Token: `java.util.UUID/randomUUID` string, TTL 15 minutes
+  - Token: `random-uuid` string, TTL 15 minutes
 - **REPL checkpoint**: before wiring, append a test event to `*reset-token-depot` in the REPL and `foreign-select-one` from `$$reset-tokens` to confirm materialized shape matches expectations
 
 #### 4.2 Verify endpoint — error handling
@@ -559,6 +559,18 @@ Build login, register, forgot/reset-password, and verify pages using Fulcro + RE
 - Logged-in: Logout
 - Loading state: spinner while auth status resolves
 - Use Fulcro CSS-in-JS or plain CSS imported in `index.html`
+
+#### 6.10 Profile page — username update [DONE]
+Allow authenticated users to change their display username from a dedicated `/profile` page.
+- **Rama module**: `UsernameChange` record, `*username-change-depot` (hash-by :user-id), dataflow with `|hash` partition-switching for uniqueness check against `$$username->id`, then atomic update of `$$username->id` and `$$profiles`
+- **Schema**: `update-username-request` (`:new-username`) and `update-username-response` (`:username`) malli schemas
+- **User component**: `update-username!` with structured validation (non-throwing, returns `[ok? result]`)
+- **Pathom mutation**: `user/update-username` in pathom `core.clj` (registered in registry)
+- **Frontend**: `Profile` component (`profile.cljs`) with current-username display, new-username form, loading state, success/error messages; uses Pathom `/api/query` endpoint with EQL mutation
+- **Frontend routing**: `/profile` route in `root.cljs` (`current-page`, `route-for-page`, `profile-factory`, `case` clause)
+- **Frontend SSR**: page-title and page-description for `/profile` in `ssr.cljs`
+- **NavBar**: Single user tab in `nav.cljs` — inline SVG user icon (heroicons outline) + username from `localStorage`, linked to `/profile`
+- **Tests**: Rama IPC (`username-change-test`), user IPC (`update-username-test`), integration (`username-update-test` via Pathom mutation) — all passing
 
 ### Phase 7: MFA (TOTP, Passkeys/WebAuthn, Backup Codes)
 Multi-factor authentication with step-up challenges.
