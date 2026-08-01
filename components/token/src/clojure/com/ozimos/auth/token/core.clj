@@ -86,6 +86,19 @@
          header (-> (JwsHeader/with SignatureAlgorithm/RS256) (.build))]
      (.getTokenValue (.encode encoder (JwtEncoderParameters/from header claims))))))
 
+(defn issue-mfa-challenge-token
+  ^String [^JwtEncoder encoder issuer subject ttl-seconds]
+  (let [now (Instant/now)
+        claims (-> (JwtClaimsSet/builder)
+                   (.issuer issuer)
+                   (.subject subject)
+                   (.issuedAt now)
+                   (.expiresAt (.plusSeconds now ttl-seconds))
+                   (.claim "type" "mfa-challenge")
+                   (.build))
+        header (-> (JwsHeader/with SignatureAlgorithm/RS256) (.build))]
+    (.getTokenValue (.encode encoder (JwtEncoderParameters/from header claims)))))
+
 (defn decode
   (^Jwt [^JwtDecoder decoder token-string]
    (.decode decoder token-string)))

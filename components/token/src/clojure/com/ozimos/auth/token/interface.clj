@@ -22,6 +22,11 @@
   [encoder issuer subject jti ttl-seconds]
   (core/issue-refresh-token encoder issuer subject jti ttl-seconds))
 
+(defn issue-mfa-challenge-token
+  "Issue a short-lived 2FA MFA challenge JWT (5-minute TTL)."
+  [encoder issuer subject ttl-seconds]
+  (core/issue-mfa-challenge-token encoder issuer subject ttl-seconds))
+
 (defn decode
   "Decode and validate a JWT string. Returns the Jwt object or throws."
   [decoder token-string]
