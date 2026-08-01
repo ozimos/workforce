@@ -51,6 +51,7 @@
 (def ->MfaSetup com.ozimos.auth.rama.module/->MfaSetup)
 (def ->MfaDisable com.ozimos.auth.rama.module/->MfaDisable)
 (def ->MfaConsumeBackupCode com.ozimos.auth.rama.module/->MfaConsumeBackupCode)
+(def ->MfaRegenerateBackupCodes com.ozimos.auth.rama.module/->MfaRegenerateBackupCodes)
 (def ->WebAuthnRegister com.ozimos.auth.rama.module/->WebAuthnRegister)
 (def ->WebAuthnUpdateSignCount com.ozimos.auth.rama.module/->WebAuthnUpdateSignCount)
 (def ->WebAuthnRemoveCredential com.ozimos.auth.rama.module/->WebAuthnRemoveCredential)
