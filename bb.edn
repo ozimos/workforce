@@ -28,6 +28,22 @@
                        (let [args (or (seq *command-line-args*) ["test" "project:auth-service"])]
                          (shell "clojure" "-X:deps" "prep" ":aliases" "[:dev :test :+rama :+default :poly]")
                          (apply shell "clojure" "-M:dev:test:+rama:+default:poly" args)))))
+  test-fast-clean
+               (let [nrepl-port (or (try (let [local (read-string (slurp "deps.local.edn"))]
+                                           (get-in local [:launchpad/options :nrepl-port]))
+                                         (catch Exception _ nil))
+                                    4005)]
+                 (if (try (let [s (java.net.Socket. "localhost" nrepl-port)]
+                            (.close s)
+                            true)
+                          (catch Exception _ false))
+                   (do (println (str "\n=== Running Backend Tests with Fresh Clean IPC in Dev REPL (port " nrepl-port ") ==="))
+                       (shell "clj-nrepl-eval" "-p" (str nrepl-port)
+                              "(do (require 'clojure.test '[com.ozimos.auth.auth-api.test-system :reload true]) (try (com.ozimos.auth.auth-api.test-system/start-clean-test-sys!) (let [ns-syms '[com.ozimos.auth.pathom.core-test com.ozimos.auth.mfa.core-test com.ozimos.auth.oauth.core-test com.ozimos.auth.rama.ipc-test com.ozimos.auth.user.ipc-test com.ozimos.auth.webauthn.core-test] loaded (keep (fn [sym] (try (require sym :reload) sym (catch Exception _ nil))) ns-syms)] (apply clojure.test/run-tests loaded)) (finally (com.ozimos.auth.auth-api.test-system/stop-clean-test-sys!))) nil)"))
+                   (do (println "\n=== REPL not detected, falling back to standalone JVM test runner ===")
+                       (let [args (or (seq *command-line-args*) ["test" "project:auth-service"])]
+                         (shell "clojure" "-X:deps" "prep" ":aliases" "[:dev :test :+rama :+default :poly]")
+                         (apply shell "clojure" "-M:dev:test:+rama:+default:poly" args)))))
   test-all     (do (println "\n=== 1/3 Running Clojure JVM Backend Tests ===")
                    (let [args (or (seq *command-line-args*) ["test" "project:auth-service"])]
                      (shell "clojure" "-X:deps" "prep" ":aliases" "[:dev :test :+rama :+default :poly]")

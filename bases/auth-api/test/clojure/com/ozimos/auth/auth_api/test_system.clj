@@ -7,9 +7,31 @@
    [integrant.repl.state :as irs]))
 
 (defonce sys-atom (atom nil))
+(defonce test-sys-atom (atom nil))
 
 (defn get-sys []
-  (or irs/system @sys-atom))
+  (or @test-sys-atom irs/system @sys-atom))
+
+(defn start-clean-test-sys!
+  "Creates a fresh, isolated in-memory IPC cluster, merges it with irs/system,
+   and stores the merged system map in test-sys-atom."
+  []
+  (rama-core/clear-ipc!)
+  (let [clean-ipc-sys (ig/init {:rama/cluster {:mode :ipc :tasks 2 :threads 1}})
+        merged-sys (merge irs/system clean-ipc-sys)]
+    (reset! test-sys-atom merged-sys)
+    merged-sys))
+
+(defn stop-clean-test-sys!
+  "Halts the clean test IPC cluster and clears test-sys-atom."
+  []
+  (when-let [test-sys @test-sys-atom]
+    (when-let [clean-ipc (select-keys test-sys [:rama/cluster])]
+      (try
+        (ig/halt! clean-ipc)
+        (catch Exception _ nil)))
+    (rama-core/clear-ipc!)
+    (reset! test-sys-atom nil)))
 
 (defmacro with-sys [& body]
   `(let [~'sys (get-sys)]
