@@ -140,7 +140,12 @@ function setupMiddleware() {
       },
     },
   });
-  app.use("/api", apiProxy);
+  // Express app.use("/api", ...) strips the "/api" prefix from req.url.
+  // Restore the "/api" prefix before proxying so Jetty receives the full path (e.g. /api/auth/login).
+  app.use("/api", (req, res, next) => {
+    req.url = "/api" + req.url;
+    apiProxy(req, res, next);
+  });
 
   app.use(express.static(PUBLIC_DIR, { index: false, maxAge: 0 }));
 
