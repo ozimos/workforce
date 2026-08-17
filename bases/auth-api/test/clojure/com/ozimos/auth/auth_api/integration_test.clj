@@ -467,7 +467,7 @@
               (is (= "MFA enabled successfully" (get-in good-verify [:body :message])))))
 
           (testing "Step 4: Subsequent POST /api/auth/login triggers 2FA step-up challenge"
-            (Thread/sleep 200)
+            (Thread/sleep 500)
             (let [login-resp2 (post-edn "/api/auth/login" {:identifier (:username user) :password (:password user)})
                   body2 (:body login-resp2)
                   mfa-token (:mfa-token body2)]
