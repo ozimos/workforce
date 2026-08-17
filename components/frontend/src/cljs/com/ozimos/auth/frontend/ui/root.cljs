@@ -61,11 +61,21 @@
 (def home-factory       (delay (comp/factory home/Home)))
 (def profile-factory    (delay (comp/factory profile/Profile)))
 
+(defn- browser-env?
+  "Returns true only when executing inside a real browser environment (not Node.js SSR)."
+  []
+  (and (exists? js/window)
+       (exists? js/window.location)
+       (not (and (exists? js/process)
+                 (exists? js/process.versions)
+                 (some? (.-node (.-versions js/process)))))))
+
 (defsc Root [_ _]
   {:query []}
   (let [page (current-page)
         logged-in (logged-in?)]
-    (when (and (not logged-in)
+    (when (and (browser-env?)
+               (not logged-in)
                (= page :route/home))
       (set! js/window.location.pathname (route-for-page :route/login)))
     (div {:className "min-h-full"}
