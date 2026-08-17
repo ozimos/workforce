@@ -8,7 +8,9 @@ no need to reset the system if this is the first run after jvm start. just use "
 
 create temp files (if needed) in project directory. you should delete them after you are done
 
-if you kill the jvm, start a new one in the background using bb repl, then initialize with "(user/go)"
+if you kill the jvm, start a new one in the background using bb repl, then initialize with "(in-ns 'user) (go)"
+
+Never run `shadow-cljs stop` or `pnpm exec shadow-cljs stop`. Launchpad embeds the shadow-cljs server inside the main Clojure JVM process (port 9630). Stopping it terminates the embedded server and breaks frontend watching for the rest of the session.
 
 use the ?<- macro to test expressions in the repl
 
