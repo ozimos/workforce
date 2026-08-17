@@ -2,15 +2,16 @@
   (:require
    [com.fulcrologic.fulcro.components :as comp :refer [defsc]]
    [com.fulcrologic.fulcro.dom :as dom :refer [a button div form h2 input label p]]
-   [com.ozimos.auth.frontend.json :as json]))
+   [com.ozimos.auth.frontend.json :as json]
+   [com.ozimos.auth.frontend.transit :as transit]))
 
 (defn- update-username [this]
   (let [{:keys [new-username]} (comp/get-state this)]
     (comp/set-state! this {:error-msg nil :success-msg nil :loading true})
     (let [eql [(list 'user/update-username {:user/new-username new-username})]]
-      (-> (json/fetch-json "/api/query" "POST" {:eql (pr-str eql)})
+      (-> (transit/fetch-transit "/api/query" eql)
           (.then (fn [{:keys [status body]}]
-                   (let [res (get-in body [:data :user/update-username])
+                   (let [res (get body 'user/update-username)
                          errs (:user/errors res)]
                      (if (and (= 200 status) res (not errs))
                        (do

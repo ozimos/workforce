@@ -196,6 +196,7 @@
   (let [{:keys [token-decoder]} system
         base-env (or (:pathom-env system) (pathom/build-env system))
         query (cond
+                (vector? body-params) body-params
                 (:query body-params) (:query body-params)
                 (string? (:eql body-params)) (edn/read-string (:eql body-params))
                 :else (:eql body-params))
@@ -206,7 +207,7 @@
               base-env)]
     (try
       (let [result (pathom/process env query)]
-        {:status 200 :body {:ok true :data result}})
+        {:status 200 :body result})
       (catch clojure.lang.ExceptionInfo e
         (let [error-type (some #(-> % ex-data :type)
                                (take-while some? (iterate #(.getCause ^Throwable %) e)))]

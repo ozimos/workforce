@@ -2,7 +2,7 @@
   (:require
    [com.fulcrologic.fulcro.components :as comp :refer [defsc]]
    [com.fulcrologic.fulcro.dom :as dom :refer [a button div nav span]]
-   [com.ozimos.auth.frontend.json :as json]))
+   [com.ozimos.auth.frontend.transit :as transit]))
 
 (defn- logout []
   (when (exists? js/localStorage)
@@ -16,10 +16,10 @@
 (defn- fetch-user-info! [this]
   (when (and (exists? js/localStorage)
              (.getItem js/localStorage "access-token"))
-    (-> (json/fetch-json "/api/query" "POST" {:eql "[:current-user/email :current-user/username :current-user/verified]"})
+    (-> (transit/fetch-transit "/api/query" [:current-user/email :current-user/username :current-user/verified])
         (.then (fn [{:keys [status body]}]
                  (when (= 200 status)
-                   (let [data (get-in body [:data])]
+                   (let [data body]
                      (when-let [e (:current-user/email data)]
                        (.setItem js/localStorage "email" e))
                      (when-let [u (:current-user/username data)]

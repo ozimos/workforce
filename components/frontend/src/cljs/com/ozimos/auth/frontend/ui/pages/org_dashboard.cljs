@@ -1,59 +1,48 @@
 (ns com.ozimos.auth.frontend.ui.pages.org-dashboard
   (:require
    [com.fulcrologic.fulcro.components :as comp :refer [defsc]]
-   [com.fulcrologic.fulcro.dom :as dom :refer [button div h1 h3 input option p select table tbody td th thead tr]]))
-
-(defn- fetch-query [query token]
-  (js/fetch "/api/query"
-    (clj->js {:method "POST"
-              :headers {"Content-Type" "application/json"
-                        "Authorization" (str "Bearer " token)}
-              :body (js/JSON.stringify #js {"eql" (pr-str query)})})))
+   [com.fulcrologic.fulcro.dom :as dom :refer [button div h1 h3 input option p select table tbody td th thead tr]]
+   [com.ozimos.auth.frontend.transit :as transit]))
 
 (defn- load-members [this org-id]
-  (let [token (.getItem js/localStorage "access-token")
-        query [{[:org/id org-id]
+  (let [query [{[:org/id org-id]
                 [:org/name {:org/members
                             [:user/id :membership/role :membership/status :membership/joined-at]}]}]]
     (comp/set-state! this {:members-loading true})
-    (-> (fetch-query query token)
-        (.then (fn [resp]
-                 (-> (.json resp)
-                     (.then (fn [parsed]
-                              (let [data (js->clj parsed :keywordize-keys true)
-                                    org (-> data :data first val)]
-                                (comp/set-state! this {:members (:org/members org) :members-loading false}))))))
-          (.catch (fn [_]
-                    (comp/set-state! this {:members-error "Failed to load members" :members-loading false})))))))
+    (-> (transit/fetch-transit "/api/query" query)
+        (.then (fn [{:keys [body]}]
+                 (let [org (-> body first val)]
+                   (comp/set-state! this {:members (:org/members org) :members-loading false}))))
+        (.catch (fn [_]
+                  (comp/set-state! this {:members-error "Failed to load members" :members-loading false}))))))
 
 (defn- switch-org [this org-id]
-  (let [token (.getItem js/localStorage "access-token")
-        mut  (list 'org/switch {:org/id org-id})
+  (let [mut  (list 'org/switch {:org/id org-id})
         query [{mut [:org/id]}]]
-    (-> (fetch-query query token)
+    (-> (transit/fetch-transit "/api/query" query)
         (.then (fn [] (set! js/window.location.pathname "/"))))))
 
 (defn- send-invite [this]
-  (let [{:keys [invite-email invite-role active-org]} (comp/get-state this)
-        token (.getItem js/localStorage "access-token")]
+  (let [{:keys [invite-email invite-role active-org]} (comp/get-state this)]
     (when active-org
       (let [mut  (list 'org/invite {:org/id (:org/id active-org)
                                     :invitation/email invite-email
                                     :invitation/role (or invite-role "MEMBER")})
             query [{mut [:invitation/id :invitation/errors]}]]
         (comp/set-state! this {:invite-loading true :invite-msg nil})
-        (-> (fetch-query query token)
-            (.then (fn [resp]
-                     (-> (.json resp)
-                         (.then (fn [parsed]
-                                  (let [data (js->clj parsed :keywordize-keys true)
-                                        result (-> data :data first val)]
-                                    (if (:invitation/errors result)
-                                      (comp/set-state! this {:invite-msg "Failed to invite" :invite-loading false})
-                                      (comp/set-state! this {:invite-msg "Invitation sent!" :invite-loading false
-                                                             :invite-email ""}))))))))
+        (-> (transit/fetch-transit "/api/query" query)
+            (.then (fn [{:keys [body]}]
+                     (let [result (-> body first val)]
+                       (if (:invitation/errors result)
+                         (comp/set-state! this
+                           {:invite-msg (or (-> result :invitation/errors first second first)
+                                            "Failed to send invitation")
+                            :invite-loading false})
+                         (do
+                           (comp/set-state! this {:invite-msg "Invitation sent!" :invite-email "" :invite-loading false})
+                           (load-members this (:org/id active-org)))))))
             (.catch (fn [_]
-                      (comp/set-state! this {:invite-msg "Network error" :invite-loading false}))))))))
+                      (comp/set-state! this {:invite-msg "Failed to send invitation" :invite-loading false}))))))))
 
 (defsc OrgDashboard [this _props]
   {:query [:loading :error-msg :active-org :orgs :members :members-loading :members-error

@@ -1,30 +1,25 @@
 (ns com.ozimos.auth.frontend.ui.pages.create-org
   (:require
    [com.fulcrologic.fulcro.components :as comp :refer [defsc]]
-   [com.fulcrologic.fulcro.dom :as dom :refer [a button div form h2 input label p]]))
+   [com.fulcrologic.fulcro.dom :as dom :refer [a button div form h2 input label p]]
+   [com.ozimos.auth.frontend.transit :as transit]))
 
 (defn- submit [this]
   (let [{:keys [name]} (comp/get-state this)]
     (comp/set-state! this {:error-msg nil :loading true})
-    (let [query [(list 'org/create {:org/name name})]
-          body (js/JSON.stringify #js {"eql" (pr-str query)})]
-      (-> (js/fetch "/api/query"
-            (clj->js {:method "POST"
-                      :headers {"Content-Type" "application/json"}
-                      :body body}))
-          (.then (fn [resp]
-                   (-> (.json resp)
-                       (.then (fn [parsed]
-                                (let [data (js->clj parsed :keywordize-keys true)
-                                      org-data (some-> data :data (get "org/create"))]
-                                  (if (:org/errors org-data)
-                                    (comp/set-state! this
-                                      {:error-msg (or (-> org-data :org/errors :name first)
-                                                      "Failed to create organization")
-                                       :loading false})
-                                    (comp/set-state! this
-                                      {:error-msg nil :loading false :success true
-                                       :org-name (:org/name org-data)}))))))))
+    (let [query [(list 'org/create {:org/name name})]]
+      (-> (transit/fetch-transit "/api/query" query)
+          (.then (fn [{:keys [body]}]
+                   (let [org-data (get body 'org/create)]
+                     (if (or (:org/errors org-data) (get body :errors))
+                       (comp/set-state! this
+                         {:error-msg (or (-> org-data :org/errors :name first)
+                                         (-> body :errors :auth first)
+                                         "Failed to create organization")
+                          :loading false})
+                       (comp/set-state! this
+                         {:error-msg nil :loading false :success true
+                          :org-name (:org/name org-data)})))))
           (.catch (fn [_]
                     (comp/set-state! this {:error-msg "Network error" :loading false})))))))
 (defsc CreateOrg [this _props]

@@ -1,50 +1,36 @@
 (ns com.ozimos.auth.frontend.ui.pages.join-org
   (:require
    [com.fulcrologic.fulcro.components :as comp :refer [defsc]]
-   [com.fulcrologic.fulcro.dom :as dom :refer [a button div h2 p]]))
-
-(defn- fetch-query [query token]
-  (js/fetch "/api/query"
-    (clj->js {:method "POST"
-              :headers {"Content-Type" "application/json"
-                        "Authorization" (str "Bearer " token)}
-              :body (js/JSON.stringify #js {"eql" (pr-str query)})})))
+   [com.fulcrologic.fulcro.dom :as dom :refer [a button div h2 p]]
+   [com.ozimos.auth.frontend.transit :as transit]))
 
 (defn- load-invitations [this]
-  (let [token (.getItem js/localStorage "access-token")
-        query [{:user/invitations
+  (let [query [{:user/invitations
                 [:invitation/id :invitation/org-id
                  :invitation/org-name :invitation/role
                  :invitation/status :invitation/expires-at]}]]
-    (-> (fetch-query query token)
-        (.then (fn [resp]
-                 (-> (.json resp)
-                     (.then (fn [parsed]
-                              (let [data (js->clj parsed :keywordize-keys true)
-                                    invitations (-> data :data :user/invitations)]
-                                (comp/set-state! this {:invitations (or invitations []) :loading false}))))))
-          (.catch (fn [_]
-                    (comp/set-state! this {:error-msg "Failed to load invitations" :loading false})))))))
+    (-> (transit/fetch-transit "/api/query" query)
+        (.then (fn [{:keys [body]}]
+                 (let [invitations (get body :user/invitations)]
+                   (comp/set-state! this {:invitations (or invitations []) :loading false}))))
+        (.catch (fn [_]
+                  (comp/set-state! this {:error-msg "Failed to load invitations" :loading false}))))))
 
 (defn- accept-invitation [this invitation-id]
-  (let [token (.getItem js/localStorage "access-token")
-        mut  (list 'org/join {:invitation/id invitation-id})
+  (let [mut  (list 'org/join {:invitation/id invitation-id})
         query [{mut [:org/id :invitation/errors]}]]
     (comp/set-state! this {:accepting invitation-id})
-    (-> (fetch-query query token)
-        (.then (fn [resp]
-                 (-> (.json resp)
-                     (.then (fn [parsed]
-                              (let [data (js->clj parsed :keywordize-keys true)
-                                    join-result (-> data :data first val)]
-                                (if (:invitation/errors join-result)
-                                  (comp/set-state! this
-                                    {:error-msg (or (-> join-result :invitation/errors first second first)
-                                                    "Failed to accept invitation")
-                                     :accepting nil})
-                                  (do
-                                    (comp/set-state! this {:error-msg nil :accepting nil :accepted true})
-                                    (set! js/window.location.pathname "/")))))))))
+    (-> (transit/fetch-transit "/api/query" query)
+        (.then (fn [{:keys [body]}]
+                 (let [join-result (-> body first val)]
+                   (if (:invitation/errors join-result)
+                     (comp/set-state! this
+                       {:error-msg (or (-> join-result :invitation/errors first second first)
+                                       "Failed to accept invitation")
+                        :accepting nil})
+                     (do
+                       (comp/set-state! this {:error-msg nil :accepting nil :accepted true})
+                       (set! js/window.location.pathname "/"))))))
         (.catch (fn [_]
                   (comp/set-state! this {:error-msg "Network error" :accepting nil}))))))
 
