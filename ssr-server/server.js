@@ -9,8 +9,31 @@ const { createProxyMiddleware } = require("http-proxy-middleware");
 require("./shim");
 
 const app = express();
+
+function getApiTarget() {
+  if (process.env.API_TARGET) {
+    return process.env.API_TARGET;
+  }
+  if (process.env.JETTY_DEV_PORT) {
+    return `http://localhost:${process.env.JETTY_DEV_PORT}`;
+  }
+  try {
+    const depsLocalPath = path.resolve(__dirname, "..", "deps.local.edn");
+    if (fs.existsSync(depsLocalPath)) {
+      const content = fs.readFileSync(depsLocalPath, "utf-8");
+      const match = content.match(/:jetty\/port\s*\{[^}]*:dev\s*(\d+)/);
+      if (match && match[1]) {
+        return `http://localhost:${match[1]}`;
+      }
+    }
+  } catch (err) {
+    // Fall back to default if reading/parsing fails
+  }
+  return "http://localhost:8080";
+}
+
 const PORT = process.env.SSR_PORT || 3000;
-const API_TARGET = process.env.API_TARGET || "http://localhost:8080";
+const API_TARGET = getApiTarget();
 
 const PUBLIC_DIR = path.resolve(__dirname, "..", "bases", "auth-api", "resources", "public");
 const SSR_OUTPUT_DIR = path.resolve(__dirname, "..", "ssr-output");
