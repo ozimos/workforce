@@ -12,13 +12,19 @@
 (def ^:dynamic *sys* nil)
 (def ^:dynamic *base-url* nil)
 
+(defn- get-user-store [sys]
+  (or (:com.ozimos.auth.user/store sys)
+      (:user-store sys)
+      sys))
+
 (defn- wait-for-mfa-enabled [sys user-id]
-  (loop [retries 30]
-    (if (user/mfa-enabled? sys user-id)
-      true
-      (when (> retries 0)
-        (Thread/sleep 50)
-        (recur (dec retries))))))
+  (let [store (get-user-store sys)]
+    (loop [retries 30]
+      (if (user/mfa-enabled? store user-id)
+        true
+        (when (> retries 0)
+          (Thread/sleep 50)
+          (recur (dec retries)))))))
 
 (defn system-fixture [tests]
   (ts/with-sys
@@ -472,7 +478,7 @@
             (let [curr-step (quot (quot (System/currentTimeMillis) 1000) 30)
                   valid-code (mfa/calculate-totp secret curr-step)
                   good-verify (post-edn "/api/auth/mfa/verify-setup" {:code valid-code} (auth-header token1))
-                  user-rec (user/find-by-identifier *sys* (:username user))]
+                  user-rec (user/find-by-identifier (get-user-store *sys*) (:username user))]
               (is (= 200 (:status good-verify)))
               (is (= "MFA enabled successfully" (get-in good-verify [:body :message])))
               (wait-for-mfa-enabled *sys* (:id user-rec))))
@@ -571,7 +577,7 @@
           curr-step (quot (quot (System/currentTimeMillis) 1000) 30)
           totp (mfa/calculate-totp secret curr-step)
           _ (post-edn "/api/auth/mfa/verify-setup" {:code totp} (auth-header token))
-          user-rec (user/find-by-identifier *sys* (:username user))
+          user-rec (user/find-by-identifier (get-user-store *sys*) (:username user))
           _ (wait-for-mfa-enabled *sys* (:id user-rec))]
 
       (testing "Step 1: GET /api/auth/mfa/backup-codes returns 10 initial codes count"
