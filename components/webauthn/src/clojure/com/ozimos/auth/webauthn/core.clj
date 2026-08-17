@@ -101,7 +101,7 @@
 (defn creation-options-to-json
   "Convert PublicKeyCredentialCreationOptions to JSON string."
   [^PublicKeyCredentialCreationOptions options]
-  (.toCredentialsResponseBodyJson options))
+  (.toCredentialsCreateJson options))
 
 (defn finish-registration
   "Validate an AuthenticatorAttestationResponse JSON against CreationOptions JSON.
@@ -131,7 +131,7 @@
 (defn assertion-request-to-json
   "Convert AssertionRequest to JSON string containing RequestOptions."
   [^AssertionRequest request]
-  (.toCredentialsResponseBodyJson (.getPublicKeyCredentialRequestOptions request)))
+  (.toCredentialsGetJson (.getPublicKeyCredentialRequestOptions request)))
 
 (defn finish-assertion
   "Validate an AuthenticatorAssertionResponse JSON against AssertionRequest or RequestOptions.
