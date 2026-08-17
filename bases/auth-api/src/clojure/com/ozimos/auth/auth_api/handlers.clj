@@ -66,32 +66,43 @@
 
 (defn register
   [{:keys [body-params system]}]
-  (let [result (user/register! system body-params)]
+  (let [result (user/register! system body-params)
+        mode (get-in system [:policy :verification-mode] :soft)]
     (if (first result)
-      (let [u (second result)
-            session-data (issue-user-session-tokens system u)]
-        {:status 201
-         :body session-data})
+      (let [u (second result)]
+        (if (= mode :soft)
+          {:status 201
+           :body (issue-user-session-tokens system u)}
+          {:status 201
+           :body {:id (:id u)
+                  :username (:username u)
+                  :email (:email u)
+                  :verified false
+                  :verification-required true}}))
       {:status 409
        :body (second result)})))
 
 (defn login
   [{:keys [body-params system]}]
-  (let [{:keys [token-encoder]} system
+  (let [{:keys [token-encoder policy]} system
         {:keys [identifier password]} body-params
         {:keys [encoder]} token-encoder
-        user-record (user/find-by-identifier system identifier)]
+        user-record (user/find-by-identifier system identifier)
+        mode (get policy :verification-mode :soft)]
     (if (and user-record
              (user/matches-password? system password (:pwd-hash user-record)))
-      (let [issuer "com.ozimos.auth"
-            sub (str (:id user-record))]
-        (if (user/mfa-enabled? system (:id user-record))
-          (let [mfa-token (token/issue-mfa-challenge-token encoder issuer sub 300)]
+      (if (and (= mode :strict) (not (:verified user-record)))
+        {:status 403
+         :body {:errors {:auth ["Email verification required before logging in."]}}}
+        (let [issuer "com.ozimos.auth"
+              sub (str (:id user-record))]
+          (if (user/mfa-enabled? system (:id user-record))
+            (let [mfa-token (token/issue-mfa-challenge-token encoder issuer sub 300)]
+              {:status 200
+               :body {:mfa-required true
+                      :mfa-token mfa-token}})
             {:status 200
-             :body {:mfa-required true
-                    :mfa-token mfa-token}})
-          {:status 200
-           :body (issue-user-session-tokens system user-record)}))
+             :body (issue-user-session-tokens system user-record)})))
       {:status 401
        :body {:errors {:credentials ["Invalid username/email or password"]}}})))
 

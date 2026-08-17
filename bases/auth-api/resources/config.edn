@@ -19,10 +19,15 @@
  {:rama #ig/ref :rama/cluster
   :interval-ms 300000}
 
+ :auth/policy
+ {:verification-mode #profile {:dev :soft :test :soft :prod :strict}
+  :auto-verify-social true}
+
  :com.ozimos.auth.auth-api.system/router
  {:rama #ig/ref :rama/cluster
   :token-encoder #ig/ref :token/encoder
-  :token-decoder #ig/ref :token/decoder}
+  :token-decoder #ig/ref :token/decoder
+  :policy #ig/ref :auth/policy}
 
  :adapter/jetty
  {:port #profile {:dev #or [#long #env JETTY_DEV_PORT 8080]

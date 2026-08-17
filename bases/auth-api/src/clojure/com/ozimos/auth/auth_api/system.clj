@@ -57,6 +57,9 @@
       (require 'com.ozimos.auth.auth-api.routes)
       ((ns-resolve (find-ns 'com.ozimos.auth.auth-api.routes) 'app) routes-deps))))
 
+(defmethod ig/init-key :auth/policy [_ config]
+  config)
+
 (defmethod ig/init-key :com.ozimos.auth.auth-api.system/router
   [_ deps]
   (build-ring-handler deps))

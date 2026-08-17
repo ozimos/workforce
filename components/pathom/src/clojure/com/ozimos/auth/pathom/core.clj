@@ -35,13 +35,14 @@
 (pco/defresolver current-user-resolver
   "Resolve the current authenticated user's basic info."
   [env params]
-  {::pco/output [:current-user/id :current-user/username :current-user/email]}
+  {::pco/output [:current-user/id :current-user/username :current-user/email :current-user/verified]}
   (let [user-id (require-auth env)
         user-store (get-user-store (:deps env))]
     (let [user-record (user/find-by-id user-store user-id)]
       {:current-user/id user-id
        :current-user/username (:username user-record)
-       :current-user/email (:email user-record)})))
+       :current-user/email (:email user-record)
+       :current-user/verified (boolean (:verified user-record))})))
 
 (pco/defresolver user-orgs-resolver
   "Resolve all organizations for the current user."
