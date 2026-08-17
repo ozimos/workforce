@@ -110,14 +110,23 @@
                   :handler handlers/passkey-authenticate-begin}}]]
         ["/:credential-id"
          {:delete {:summary "Delete a registered passkey"
-                   :handler handlers/passkey-delete}}]]]
+                   :handler handlers/passkey-delete}}]]
+       ["/oauth"
+        ["/:provider/authorize"
+         {:get {:summary "Initiate OAuth2 authorization flow"
+                :handler handlers/oauth-authorize}}]
+        ["/:provider/callback"
+         {:get {:summary "OAuth2 provider callback handler"
+                :handler handlers/oauth-callback}
+          :post {:summary "OAuth2 provider callback handler via POST"
+                 :handler handlers/oauth-callback}}]]]]
       ["/query"
        {:post {:summary "Pathom query endpoint (app logic)"
                :handler handlers/query
                :responses {200 {:body [:map [:ok boolean?] [:query :any]]}}}}]
       ["/health"
        {:get {:summary "Health check"
-              :handler handlers/health}}]]]
+              :handler handlers/health}}]])
     {:data {:muuntaja m/instance
             :coercion rcm/coercion
             :middleware [(wrap-inject-system deps)
