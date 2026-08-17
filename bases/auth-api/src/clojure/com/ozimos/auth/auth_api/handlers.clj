@@ -2,6 +2,7 @@
   (:require
    [clojure.edn :as edn]
    [com.ozimos.auth.mfa.interface :as mfa]
+   [com.ozimos.auth.oauth.interface :as oauth]
    [com.ozimos.auth.pathom.interface :as pathom]
    [com.ozimos.auth.revocation.interface :as revocation]
    [com.ozimos.auth.schema.interface :as schema]
@@ -241,7 +242,9 @@
       (if (and encrypted-secret
                (let [secret (mfa/decrypt-secret encrypted-secret)]
                  (mfa/verify-totp secret code)))
-        {:status 200 :body {:message "MFA enabled successfully"}}
+        (do
+          (user/verify-mfa-setup! system (:user-id auth-user))
+          {:status 200 :body {:message "MFA enabled successfully"}})
         {:status 400 :body {:errors {:code ["Invalid 6-digit TOTP code"]}}}))
     {:status 401 :body {:errors {:auth ["Not authenticated"]}}}))
 
@@ -394,5 +397,26 @@
       {:status 200 :body {:message "Passkey deleted successfully"}})
     {:status 401 :body {:errors {:auth ["Not authenticated"]}}}))
 
+(defn oauth-authorize
+  [{:keys [path-params]}]
+  (let [provider (:provider path-params)]
+    {:status 302
+     :headers {"Location" (str "/api/auth/oauth/" provider "/callback?code=mock-code-123")}}))
+
+(defn oauth-callback
+  [{:keys [path-params params body-params system]}]
+  (let [provider (:provider path-params)
+        ;; Extract oauth user info from query params, body params or mock default
+        provider-user-id (or (get params "sub") (get body-params :sub) (get params "provider_user_id") (get body-params :provider_user_id) "mock-sub-999")
+        email (or (get params "email") (get body-params :email) (str provider-user-id "@" provider ".com"))
+        name (or (get params "name") (get body-params :name) "OAuth User")
+        [ok? result] (oauth/handle-oauth-callback system provider {:provider-user-id provider-user-id
+                                                      :email email
+                                                      :name name})]
+    (if ok?
+      {:status 200 :body result}
+      {:status 400 :body result})))
+
 (defn health [_]
   {:status 200 :body {:status "ok"}})
+
