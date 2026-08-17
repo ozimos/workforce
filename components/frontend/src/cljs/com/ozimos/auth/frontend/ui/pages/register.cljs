@@ -26,7 +26,13 @@
       (-> (json/fetch-json "/api/auth/register" "POST" {:email email :password password})
           (.then (fn [{:keys [status body]}]
                    (if (= 201 status)
-                     (comp/set-state! this {:error-msg nil :field-errors {} :success true :created-username (:username body)})
+                     (do
+                       (when (exists? js/localStorage)
+                         (when-let [at (:access-token body)] (.setItem js/localStorage "access-token" at))
+                         (when-let [rt (:refresh-token body)] (.setItem js/localStorage "refresh-token" rt))
+                         (when-let [u (get-in body [:user :username])] (.setItem js/localStorage "username" u))
+                         (when-let [e (get-in body [:user :email])] (.setItem js/localStorage "email" e)))
+                       (comp/set-state! this {:error-msg nil :field-errors {} :success true :created-username (get-in body [:user :username])}))
                      (let [err-map (or (get-in body [:errors :errors]) (:errors body) {})
                            field-errs (into {} (filter (comp some? val)
                                                  {:email    (first (:email err-map))
@@ -50,16 +56,15 @@
             (p {:className "text-sm text-red-700"} error-msg)))
         (if success
           (div {:className "rounded-md bg-green-50 p-4 mb-4"}
-            (p {:className "text-sm text-green-700"} "Account created! Check your email to verify.")
+            (p {:className "text-sm font-semibold text-green-800"} "Account created successfully!")
+            (p {:className "text-xs text-green-700 mt-1 mb-3"} "A verification link has been sent to your email. Please check your inbox to verify your account.")
             (div {:className "mt-4 space-y-2"}
               (p {:className "text-sm text-gray-600"} "What would you like to do next?")
               (div {:className "flex gap-3"}
                 (a {:href "/create-org" :className "flex-1 text-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500"}
                   "Create Organization")
                 (a {:href "/join-org" :className "flex-1 text-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-700 ring-1 ring-inset ring-gray-300 hover:bg-gray-50"}
-                  "Join Organization")))
-            (a {:href "/login" :className "mt-2 inline-block text-sm font-semibold text-indigo-600 hover:text-indigo-500"}
-              "Sign in"))
+                  "Join Organization"))))
           (form {:onSubmit (fn [e] (.preventDefault e) (submit this))}
             (input-field "email" "Email" "email" email
               #(comp/set-state! this {:email (.. % -target -value)})

@@ -35,16 +35,41 @@
              :jti (.getId jwt)}))
         (catch Exception _ nil)))))
 
+(defn- issue-user-session-tokens
+  "Helper to issue JWT access + refresh tokens and record active session for user-record."
+  [system user-record]
+  (let [{:keys [token-encoder]} system
+        {:keys [encoder]} token-encoder
+        issuer "com.ozimos.auth"
+        user-id (:id user-record)
+        sub (str user-id)
+        roles (:roles user-record)
+        active-org-id (user/get-active-org system user-id)
+        active-org-role (when active-org-id
+                          (:role (user/get-membership system user-id active-org-id)))
+        access-jti (str (random-uuid))
+        refresh-jti (str (random-uuid))
+        access-ttl 900
+        refresh-ttl 604800
+        access-token (if (and active-org-id active-org-role)
+                       (token/issue-access-token encoder issuer sub roles access-jti access-ttl active-org-id active-org-role)
+                       (token/issue-access-token encoder issuer sub roles access-jti access-ttl))
+        refresh-token (token/issue-refresh-token encoder issuer sub refresh-jti refresh-ttl)
+        expires-at (+ (System/currentTimeMillis) (* refresh-ttl 1000))]
+    (session/create! system user-id access-jti expires-at)
+    {:access-token access-token
+     :refresh-token refresh-token
+     :expires-in access-ttl
+     :user (select-keys user-record [:id :username :email :verified])}))
+
 (defn register
   [{:keys [body-params system]}]
   (let [result (user/register! system body-params)]
     (if (first result)
-      (let [u (second result)]
+      (let [u (second result)
+            session-data (issue-user-session-tokens system u)]
         {:status 201
-         :body {:id (:id u)
-                :username (:username u)
-                :email (:email u)
-                :verified (:verified u)}})
+         :body session-data})
       {:status 409
        :body (second result)})))
 
@@ -57,33 +82,14 @@
     (if (and user-record
              (user/matches-password? system password (:pwd-hash user-record)))
       (let [issuer "com.ozimos.auth"
-            sub (str (:id user-record))
-            roles (:roles user-record)]
+            sub (str (:id user-record))]
         (if (user/mfa-enabled? system (:id user-record))
           (let [mfa-token (token/issue-mfa-challenge-token encoder issuer sub 300)]
             {:status 200
              :body {:mfa-required true
                     :mfa-token mfa-token}})
-          (let [active-org-id (user/get-active-org system (:id user-record))
-                active-org-role (when active-org-id
-                                  (:role (user/get-membership system (:id user-record) active-org-id)))
-                access-jti (str (random-uuid))
-                refresh-jti (str (random-uuid))
-                access-ttl 900
-                refresh-ttl 604800
-                access-token (if (and active-org-id active-org-role)
-                               (token/issue-access-token encoder issuer sub roles access-jti access-ttl active-org-id active-org-role)
-                               (token/issue-access-token encoder issuer sub roles access-jti access-ttl))
-                refresh-token (token/issue-refresh-token encoder issuer sub refresh-jti refresh-ttl)
-                expires-at (+ (System/currentTimeMillis) (* refresh-ttl 1000))]
-            (session/create! system (:id user-record) access-jti expires-at)
-            {:status 200
-             :body {:access-token access-token
-                    :refresh-token refresh-token
-                    :expires-in access-ttl
-                    :user {:id (:id user-record)
-                           :username (:username user-record)
-                           :email (:email user-record)}}})))
+          {:status 200
+           :body (issue-user-session-tokens system user-record)}))
       {:status 401
        :body {:errors {:credentials ["Invalid username/email or password"]}}})))
 

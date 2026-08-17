@@ -11,6 +11,14 @@
 (defmethod aero/reader 'ig/refset [_opts _tag value]
   (ig/refset value))
 
+;; Register safe #long reader tag that returns nil on empty string or parse error
+(defmethod aero/reader 'long [_opts _tag value]
+  (cond
+    (integer? value) (long value)
+    (string? value) (when (seq (clojure.string/trim value))
+                      (try (Long/parseLong (clojure.string/trim value)) (catch Exception _ nil)))
+    :else nil))
+
 ;; Register #ig/var for Integrant variables
 (defmethod aero/reader 'ig/var [_opts _tag value]
   (ig/var value))
