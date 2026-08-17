@@ -55,12 +55,14 @@
                        (token/issue-access-token encoder issuer sub roles access-jti access-ttl active-org-id active-org-role)
                        (token/issue-access-token encoder issuer sub roles access-jti access-ttl))
         refresh-token (token/issue-refresh-token encoder issuer sub refresh-jti refresh-ttl)
-        expires-at (+ (System/currentTimeMillis) (* refresh-ttl 1000))]
+        expires-at (+ (System/currentTimeMillis) (* refresh-ttl 1000))
+        user-info (select-keys user-record [:id :username :email :verified])]
     (session/create! system user-id access-jti expires-at)
-    {:access-token access-token
-     :refresh-token refresh-token
-     :expires-in access-ttl
-     :user (select-keys user-record [:id :username :email :verified])}))
+    (merge user-info
+           {:access-token access-token
+            :refresh-token refresh-token
+            :expires-in access-ttl
+            :user user-info})))
 
 (defn register
   [{:keys [body-params system]}]
