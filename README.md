@@ -92,8 +92,23 @@ clojure -A:poly info
 
 ## Testing
 
+| Command | Speed | Description |
+|---|---|---|
+| **`bb test-fast`** | **~1.5s** | Runs unit tests instantly inside active Dev REPL (`port 4005`). Zero cold-boot overhead. |
+| **`bb test-fast-clean`** | **~1.5s** | Runs unit tests in Dev REPL against a **fresh, isolated in-memory Rama cluster** per run. Zero dev state pollution. |
+| **`bb test`** | **~76s** | Runs all backend JVM tests across all Polylith components in a standalone, isolated JVM process. |
+| **`bb fe-test`** | **~5s** | Runs frontend ClojureScript unit tests (`shadow-cljs`). |
+| **`bb test-all`** | **~80s** | Full test suite: runs backend JVM, frontend CLJS, and Node SSR proxy tests sequentially. |
+
 ```bash
-clojure -A:dev:+default:test
+# Run instant in-REPL tests with isolated clean IPC state (Recommended during development)
+bb test-fast-clean
+
+# Run full backend test suite in a standalone process
+bb test
+
+# Run complete test suite (Backend JVM + Frontend CLJS + Node SSR Proxy)
+bb test-all
 ```
 
 ## Production Uberjar
