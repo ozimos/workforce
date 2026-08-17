@@ -25,9 +25,9 @@
   :token-decoder #ig/ref :token/decoder}
 
  :adapter/jetty
- {:port #profile {:dev #or [#env JETTY_DEV_PORT 8080]
-                  :test #or [#env JETTY_TEST_PORT 8081]
-                  :prod #or [#env JETTY_PROD_PORT 8080]}
+ {:port #profile {:dev #or [#long #env JETTY_DEV_PORT 8080]
+                  :test #or [#long #env JETTY_TEST_PORT 8081]
+                  :prod #or [#long #env JETTY_PROD_PORT 8080]}
   :host "0.0.0.0"
   :filter-chain-proxy #ig/ref :security/app-context
   :handler #ig/ref :com.ozimos.auth.auth-api.system/router}}
