@@ -464,10 +464,10 @@
                   valid-code (mfa/calculate-totp secret curr-step)
                   good-verify (post-edn "/api/auth/mfa/verify-setup" {:code valid-code} (auth-header token1))]
               (is (= 200 (:status good-verify)))
-              (is (= "MFA enabled successfully" (get-in good-verify [:body :message])))
-              (Thread/sleep 100)))
+              (is (= "MFA enabled successfully" (get-in good-verify [:body :message])))))
 
           (testing "Step 4: Subsequent POST /api/auth/login triggers 2FA step-up challenge"
+            (Thread/sleep 200)
             (let [login-resp2 (post-edn "/api/auth/login" {:identifier (:username user) :password (:password user)})
                   body2 (:body login-resp2)
                   mfa-token (:mfa-token body2)]
