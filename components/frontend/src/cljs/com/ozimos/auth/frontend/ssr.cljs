@@ -9,6 +9,11 @@
 (def React (js/require "react"))
 (def ReactDOMServer (js/require "react-dom/server"))
 
+;; Shim useLayoutEffect to useEffect in Node SSR environment to eliminate
+;; React DOM Server's "useLayoutEffect does nothing on the server" warning.
+(when React
+  (set! (.-useLayoutEffect React) (.-useEffect React)))
+
 (defn- escape-html [s]
   (-> s
       (.replace "&" "&amp;")

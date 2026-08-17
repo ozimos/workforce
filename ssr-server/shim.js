@@ -30,3 +30,13 @@ if (process.env.SSR_AUTHENTICATED === "true") {
   globalThis.localStorage.setItem("refresh-token", "ssr-fake-refresh-token");
   globalThis.localStorage.setItem("username", "ssr-user");
 }
+
+// Shim React.useLayoutEffect to React.useEffect in SSR to suppress React DOM Server warning
+try {
+  const React = require("react");
+  if (React && React.useLayoutEffect) {
+    React.useLayoutEffect = React.useEffect;
+  }
+} catch (e) {
+  // Ignore if react not yet resolvable at shim load time
+}
