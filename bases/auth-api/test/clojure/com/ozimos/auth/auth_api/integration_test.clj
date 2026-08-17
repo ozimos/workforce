@@ -4,12 +4,21 @@
    [clojure.test :refer [deftest is testing use-fixtures]]
    [com.ozimos.auth.auth-api.test-system :as ts]
    [com.ozimos.auth.mfa.interface :as mfa]
+   [com.ozimos.auth.user.interface :as user]
    [hato.client :as http]
    [jsonista.core :as json]
    [muuntaja.core :as m]))
 
 (def ^:dynamic *sys* nil)
 (def ^:dynamic *base-url* nil)
+
+(defn- wait-for-mfa-enabled [sys user-id]
+  (loop [retries 30]
+    (if (user/mfa-enabled? sys user-id)
+      true
+      (when (> retries 0)
+        (Thread/sleep 50)
+        (recur (dec retries))))))
 
 (defn system-fixture [tests]
   (ts/with-sys
@@ -462,12 +471,13 @@
           (testing "Step 3: POST /api/auth/mfa/verify-setup with valid code enables MFA"
             (let [curr-step (quot (quot (System/currentTimeMillis) 1000) 30)
                   valid-code (mfa/calculate-totp secret curr-step)
-                  good-verify (post-edn "/api/auth/mfa/verify-setup" {:code valid-code} (auth-header token1))]
+                  good-verify (post-edn "/api/auth/mfa/verify-setup" {:code valid-code} (auth-header token1))
+                  user-rec (user/find-by-identifier *sys* (:username user))]
               (is (= 200 (:status good-verify)))
-              (is (= "MFA enabled successfully" (get-in good-verify [:body :message])))))
+              (is (= "MFA enabled successfully" (get-in good-verify [:body :message])))
+              (wait-for-mfa-enabled *sys* (:id user-rec))))
 
           (testing "Step 4: Subsequent POST /api/auth/login triggers 2FA step-up challenge"
-            (Thread/sleep 500)
             (let [login-resp2 (post-edn "/api/auth/login" {:identifier (:username user) :password (:password user)})
                   body2 (:body login-resp2)
                   mfa-token (:mfa-token body2)]
@@ -561,7 +571,8 @@
           curr-step (quot (quot (System/currentTimeMillis) 1000) 30)
           totp (mfa/calculate-totp secret curr-step)
           _ (post-edn "/api/auth/mfa/verify-setup" {:code totp} (auth-header token))
-          _ (Thread/sleep 100)]
+          user-rec (user/find-by-identifier *sys* (:username user))
+          _ (wait-for-mfa-enabled *sys* (:id user-rec))]
 
       (testing "Step 1: GET /api/auth/mfa/backup-codes returns 10 initial codes count"
         (let [status-resp (get-edn "/api/auth/mfa/backup-codes" (auth-header token))]
