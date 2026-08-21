@@ -92,23 +92,66 @@ clojure -A:poly info
 
 ## Testing
 
-| Command | Speed | Description |
-|---|---|---|
-| **`bb test-fast`** | **~1.5s** | Runs unit tests instantly inside active Dev REPL (`port 4005`). Zero cold-boot overhead. |
-| **`bb test-fast-clean`** | **~1.5s** | Runs unit tests in Dev REPL against a **fresh, isolated in-memory Rama cluster** per run. Zero dev state pollution. |
-| **`bb test`** | **~76s** | Runs all backend JVM tests across all Polylith components in a standalone, isolated JVM process. |
-| **`bb fe-test`** | **~5s** | Runs frontend ClojureScript unit tests (`shadow-cljs`). |
-| **`bb test-all`** | **~80s** | Full test suite: runs backend JVM, frontend CLJS, and Node SSR proxy tests sequentially. |
+`best_auth` provides a tiered testing architecture designed for instant in-REPL feedback (<0.5s), isolated ephemeral test clusters, and complete multi-runtime verification.
+
+### Testing Methods & Decision Matrix
+
+| Method | Execution Environment | State Isolation | Speed | When Best to Use |
+|---|---|---|---|---|
+| **`(user/test-all)`**<br>`bb test-fast` | Warm REPL | Runs against active dev state (`irs/system`) | **< 0.5s** | **Inner-loop TDD**: Run constantly while editing code or resolvers. Instant feedback with zero boot overhead. |
+| **`(user/test-ns 'ns)`**<br>`bb test-fast <ns>` | Warm REPL | Runs single test namespace | **~ 50ms** | **Focused feature debugging**: Test a single component/namespace in isolation while writing new features. |
+| **`(user/test-clean)`**<br>`bb test-fast-clean` | Warm REPL | Ephemeral in-memory Rama IPC cluster (auto-mounted & torn down) | **~ 1.0s** | **Clean-slate integration check**: Verifies clean database behavior without restarting the JVM or polluting dev state. |
+| **`bb fe-test`** | Node.js (`shadow-cljs`) | Headless Node test runner | **~ 5s** | **Frontend validation**: Tests ClojureScript Fulcro/UI client logic and state machines. |
+| **`bb test-all`** | JVM + Node + Proxy | Multi-runtime test suites | **~ 30s** | **Pre-commit / CI verification**: Runs Clojure JVM backend, Frontend CLJS, and Node SSR proxy tests sequentially. |
+| **`bb test`** | Cold Polylith JVM | Isolated process (`poly test`) | **~ 40s** | Standalone Polylith component validation without an active dev REPL. |
+
+---
+
+### 1. In-REPL Testing (Recommended for Active Development)
+
+Connect your editor (Calva, CIDER, Conjure, etc.) to the running nREPL server:
+
+```clojure
+;; Run all 10 backend unit, IPC, and integration test suites:
+(user/test-all)
+
+;; Run a specific test namespace:
+(user/test-ns 'com.ozimos.auth.oauth.ipc-test)
+
+;; Run all tests against a pristine, temporary in-memory Rama cluster:
+(user/test-clean)
+```
+
+---
+
+### 2. Fast CLI Testing via Active REPL
+
+If your development REPL is running, Babashka connects via nREPL to execute tests with zero cold-boot penalty:
 
 ```bash
-# Run instant in-REPL tests with isolated clean IPC state (Recommended during development)
+# Run all backend tests instantly inside the warm REPL (< 0.5s)
+bb test-fast
+
+# Run a specific test namespace
+bb test-fast com.ozimos.auth.oauth.ipc-test
+
+# Run tests against a fresh ephemeral Rama IPC cluster in the REPL (~ 1s)
 bb test-fast-clean
+```
 
-# Run full backend test suite in a standalone process
-bb test
+---
 
-# Run complete test suite (Backend JVM + Frontend CLJS + Node SSR Proxy)
+### 3. Full Multi-Runtime & CI Testing
+
+```bash
+# Run frontend ClojureScript tests
+bb fe-test
+
+# Run complete multi-tier test suite (Backend JVM + Frontend CLJS + Node SSR Proxy)
 bb test-all
+
+# Run standalone backend Polylith test runner in a cold JVM
+bb test
 ```
 
 ## Production Uberjar

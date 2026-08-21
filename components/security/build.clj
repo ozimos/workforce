@@ -12,7 +12,7 @@
   (let [basis (b/create-basis {:project "deps.edn"})
         cp (str/join ":" (map key (:classpath basis)))
         source "src/java/com/ozimos/auth/security/SecurityConfig.java"
-        {:keys [exit err]} (sh "javac" "-d" class-dir "-cp" cp source)]
+        {:keys [exit err]} (sh "javac" "--release" "21" "-d" class-dir "-cp" cp source)]
     (if (zero? exit)
       (println "Java compiled to" class-dir)
       (throw (ex-info (str "Java compilation failed: " err) {:exit exit})))))
