@@ -1,0 +1,48 @@
+#!/usr/bin/env bb
+(require '[babashka.process :refer [shell]]
+         '[babashka.fs :as fs]
+         '[clojure.string :as str]
+         '[clojure.pprint :refer [pprint]])
+
+(let [[prev-head _new-head is-branch-checkout] *command-line-args*
+      null-hash "0000000000000000000000000000000000000000"]
+  ;; Trigger only on fresh worktree creation
+  (when (and (= prev-head null-hash) (= is-branch-checkout "1"))
+    (let [current-dir (str (fs/canonicalize "."))
+          wt-lines (-> (shell {:out :string} "git" "worktree" "list") :out str/split-lines)
+          main-worktree (some (fn [line]
+                                (let [p (first (str/split (str/trim line) #"\s+"))]
+                                  (when (and (not (str/ends-with? p ".git"))
+                                             (not= p current-dir)
+                                             (fs/exists? (fs/file p "deps.edn")))
+                                    p)))
+                              wt-lines)]
+      (println (str "\n==> [Git Hook / Babashka] Initializing new worktree: " current-dir))
+
+      ;; 1. Write dynamic deps.local.edn with port 0 sentinels
+      (when-not (fs/exists? "deps.local.edn")
+        (let [template {:launchpad/options {:nrepl-port 0 :cider-nrepl true}
+                        :jetty/port {:dev 0 :test 0 :prod 0}
+                        :system/auto-start true
+                        :frontend/watcher {:enabled true}
+                        :ssr-server {:enabled true}}]
+          (spit "deps.local.edn" (with-out-str (pprint template)))
+          (println "  -> Created deps.local.edn (port 0 sentinels)")))
+
+      ;; 2. Copy .mise.toml from main worktree
+      (when (and main-worktree (fs/exists? (fs/file main-worktree ".mise.toml")) (not (fs/exists? ".mise.toml")))
+        (fs/copy (fs/file main-worktree ".mise.toml") ".mise.toml")
+        (println "  -> Copied .mise.toml"))
+
+      ;; 3. Copy .clj-kondo/.cache from main worktree
+      (when (and main-worktree (fs/exists? (fs/file main-worktree ".clj-kondo" ".cache")) (not (fs/exists? ".clj-kondo/.cache")))
+        (fs/create-dirs ".clj-kondo")
+        (fs/copy-tree (fs/file main-worktree ".clj-kondo" ".cache") ".clj-kondo/.cache")
+        (println "  -> Copied .clj-kondo/.cache"))
+
+      ;; 4. Install Node dependencies (uses pnpm store hardlinks)
+      (when (fs/exists? "pnpm-lock.yaml")
+        (println "  -> Installing Node dependencies...")
+        (shell {:continue true} "pnpm" "install" "--prefer-offline"))
+
+      (println "==> [Git Hook / Babashka] Worktree setup complete!\n"))))

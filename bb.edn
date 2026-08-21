@@ -2,7 +2,10 @@
  {com.lambdaisland/launchpad {:mvn/version "0.53.238-alpha"}}
 
  :tasks
- {:requires ([babashka.process :refer [shell]])
+ {:requires ([babashka.process :refer [shell]]
+             [babashka.fs :as fs]
+             [clojure.string :as str]
+             [clojure.pprint :refer [pprint]])
   lint         (shell {:continue true} "clj-kondo" "--lint" "bases" "components" "projects" "development/src/clojure")
   kondo-copy-configs (shell {:continue true} "clj-kondo" "--copy-configs" "--lint" "$(clojure -Spath -A:dev)" "--skip-warnings")
   fmt-check    (shell {:continue true} "standard-clj" "check" "bases" "components" "projects" "development/src/clojure")
@@ -13,8 +16,11 @@
   test         (let [args (or (seq *command-line-args*) ["test" "project:auth-service"])]
                  (shell "clojure" "-X:deps" "prep" ":aliases" "[:dev :test :+rama :+default :poly]")
                  (apply shell "clojure" "-M:dev:test:+rama:+default:poly" args))
-  test-fast    (let [nrepl-port (or (try (let [local (read-string (slurp "deps.local.edn"))]
-                                           (get-in local [:launchpad/options :nrepl-port]))
+  test-fast    (let [nrepl-port (or (try (parse-long (str/trim (slurp ".nrepl-port"))) (catch Exception _ nil))
+                                    (try (parse-long (str/trim (slurp ".shadow-cljs/nrepl.port"))) (catch Exception _ nil))
+                                    (try (let [local (read-string (slurp "deps.local.edn"))
+                                               p (get-in local [:launchpad/options :nrepl-port])]
+                                           (when (and (integer? p) (pos? p)) p))
                                          (catch Exception _ nil))
                                     4005)]
                  (if (try (let [s (java.net.Socket. "localhost" nrepl-port)]
@@ -23,14 +29,17 @@
                           (catch Exception _ false))
                    (do (println (str "\n=== Running Backend Tests in Dev REPL (port " nrepl-port ") ==="))
                        (shell "clj-nrepl-eval" "-p" (str nrepl-port)
-                              "(do (require 'clojure.test) (let [ns-syms '[com.ozimos.auth.pathom.core-test com.ozimos.auth.mfa.core-test com.ozimos.auth.oauth.core-test com.ozimos.auth.rama.ipc-test com.ozimos.auth.user.ipc-test com.ozimos.auth.webauthn.core-test] loaded (keep (fn [sym] (try (require sym) sym (catch Exception _ nil))) ns-syms)] (apply clojure.test/run-tests loaded)) nil)"))
+                              "(do (require 'clojure.test) (let [ns-syms '[com.ozimos.auth.pathom.core-test com.ozimos.auth.mfa.core-test com.ozimos.auth.oauth.ipc-test com.ozimos.auth.saml.ipc-test com.ozimos.auth.rama.ipc-test com.ozimos.auth.user.ipc-test com.ozimos.auth.webauthn.core-test com.ozimos.auth.auth-api.oauth-integration-test com.ozimos.auth.auth-api.saml-integration-test] loaded (keep (fn [sym] (try (require sym) sym (catch Exception _ nil))) ns-syms)] (apply clojure.test/run-tests loaded)) nil)"))
                    (do (println "\n=== REPL not detected, falling back to standalone JVM test runner ===")
                        (let [args (or (seq *command-line-args*) ["test" "project:auth-service"])]
                          (shell "clojure" "-X:deps" "prep" ":aliases" "[:dev :test :+rama :+default :poly]")
                          (apply shell "clojure" "-M:dev:test:+rama:+default:poly" args)))))
   test-fast-clean
-               (let [nrepl-port (or (try (let [local (read-string (slurp "deps.local.edn"))]
-                                           (get-in local [:launchpad/options :nrepl-port]))
+               (let [nrepl-port (or (try (parse-long (str/trim (slurp ".nrepl-port"))) (catch Exception _ nil))
+                                    (try (parse-long (str/trim (slurp ".shadow-cljs/nrepl.port"))) (catch Exception _ nil))
+                                    (try (let [local (read-string (slurp "deps.local.edn"))
+                                               p (get-in local [:launchpad/options :nrepl-port])]
+                                           (when (and (integer? p) (pos? p)) p))
                                          (catch Exception _ nil))
                                     4005)]
                  (if (try (let [s (java.net.Socket. "localhost" nrepl-port)]
@@ -39,7 +48,7 @@
                           (catch Exception _ false))
                    (do (println (str "\n=== Running Backend Tests with Fresh Clean IPC in Dev REPL (port " nrepl-port ") ==="))
                        (shell "clj-nrepl-eval" "-p" (str nrepl-port)
-                              "(do (require 'clojure.test '[com.ozimos.auth.auth-api.test-system :reload true]) (try (com.ozimos.auth.auth-api.test-system/start-clean-test-sys!) (let [ns-syms '[com.ozimos.auth.pathom.core-test com.ozimos.auth.mfa.core-test com.ozimos.auth.oauth.core-test com.ozimos.auth.rama.ipc-test com.ozimos.auth.user.ipc-test com.ozimos.auth.webauthn.core-test] loaded (keep (fn [sym] (try (require sym :reload) sym (catch Exception _ nil))) ns-syms)] (apply clojure.test/run-tests loaded)) (finally (com.ozimos.auth.auth-api.test-system/stop-clean-test-sys!))) nil)"))
+                              "(do (require 'clojure.test '[com.ozimos.auth.auth-api.test-system :reload true]) (try (com.ozimos.auth.auth-api.test-system/start-clean-test-sys!) (let [ns-syms '[com.ozimos.auth.pathom.core-test com.ozimos.auth.mfa.core-test com.ozimos.auth.oauth.ipc-test com.ozimos.auth.saml.ipc-test com.ozimos.auth.rama.ipc-test com.ozimos.auth.user.ipc-test com.ozimos.auth.webauthn.core-test com.ozimos.auth.auth-api.oauth-integration-test com.ozimos.auth.auth-api.saml-integration-test] loaded (keep (fn [sym] (try (require sym :reload) sym (catch Exception _ nil))) ns-syms)] (apply clojure.test/run-tests loaded)) (finally (com.ozimos.auth.auth-api.test-system/stop-clean-test-sys!))) nil)"))
                    (do (println "\n=== REPL not detected, falling back to standalone JVM test runner ===")
                        (let [args (or (seq *command-line-args*) ["test" "project:auth-service"])]
                          (shell "clojure" "-X:deps" "prep" ":aliases" "[:dev :test :+rama :+default :poly]")
@@ -53,6 +62,11 @@
                    (println "\n=== 3/3 Running Node SSR Proxy Test ===")
                    (shell "node" "ssr-server/test_proxy.js")
                    (println "\n=== ALL TEST SUITES PASSED ==="))
+  wt-new       (let [[branch target-dir] *command-line-args*]
+                 (if-not branch
+                   (println "Usage: bb wt-new <branch-name> [target-dir]")
+                   (let [target (or target-dir (str "../" branch))]
+                     (shell "git" "worktree" "add" target branch))))
   css          (shell "pnpm" "exec" "tailwindcss" "-i" "components/frontend/src/css/tailwind.css" "-o" "bases/auth-api/resources/public/css/app.css")
   css-watch    (shell "pnpm" "exec" "tailwindcss" "-i" "components/frontend/src/css/tailwind.css" "-o" "bases/auth-api/resources/public/css/app.css" "--watch")
   fe           (shell "pnpm" "exec" "shadow-cljs" "compile" "app")
