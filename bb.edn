@@ -42,7 +42,7 @@
           (do (println "\n=== REPL not detected, falling back to standalone JVM test runner ===")
               (run-jvm-tests args))))))
 
-  lint         (shell {:continue true} "clj-kondo" "--lint" "bases" "components" "projects" "development/src/clojure" "bin/launchpad")
+  lint         (shell {:continue true} "clj-kondo" "--lint" "bases" "components" "projects" "development/src/clojure" "bin/launchpad" "bin/test-repl-boot")
   kondo-copy-configs (shell {:continue true} "clj-kondo" "--copy-configs" "--lint" "$(clojure -Spath -A:dev)" "--skip-warnings")
   fmt-check    (shell {:continue true} "standard-clj" "check" "bases" "components" "projects" "development/src/clojure")
   fmt-fix      (shell {:continue true} "standard-clj" "fix" "bases" "components" "projects" "development/src/clojure")
@@ -67,6 +67,8 @@
                   (shell "clj-nrepl-eval" "-p" (str port)
                          "((ns-resolve 'user 'test-clean))"))
                 *command-line-args*)
+  test-repl-boot
+               (shell "bin/test-repl-boot")
   test-all     (do (println "\n=== 1/3 Running Clojure JVM Backend Tests ===")
                    (run-jvm-tests *command-line-args*)
                    (println "\n=== 2/3 Running Frontend CLJS Tests ===")
