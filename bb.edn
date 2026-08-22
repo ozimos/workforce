@@ -32,9 +32,9 @@
                        (if (seq args)
                          (doseq [ns-str args]
                            (shell "clj-nrepl-eval" "-p" (str nrepl-port)
-                                  (str "(do (in-ns 'user) (user/test-ns '" ns-str "))")))
+                                  (str "((ns-resolve 'user 'test-ns) '" ns-str "')")))
                          (shell "clj-nrepl-eval" "-p" (str nrepl-port)
-                                "(do (in-ns 'user) (user/test-all))")))
+                                "((ns-resolve 'user 'test-all))")))
                    (do (println "\n=== REPL not detected, falling back to standalone JVM test runner ===")
                        (let [fallback-args (or (seq args) ["test" "project:auth-service"])]
                          (shell "clojure" "-X:deps" "prep" ":aliases" "[:dev :test :+rama :+default :poly]")
@@ -54,7 +54,7 @@
                           (catch Exception _ false))
                    (do (println (str "\n=== Running Clean Backend Tests in Dev REPL (port " nrepl-port ") ==="))
                        (shell "clj-nrepl-eval" "-p" (str nrepl-port)
-                              "(do (in-ns 'user) (user/test-clean))"))
+                              "((ns-resolve 'user 'test-clean))"))
                    (do (println "\n=== REPL not detected, falling back to standalone JVM test runner ===")
                        (let [fallback-args (or (seq args) ["test" "project:auth-service"])]
                          (shell "clojure" "-X:deps" "prep" ":aliases" "[:dev :test :+rama :+default :poly]")
