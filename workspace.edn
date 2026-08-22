@@ -1,4 +1,4 @@
-{:top-namespace "com.ozimos.auth"
+{:top-namespace "com.ozimos.workforce"
  :interface-ns "interface"
  :dialects ["clj" "cljs"]
  :compact-views #{}
@@ -11,7 +11,7 @@
     :profiles {:default {:names ["schema" "config" "rama" "user-rama" "session-rama"
                                  "revocation-rama" "token" "security" "pathom"
                                  "frontend" "auth-api" "mfa" "webauthn" "oauth" "saml"]}}
-   :test {:setup-fn "com.ozimos.auth.auth-api.test-system/setup"
-          :teardown-fn "com.ozimos.auth.auth-api.test-system/teardown"
+   :test {:setup-fn "com.ozimos.workforce.auth-api.test-system/setup"
+          :teardown-fn "com.ozimos.workforce.auth-api.test-system/teardown"
           :create-test-runner
           [org.corfield.external-test-runner.interface/create]}}

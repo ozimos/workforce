@@ -18,10 +18,10 @@ Implement a runtime dynamic plugin registry for the core Rama module using a pro
 ```
 
 Extensions are implemented as records implementing `RamaModuleExtension` and registered via Integrant config:
-`:com.ozimos.auth.rama/cluster {:extensions [#ig/ref :app/extension]}`
+`:com.ozimos.workforce.rama/cluster {:extensions [#ig/ref :app/extension]}`
 
 ### Registry API
-Registry lives in `components/rama` as `com.ozimos.auth.rama.registry` and provides:
+Registry lives in `components/rama` as `com.ozimos.workforce.rama.registry` and provides:
 * `register-extension!` – register a `RamaModuleExtension` instance
 * `reset-registry!` – reset for test isolation
 * `build-auth-module` – builds `AuthModule` with core definitions first, then extensions

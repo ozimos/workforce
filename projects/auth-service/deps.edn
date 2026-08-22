@@ -32,5 +32,5 @@
                                metosin/jsonista {:mvn/version "0.3.14"}
                                integrant/integrant {:mvn/version "1.0.0"}
                                integrant/repl {:mvn/version "0.4.0"}}}
-           :uberjar {:main com.ozimos.auth.auth-api.main}
-           :run {:main-opts ["-m" "com.ozimos.auth.auth-api.main" "prod"]}}}
+           :uberjar {:main com.ozimos.workforce.auth-api.main}
+           :run {:main-opts ["-m" "com.ozimos.workforce.auth-api.main" "prod"]}}}

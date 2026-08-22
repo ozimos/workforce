@@ -4,18 +4,18 @@
    [integrant.repl.state :refer [config system]])
   (:gen-class))
 
-(require 'com.ozimos.auth.config.core
-         'com.ozimos.auth.rama.core
-         'com.ozimos.auth.rama.module
-         'com.ozimos.auth.user.core
-         'com.ozimos.auth.session.core
-         'com.ozimos.auth.revocation.core
-         'com.ozimos.auth.token.core
-         'com.ozimos.auth.security.core
-         'com.ozimos.auth.pathom.core
-         'com.ozimos.auth.auth-api.system)
+(require 'com.ozimos.workforce.config.core
+         'com.ozimos.workforce.rama.core
+         'com.ozimos.workforce.rama.module
+         'com.ozimos.workforce.user.core
+         'com.ozimos.workforce.session.core
+         'com.ozimos.workforce.revocation.core
+         'com.ozimos.workforce.token.core
+         'com.ozimos.workforce.security.core
+         'com.ozimos.workforce.pathom.core
+         'com.ozimos.workforce.auth-api.system)
 
-(set-prep! (fn [] ((requiring-resolve 'com.ozimos.auth.auth-api.system/load-config) :dev)))
+(set-prep! (fn [] ((requiring-resolve 'com.ozimos.workforce.auth-api.system/load-config) :dev)))
 
 (let [java-dirs ["components/security/src/java"]]
   (try
@@ -81,16 +81,16 @@
       (try (clojure.lang.RT/addURL url) (catch Exception _ nil)))))
 
 (def test-ns->file
-  '{com.ozimos.auth.pathom.core-test "components/pathom/test/clojure/com/ozimos/auth/pathom/core_test.clj"
-    com.ozimos.auth.mfa.core-test "components/mfa/test/clojure/com/ozimos/auth/mfa/core_test.clj"
-    com.ozimos.auth.oauth.ipc-test "components/oauth/test/clojure/com/ozimos/auth/oauth/ipc_test.clj"
-    com.ozimos.auth.saml.ipc-test "components/saml/test/clojure/com/ozimos/auth/saml/ipc_test.clj"
-    com.ozimos.auth.rama.ipc-test "components/rama/test/clojure/com/ozimos/auth/rama/ipc_test.clj"
-    com.ozimos.auth.user.ipc-test "components/user-rama/test/clojure/com/ozimos/auth/user/ipc_test.clj"
-    com.ozimos.auth.webauthn.core-test "components/webauthn/test/clojure/com/ozimos/auth/webauthn/core_test.clj"
-    com.ozimos.auth.auth-api.oauth-integration-test "bases/auth-api/test/clojure/com/ozimos/auth/auth_api/oauth_integration_test.clj"
-    com.ozimos.auth.auth-api.saml-integration-test "bases/auth-api/test/clojure/com/ozimos/auth/auth_api/saml_integration_test.clj"
-    com.ozimos.auth.auth-api.integration-test "bases/auth-api/test/clojure/com/ozimos/auth/auth_api/integration_test.clj"})
+  '{com.ozimos.workforce.pathom.core-test "components/pathom/test/clojure/com/ozimos/workforce/pathom/core_test.clj"
+    com.ozimos.workforce.mfa.core-test "components/mfa/test/clojure/com/ozimos/workforce/mfa/core_test.clj"
+    com.ozimos.workforce.oauth.ipc-test "components/oauth/test/clojure/com/ozimos/workforce/oauth/ipc_test.clj"
+    com.ozimos.workforce.saml.ipc-test "components/saml/test/clojure/com/ozimos/workforce/saml/ipc_test.clj"
+    com.ozimos.workforce.rama.ipc-test "components/rama/test/clojure/com/ozimos/workforce/rama/ipc_test.clj"
+    com.ozimos.workforce.user.ipc-test "components/user-rama/test/clojure/com/ozimos/workforce/user/ipc_test.clj"
+    com.ozimos.workforce.webauthn.core-test "components/webauthn/test/clojure/com/ozimos/workforce/webauthn/core_test.clj"
+    com.ozimos.workforce.auth-api.oauth-integration-test "bases/auth-api/test/clojure/com/ozimos/workforce/auth_api/oauth_integration_test.clj"
+    com.ozimos.workforce.auth-api.saml-integration-test "bases/auth-api/test/clojure/com/ozimos/workforce/auth_api/saml_integration_test.clj"
+    com.ozimos.workforce.auth-api.integration-test "bases/auth-api/test/clojure/com/ozimos/workforce/auth_api/integration_test.clj"})
 
 (defn load-test-ns!
   "Load or reload a test namespace from classpath or fallback file."
@@ -108,16 +108,16 @@
   []
   (ensure-test-paths!)
   (require 'clojure.test)
-  (let [ns-syms '[com.ozimos.auth.pathom.core-test
-                  com.ozimos.auth.mfa.core-test
-                  com.ozimos.auth.oauth.ipc-test
-                  com.ozimos.auth.saml.ipc-test
-                  com.ozimos.auth.rama.ipc-test
-                  com.ozimos.auth.user.ipc-test
-                  com.ozimos.auth.webauthn.core-test
-                  com.ozimos.auth.auth-api.oauth-integration-test
-                  com.ozimos.auth.auth-api.saml-integration-test
-                  com.ozimos.auth.auth-api.integration-test]
+  (let [ns-syms '[com.ozimos.workforce.pathom.core-test
+                  com.ozimos.workforce.mfa.core-test
+                  com.ozimos.workforce.oauth.ipc-test
+                  com.ozimos.workforce.saml.ipc-test
+                  com.ozimos.workforce.rama.ipc-test
+                  com.ozimos.workforce.user.ipc-test
+                  com.ozimos.workforce.webauthn.core-test
+                  com.ozimos.workforce.auth-api.oauth-integration-test
+                  com.ozimos.workforce.auth-api.saml-integration-test
+                  com.ozimos.workforce.auth-api.integration-test]
         results (reduce (fn [acc sym]
                           (try
                             (load-test-ns! sym)
@@ -145,9 +145,9 @@
    then halts and cleans it up, without affecting the running dev system."
   []
   (ensure-test-paths!)
-  (require 'clojure.test '[com.ozimos.auth.auth-api.test-system :as ts])
-  (let [start-fn (resolve 'com.ozimos.auth.auth-api.test-system/start-clean-test-sys!)
-        stop-fn  (resolve 'com.ozimos.auth.auth-api.test-system/stop-clean-test-sys!)]
+  (require 'clojure.test '[com.ozimos.workforce.auth-api.test-system :as ts])
+  (let [start-fn (resolve 'com.ozimos.workforce.auth-api.test-system/start-clean-test-sys!)
+        stop-fn  (resolve 'com.ozimos.workforce.auth-api.test-system/stop-clean-test-sys!)]
     (println "\n=== Starting Clean In-Memory Test System ===")
     (when start-fn (start-fn))
     (try
@@ -164,4 +164,4 @@
   (clear)      ;; Discard prepped config + system
   (test-all)   ;; Run all backend tests against running dev state (< 0.5s)
   (test-clean) ;; Run all backend tests against a fresh ephemeral test system (~1s)
-  (test-ns 'com.ozimos.auth.auth-api.oauth-integration-test))
+  (test-ns 'com.ozimos.workforce.auth-api.oauth-integration-test))

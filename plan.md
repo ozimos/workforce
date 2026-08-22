@@ -81,7 +81,7 @@ Password encoding (BCrypt) lives in the `user` component — Spring Security's `
 
 ## Polylith Workspace Structure
 
-Top namespace: `com.ozimos.auth`
+Top namespace: `com.ozimos.workforce`
 Source paths: `src/clojure` (not `src`)
 
 ```
@@ -589,7 +589,7 @@ Multi-factor authentication with step-up challenges.
   - `POST /api/auth/mfa/verify-setup`: Verifies 6-digit TOTP code and activates MFA.
   - `POST /api/auth/mfa/login`: Validates 2FA challenge token + TOTP or single-use backup code to issue final JWT tokens.
   - `POST /api/auth/mfa/disable`: Validates TOTP/backup code and disables MFA.
-- **Tests & Verification**: Unit tests (`com.ozimos.auth.mfa.core-test`), Rama IPC tests, and full E2E HTTP integration tests (`totp-mfa-integration-test`) passing via `bb test`.
+- **Tests & Verification**: Unit tests (`com.ozimos.workforce.mfa.core-test`), Rama IPC tests, and full E2E HTTP integration tests (`totp-mfa-integration-test`) passing via `bb test`.
 
 #### 7.2 WebAuthn / Passkeys — public-key credentials [DONE]
 - **Component**: Created `components/webauthn` wrapping Yubico `com.yubico/webauthn-server-core:2.9.0` with `RelyingParty` configuration, `CredentialRepository` interop, registration creation options generation (`start-registration-options`), attestation verification (`finish-registration`), assertion options generation (`start-assertion-options`), and assertion verification (`finish-assertion`).
@@ -603,7 +603,7 @@ Multi-factor authentication with step-up challenges.
   - `POST /api/auth/passkeys/authenticate/begin`: Generates WebAuthn authentication challenge options.
   - `GET /api/auth/passkeys`: Lists user's registered passkeys.
   - `DELETE /api/auth/passkeys/:credential-id`: Removes a passkey credential.
-- **Tests & Verification**: Unit tests (`com.ozimos.auth.webauthn.core-test`), Rama IPC tests, and HTTP integration tests (`webauthn-integration-test`) passing via `bb test`.
+- **Tests & Verification**: Unit tests (`com.ozimos.workforce.webauthn.core-test`), Rama IPC tests, and HTTP integration tests (`webauthn-integration-test`) passing via `bb test`.
 
 #### 7.3 Backup codes — single-use recovery [DONE]
 - **Implementation**:
@@ -750,10 +750,10 @@ Propagate logout across all authentication mechanisms and linked SPs.
 Resolve 31 lint warnings and clean up code contracts.
 
 #### 12.1 Unused namespaces
-- `components/user/src/clojure/com/ozimos/auth/user/core.clj` — remove `com.ozimos.auth.schema.interface`
-- `bases/auth-api/src/clojure/com/ozimos/auth/auth_api/handlers.clj` — remove `com.ozimos.auth.schema.interface`, `com.ozimos.auth.schema.interface.registration`, `malli.core`
+- `components/user/src/clojure/com/ozimos/auth/user/core.clj` — remove `com.ozimos.workforce.schema.interface`
+- `bases/auth-api/src/clojure/com/ozimos/auth/auth_api/handlers.clj` — remove `com.ozimos.workforce.schema.interface`, `com.ozimos.workforce.schema.interface.registration`, `malli.core`
 - `bases/auth-api/src/clojure/com/ozimos/auth/auth_api/middleware.clj` — remove `clojure.walk`
-- `bases/auth-api/src/clojure/com/ozimos/auth/auth_api/system.clj` — remove `com.ozimos.auth.security.interface`
+- `bases/auth-api/src/clojure/com/ozimos/auth/auth_api/system.clj` — remove `com.ozimos.workforce.security.interface`
 - `components/schema/src/clojure/com/ozimos/auth/schema/interface.clj` — remove `malli.util`
 - `components/rama/src/clojure/com/ozimos/auth/rama/module.clj` — remove `com.rpl.rama.aggs`
 - `development/src/clojure/user.clj` — remove `integrant.repl.state` (and `:refer`s)

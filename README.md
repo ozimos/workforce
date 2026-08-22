@@ -83,7 +83,7 @@ curl http://localhost:8080/api/health
 
 ## Polylith
 
-This is a [Polylith](https://cldoc.org/d/com.ozimos.auth/doc/user-poly/welcome) workspace. Use the `:poly` alias:
+This is a [Polylith](https://cldoc.org/d/com.ozimos.workforce/doc/user-poly/welcome) workspace. Use the `:poly` alias:
 
 ```bash
 clojure -A:poly check
@@ -116,7 +116,7 @@ Connect your editor (Calva, CIDER, Conjure, etc.) to the running nREPL server:
 (user/test-all)
 
 ;; Run a specific test namespace:
-(user/test-ns 'com.ozimos.auth.oauth.ipc-test)
+(user/test-ns 'com.ozimos.workforce.oauth.ipc-test)
 
 ;; Run all tests against a pristine, temporary in-memory Rama cluster:
 (user/test-clean)
@@ -133,7 +133,7 @@ If your development REPL is running, Babashka connects via nREPL to execute test
 bb test-fast
 
 # Run a specific test namespace
-bb test-fast com.ozimos.auth.oauth.ipc-test
+bb test-fast com.ozimos.workforce.oauth.ipc-test
 
 # Run tests against a fresh ephemeral Rama IPC cluster in the REPL (~ 1s)
 bb test-fast-clean

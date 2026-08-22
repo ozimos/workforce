@@ -3,7 +3,7 @@
 1. **Never Kill the REPL**: Do not terminate or restart the JVM when debugging or testing. Use `clj-nrepl-eval` or the live REPL.
 2. **Fast Testing Commands**:
    - **`bb test-fast`**: Runs all backend unit/IPC/integration tests in the warm REPL in **< 0.5s**.
-   - **`bb test-fast <namespace>`**: Runs a single test namespace (e.g. `bb test-fast com.ozimos.auth.oauth.ipc-test`) in **~50ms**.
+   - **`bb test-fast <namespace>`**: Runs a single test namespace (e.g. `bb test-fast com.ozimos.workforce.oauth.ipc-test`) in **~50ms**.
    - **`bb test-fast-clean`**: Mounts an ephemeral in-memory Rama IPC cluster, runs all tests, and halts it cleanly in **~1s** without polluting dev state.
    - **`bb test-all`**: Runs the complete multi-runtime suite (JVM + Frontend CLJS + Node SSR Proxy). Use only for pre-commit verification.
    - **Avoid `bb test`** during active development (spawns a cold JVM and takes 40+ seconds).

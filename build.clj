@@ -1,7 +1,7 @@
 (ns build
   (:require [clojure.tools.build.api :as b]))
 
-(def lib 'com.ozimos.auth/auth-service)
+(def lib 'com.ozimos.workforce/auth-service)
 (def version "0.1.0-SNAPSHOT")
 (def class-dir "target/classes")
 (def basis (b/create-basis {:project "deps.edn"
@@ -26,4 +26,4 @@
   (b/uber {:class-dir class-dir
            :uber-file uber-file
            :basis basis
-           :main "com.ozimos.auth.auth-api.main"}))
+           :main "com.ozimos.workforce.auth-api.main"}))

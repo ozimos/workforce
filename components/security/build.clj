@@ -11,7 +11,7 @@
   (b/delete {:path class-dir})
   (let [basis (b/create-basis {:project "deps.edn"})
         cp (str/join ":" (map key (:classpath basis)))
-        source "src/java/com/ozimos/auth/security/SecurityConfig.java"
+        source "src/java/com/ozimos/workforce/security/SecurityConfig.java"
         {:keys [exit err]} (sh "javac" "--release" "21" "-d" class-dir "-cp" cp source)]
     (if (zero? exit)
       (println "Java compiled to" class-dir)

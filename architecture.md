@@ -148,7 +148,7 @@ Therefore, extension modules should be defined via builder functions or a protoc
 #### Module Extension Protocol & Registry API:
 
 ```clojure
-(ns com.ozimos.auth.rama.extension
+(ns com.ozimos.workforce.rama.extension
   (:require [com.rpl.rama :as rama]))
 
 (defprotocol RamaModuleExtension
@@ -160,7 +160,7 @@ Therefore, extension modules should be defined via builder functions or a protoc
   (build-topology [this setup topology]
     "Build stream topology branches for extension depots."))
 
-(ns com.ozimos.auth.rama.registry)
+(ns com.ozimos.workforce.rama.registry)
 
 (defonce ^:private *extensions (atom []))
 
@@ -183,10 +183,10 @@ Therefore, extension modules should be defined via builder functions or a protoc
 #### Core Module Definition (`module.clj`):
 
 ```clojure
-(ns com.ozimos.auth.rama.module
+(ns com.ozimos.workforce.rama.module
   (:require
-    [com.ozimos.auth.rama.extension :as ext]
-    [com.ozimos.auth.rama.registry :as reg]
+    [com.ozimos.workforce.rama.extension :as ext]
+    [com.ozimos.workforce.rama.registry :as reg]
     [com.rpl.rama :as rama]))
 
 (defn build-auth-module
@@ -248,7 +248,7 @@ App fork `ozimos/hiring-and-org` implements `RamaModuleExtension`:
 ```clojure
 (ns com.ozimos.hiring-and-org.rama.org-extension
   (:require
-    [com.ozimos.auth.rama.extension :as ext]
+    [com.ozimos.workforce.rama.extension :as ext]
     [com.rpl.rama :as rama :refer :all]
     [com.rpl.rama.path :as path :refer :all]))
 
@@ -303,7 +303,7 @@ To prevent test state pollution and support clean multi-system instantiation:
 ;; config.edn / system.edn in hiring-and-org
 {:com.ozimos.hiring-and-org.rama/org-extension {}
 
- :com.ozimos.auth.rama/cluster
+ :com.ozimos.workforce.rama/cluster
  {:extensions [#ig/ref :com.ozimos.hiring-and-org.rama/org-extension]}}
 ```
 
@@ -333,7 +333,7 @@ To prevent test state pollution and support clean multi-system instantiation:
 
 2. **Test Isolation & State Management**:
    - *Finding*: Global mutable atoms (`defonce *registry (atom [])`) leak across test namespaces and parallel test runners.
-   - *Recommendation*: Wire extensions via Integrant configuration keys (`:com.ozimos.auth.rama/cluster {:extensions [...]}`) and provide `reset-registry!` in test fixtures (`test-clean` / `system_fixture`).
+   - *Recommendation*: Wire extensions via Integrant configuration keys (`:com.ozimos.workforce.rama/cluster {:extensions [...]}`) and provide `reset-registry!` in test fixtures (`test-clean` / `system_fixture`).
 
 3. **PState Schema Extensibility**:
    - *Finding*: Core PStates (`$$profiles`, `$$sessions`) must allow supplemental domain keys without schema validation rejection.

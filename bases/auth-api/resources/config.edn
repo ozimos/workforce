@@ -23,7 +23,7 @@
  {:verification-mode #profile {:dev :soft :test :soft :prod :strict}
   :auto-verify-social true}
 
- :com.ozimos.auth.auth-api.system/router
+ :com.ozimos.workforce.auth-api.system/router
  {:rama #ig/ref :rama/cluster
   :token-encoder #ig/ref :token/encoder
   :token-decoder #ig/ref :token/decoder
@@ -35,4 +35,4 @@
                   :prod #or [#long #env JETTY_PROD_PORT 8080]}
   :host "0.0.0.0"
   :filter-chain-proxy #ig/ref :security/app-context
-  :handler #ig/ref :com.ozimos.auth.auth-api.system/router}}
+  :handler #ig/ref :com.ozimos.workforce.auth-api.system/router}}
