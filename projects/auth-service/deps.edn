@@ -2,31 +2,26 @@
              "clojars" {:url "https://clojars.org/repo/"}
              "rpl"     {:url "https://nexus.redplanetlabs.com/repository/maven-public-releases/"}}
 
- :deps {poly/schema          {:local/root "../../components/schema"}
-        poly/config          {:local/root "../../components/config"}
-        poly/rama            {:local/root "../../components/rama"}
-        poly/user-rama       {:local/root "../../components/user-rama"}
-        poly/session-rama    {:local/root "../../components/session-rama"}
-        poly/revocation-rama {:local/root "../../components/revocation-rama"}
-        poly/token           {:local/root "../../components/token"}
-        poly/security        {:local/root "../../components/security"}
-        poly/pathom          {:local/root "../../components/pathom"}
-        poly/mfa             {:local/root "../../components/mfa"}
-        poly/webauthn        {:local/root "../../components/webauthn"}
-        poly/oauth           {:local/root "../../components/oauth"}
-        poly/saml            {:local/root "../../components/saml"}
+ :deps {com.ozimos.omni-auth/schema          {:local/root "../../../../omni-auth/main/components/schema"}
+        com.ozimos.omni-auth/config          {:local/root "../../../../omni-auth/main/components/config"}
+        com.ozimos.omni-auth/rama            {:local/root "../../../../omni-auth/main/components/rama"}
+        com.ozimos.omni-auth/user-rama       {:local/root "../../../../omni-auth/main/components/user-rama"}
+        com.ozimos.omni-auth/session-rama    {:local/root "../../../../omni-auth/main/components/session-rama"}
+        com.ozimos.omni-auth/revocation-rama {:local/root "../../../../omni-auth/main/components/revocation-rama"}
+        com.ozimos.omni-auth/token           {:local/root "../../../../omni-auth/main/components/token"}
+        com.ozimos.omni-auth/security        {:local/root "../../../../omni-auth/main/components/security"}
+        com.ozimos.omni-auth/pathom          {:local/root "../../../../omni-auth/main/components/pathom"}
+        com.ozimos.omni-auth/mfa             {:local/root "../../../../omni-auth/main/components/mfa"}
+        com.ozimos.omni-auth/webauthn        {:local/root "../../../../omni-auth/main/components/webauthn"}
+        com.ozimos.omni-auth/oauth           {:local/root "../../../../omni-auth/main/components/oauth"}
+        com.ozimos.omni-auth/saml            {:local/root "../../../../omni-auth/main/components/saml"}
 
+        poly/org-rama        {:local/root "../../components/org-rama"}
         poly/auth-api        {:local/root "../../bases/auth-api"}
 
         org.clojure/clojure {:mvn/version "1.12.4"}}
 
- :aliases {:test {:extra-paths ["../../components/rama/test/clojure"
-                                "../../components/user-rama/test/clojure"
-                                "../../components/pathom/test/clojure"
-                                "../../components/mfa/test/clojure"
-                                "../../components/webauthn/test/clojure"
-                                "../../components/oauth/test/clojure"
-                                "../../components/saml/test/clojure"
+ :aliases {:test {:extra-paths ["../../components/org-rama/test/clojure"
                                 "../../bases/auth-api/test/clojure"]
                   :extra-deps {hato/hato {:mvn/version "1.0.0"}
                                metosin/jsonista {:mvn/version "0.3.14"}

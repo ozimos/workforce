@@ -1,6 +1,6 @@
-# best_auth
+# workforce
 
-A reusable Clojure authentication template built with Rama, Polylith, Spring Security, Integrant, Ring/Jetty/Reitit, Malli, and Launchpad.
+A modern multi-tenant workforce and organization management application built with Clojure, Rama, Fulcro, and the `omni-auth` core engine.
 
 ## Prerequisites
 
