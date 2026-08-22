@@ -23,59 +23,44 @@
       (when-not (fs/exists? "deps.local.edn")
         (let [template {:launchpad/options {:nrepl-port 0 :cider-nrepl true}
                         :jetty/port {:dev 0 :test 0 :prod 0}
+                        :shadow-cljs {:http-port 0}
                         :system/auto-start true
                         :frontend/watcher {:enabled true}
                         :ssr-server {:enabled true}}]
           (spit "deps.local.edn" (with-out-str (pprint template)))
           (println "  -> Created deps.local.edn (port 0 sentinels)")))
 
-      ;; 2. Copy .mise.toml from main worktree
-      (when (and main-worktree (fs/exists? (fs/file main-worktree ".mise.toml")) (not (fs/exists? ".mise.toml")))
-        (fs/copy (fs/file main-worktree ".mise.toml") ".mise.toml")
-        (println "  -> Copied .mise.toml"))
+      ;; 2. Copy config/cache files from main worktree if present
+      (doseq [f [".mise.toml" "opencode.json"]]
+        (when (and main-worktree (fs/exists? (fs/file main-worktree f)) (not (fs/exists? f)))
+          (fs/copy (fs/file main-worktree f) f)
+          (println (str "  -> Copied " f))))
 
-      ;; 3. Copy .clj-kondo/.cache from main worktree
-      (when (and main-worktree (fs/exists? (fs/file main-worktree ".clj-kondo" ".cache")) (not (fs/exists? ".clj-kondo/.cache")))
-        (fs/create-dirs ".clj-kondo")
-        (fs/copy-tree (fs/file main-worktree ".clj-kondo" ".cache") ".clj-kondo/.cache")
-        (println "  -> Copied .clj-kondo/.cache"))
+      ;; 3. Copy directory caches/configs from main worktree
+      (doseq [dir [".clj-kondo/.cache" ".lsp" ".vscode" ".calva"]]
+        (when (and main-worktree (fs/exists? (fs/file main-worktree dir)) (not (fs/exists? dir)))
+          (fs/create-dirs dir)
+          (fs/copy-tree (fs/file main-worktree dir) dir)
+          (println (str "  -> Copied " dir))))
 
-      ;; 4. Install Node dependencies (uses pnpm store hardlinks)
+      ;; 4. Install root Node dependencies
       (when (fs/exists? "pnpm-lock.yaml")
-        (println "  -> Installing Node dependencies...")
+        (println "  -> Installing Root Node dependencies...")
         (shell {:continue true} "pnpm" "install" "--prefer-offline"))
 
-      (println "==> [Git Hook / Babashka] Worktree setup complete!\n"))))
+      ;; 5. Install SSR Server Node dependencies
+      (when (fs/exists? "ssr-server/package.json")
+        (println "  -> Installing SSR Server Node dependencies...")
+        (shell {:dir "ssr-server" :continue true} "npm" "install" "--prefer-offline"))
 
-# --- BEGIN BEADS INTEGRATION v1.2.2 ---
-# This section is managed by beads. Do not remove these markers.
-if command -v bd >/dev/null 2>&1; then
-  export BD_GIT_HOOK=1
-  _bd_timeout=${BEADS_HOOK_TIMEOUT:-300}
-  _bd_used_perl=0
-  if command -v timeout >/dev/null 2>&1; then
-    timeout "$_bd_timeout" bd hooks run post-checkout "$@"
-    _bd_exit=$?
-  elif command -v gtimeout >/dev/null 2>&1; then
-    gtimeout "$_bd_timeout" bd hooks run post-checkout "$@"
-    _bd_exit=$?
-  elif command -v perl >/dev/null 2>&1; then
-    _bd_used_perl=1
-    perl -e 'alarm shift; exec @ARGV' "$_bd_timeout" bd hooks run post-checkout "$@"
-    _bd_exit=$?
-  else
-    echo >&2 "beads: hook 'post-checkout' running without timeout; install coreutils or perl to enable BEADS_HOOK_TIMEOUT"
-    bd hooks run post-checkout "$@"
-    _bd_exit=$?
-  fi
-  if [ $_bd_exit -eq 124 ] || { [ $_bd_used_perl -eq 1 ] && [ $_bd_exit -eq 142 ]; }; then
-    echo >&2 "beads: hook 'post-checkout' timed out after ${_bd_timeout}s — continuing without beads"
-    _bd_exit=0
-  fi
-  if [ $_bd_exit -eq 3 ]; then
-    echo >&2 "beads: database not initialized — skipping hook 'post-checkout'"
-    _bd_exit=0
-  fi
-  if [ $_bd_exit -ne 0 ]; then exit $_bd_exit; fi
-fi
-# --- END BEADS INTEGRATION v1.2.2 ---
+      ;; 6. Run Clojure deps prep for local components (poly/security)
+      (println "  -> Preparing local component dependencies (deps prep)...")
+      (shell {:continue true} "clojure" "-X:deps" "prep" ":aliases" "[:dev :test :+rama :+default :poly]")
+
+      (println "==> [Git Hook / Babashka] Worktree setup complete!\n")
+
+      ;; 7. Beads hook execution if available
+      (when (fs/which "bd")
+        (try
+          (apply shell {:continue true} "bd" "hooks" "run" "post-checkout" *command-line-args*)
+          (catch Exception _ nil))))))
