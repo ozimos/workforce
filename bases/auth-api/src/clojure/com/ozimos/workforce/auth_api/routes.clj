@@ -2,7 +2,7 @@
   (:require
    [clojure.java.io :as io]
    [com.ozimos.workforce.auth-api.handlers :as handlers]
-   [com.ozimos.workforce.schema.interface.registration :as reg-schema]
+   [com.ozimos.omni-auth.schema.interface.registration :as reg-schema]
    [muuntaja.core :as m]
    [reitit.coercion.malli :as rcm]
    [reitit.ring :as ring]

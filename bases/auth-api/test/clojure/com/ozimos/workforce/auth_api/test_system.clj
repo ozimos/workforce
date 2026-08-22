@@ -1,8 +1,8 @@
 (ns com.ozimos.workforce.auth-api.test-system
   (:require
    [com.ozimos.workforce.auth-api.system]
-   [com.ozimos.workforce.config.interface :as config]
-   [com.ozimos.workforce.rama.core :as rama-core]
+   [com.ozimos.omni-auth.config.interface :as config]
+   [com.ozimos.omni-auth.rama.core :as rama-core]
    [integrant.core :as ig]
    [integrant.repl.state :as irs]))
 

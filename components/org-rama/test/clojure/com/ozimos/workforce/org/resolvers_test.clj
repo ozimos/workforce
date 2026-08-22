@@ -4,8 +4,8 @@
    [com.ozimos.workforce.auth-api.test-system :as ts]
    [com.ozimos.workforce.org.interface :as org]
    [com.ozimos.workforce.org.resolvers :as org-res]
-   [com.ozimos.workforce.pathom.core :as pathom]
-   [com.ozimos.workforce.user.interface :as user]
+   [com.ozimos.omni-auth.pathom.core :as pathom]
+   [com.ozimos.omni-auth.user.interface :as user]
    [com.wsscode.pathom3.interface.eql :as p.eql]))
 
 (def ^:dynamic *deps* nil)

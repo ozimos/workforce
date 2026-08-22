@@ -53,26 +53,27 @@
   (let [{:keys [loading error-msg active-org orgs members members-loading members-error
                 invite-email invite-role invite-loading invite-msg]} (comp/get-state this)]
     (div {:className "mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8"}
-      (div {:className "border-b border-gray-200 pb-6"}
+      (div {:key "header" :className "border-b border-gray-200 pb-6"}
         (h1 {:className "text-3xl font-bold leading-tight text-gray-900"}
           (or (:org/name active-org) "Dashboard"))
         (p {:className "mt-2 text-sm text-gray-500"} "Manage your organization"))
       (if loading
-        (div {:className "mt-8 text-center"}
+        (div {:key "loading" :className "mt-8 text-center"}
           (p {:className "text-gray-500"} "Loading..."))
-        (div {:className "mt-8 space-y-8"}
+        (div {:key "content" :className "mt-8 space-y-8"}
           (when (> (count orgs) 1)
             (div {:className "rounded-lg border border-gray-200 bg-white p-6 shadow-sm"}
               (h3 {:className "text-base font-semibold text-gray-900"} "Switch Organization")
               (div {:className "mt-4 flex flex-wrap gap-2"}
-                (for [org orgs]
-                  (button {:key (:org/id org)
-                           :onClick #(switch-org this (:org/id org))
-                           :className (str "rounded-md px-3 py-1.5 text-sm font-semibold "
-                                        (if (= (:org/id org) (:org/id active-org))
-                                          "bg-indigo-600 text-white"
-                                          "bg-white text-gray-700 ring-1 ring-inset ring-gray-300 hover:bg-gray-50"))}
-                    (:org/name org))))))
+                (mapv (fn [org]
+                        (button {:key (:org/id org)
+                                 :onClick #(switch-org this (:org/id org))
+                                 :className (str "rounded-md px-3 py-1.5 text-sm font-semibold "
+                                              (if (= (:org/id org) (:org/id active-org))
+                                                "bg-indigo-600 text-white"
+                                                "bg-white text-gray-700 ring-1 ring-inset ring-gray-300 hover:bg-gray-50"))}
+                          (:org/name org)))
+                      orgs))))
           (div {:className "rounded-lg border border-gray-200 bg-white p-6 shadow-sm"}
             (h3 {:className "text-base font-semibold text-gray-900"} "Invite Member")
             (when invite-msg
@@ -105,8 +106,9 @@
                     (th {:className "px-3 py-2 text-left text-xs font-semibold text-gray-500"} "Role")
                     (th {:className "px-3 py-2 text-left text-xs font-semibold text-gray-500"} "Status")))
                 (tbody nil
-                  (for [m members]
-                    (tr {:key (:user/id m) :className "border-t border-gray-100"}
-                      (td {:className "px-3 py-2 text-sm text-gray-900"} (:user/id m))
-                      (td {:className "px-3 py-2 text-sm text-gray-700"} (:membership/role m))
-                      (td {:className "px-3 py-2 text-sm text-gray-700"} (:membership/status m)))))))))))))
+                  (mapv (fn [m]
+                          (tr {:key (str (:user/id m)) :className "border-t border-gray-100"}
+                            (td {:className "px-3 py-2 text-sm text-gray-900"} (:user/id m))
+                            (td {:className "px-3 py-2 text-sm text-gray-700"} (:membership/role m))
+                            (td {:className "px-3 py-2 text-sm text-gray-700"} (:membership/status m))))
+                        members))))))))))

@@ -8,9 +8,7 @@
                 :release "^v[0-9].*"}
    :projects {"development" {:alias "devl"}
               "auth-service" {:alias "auth"}}
-    :profiles {:default {:names ["schema" "config" "rama" "user-rama" "org-rama" "session-rama"
-                                 "revocation-rama" "token" "security" "pathom"
-                                 "frontend" "auth-api" "mfa" "webauthn" "oauth" "saml"]}}
+    :profiles {:default {:names ["org-rama" "frontend" "auth-api"]}}
    :test {:setup-fn "com.ozimos.workforce.auth-api.test-system/setup"
           :teardown-fn "com.ozimos.workforce.auth-api.test-system/teardown"
           :create-test-runner

@@ -2,8 +2,8 @@
   (:require
    [clojure.test :refer [deftest is testing use-fixtures]]
    [com.ozimos.workforce.auth-api.test-system :as ts]
-   [com.ozimos.workforce.saml.interface :as saml]
-   [com.ozimos.workforce.user.interface :as user]))
+   [com.ozimos.omni-auth.saml.interface :as saml]
+   [com.ozimos.omni-auth.user.interface :as user]))
 
 (def ^:dynamic *sys* nil)
 

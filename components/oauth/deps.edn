@@ -1,5 +1,0 @@
-{:paths ["src/clojure" "resources"]
- :deps {integrant/integrant {:mvn/version "0.13.1"}
-        org.springframework.security/spring-security-oauth2-client {:mvn/version "6.4.2"}
-        org.springframework.security/spring-security-oauth2-jose {:mvn/version "6.4.2"}}
- :aliases {:test {:extra-paths ["test/clojure"]}}}

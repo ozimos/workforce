@@ -3,10 +3,10 @@
    [clojure.test :refer [deftest is testing use-fixtures]]
    [com.ozimos.workforce.org.extension :as org-ext]
    [com.ozimos.workforce.org.interface :as org]
-   [com.ozimos.workforce.rama.core :as rama-core]
-   [com.ozimos.workforce.rama.module :as mod]
-   [com.ozimos.workforce.rama.registry :as reg]
-   [com.ozimos.workforce.user.interface :as user]
+   [com.ozimos.omni-auth.rama.core :as rama-core]
+   [com.ozimos.omni-auth.rama.module :as mod]
+   [com.ozimos.omni-auth.rama.registry :as reg]
+   [com.ozimos.omni-auth.user.interface :as user]
    [com.rpl.rama :as ramaapi]
    [com.rpl.rama.path :refer [keypath]]
    [com.rpl.rama.test :as rtest]))
@@ -14,7 +14,7 @@
 (def ^:dynamic *deps* nil)
 
 (defn rama-fixture [f]
-  (reg/clear-extensions!)
+  (reg/reset-registry!)
   (reg/register-extension! (org-ext/->OrgExtension))
   (let [ipc (rtest/create-ipc)]
     (rtest/launch-module! ipc mod/AuthModule {:tasks 4 :threads 2})

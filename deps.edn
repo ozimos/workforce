@@ -9,22 +9,24 @@
                      hato/hato {:mvn/version "1.0.0"}
                      metosin/jsonista {:mvn/version "0.3.14"}
 
-                     poly/schema          {:local/root "components/schema"}
-                     poly/config          {:local/root "components/config"}
-                     poly/rama            {:local/root "components/rama"}
-                     poly/user-rama       {:local/root "components/user-rama"}
-                     poly/org-rama        {:local/root "components/org-rama"}
-                     poly/session-rama    {:local/root "components/session-rama"}
-                     poly/revocation-rama {:local/root "components/revocation-rama"}
-                     poly/token           {:local/root "components/token"}
-                     poly/security        {:local/root "components/security"}
-                     poly/pathom          {:local/root "components/pathom"}
-                     poly/mfa             {:local/root "components/mfa"}
-                     poly/webauthn        {:local/root "components/webauthn"}
-                     poly/oauth           {:local/root "components/oauth"}
-                     poly/saml            {:local/root "components/saml"}
+                     ;; Reusable omni-auth core components
+                     com.ozimos.omni-auth/schema          {:local/root "../../omni-auth/main/components/schema"}
+                     com.ozimos.omni-auth/config          {:local/root "../../omni-auth/main/components/config"}
+                     com.ozimos.omni-auth/rama            {:local/root "../../omni-auth/main/components/rama"}
+                     com.ozimos.omni-auth/user-rama       {:local/root "../../omni-auth/main/components/user-rama"}
+                     com.ozimos.omni-auth/session-rama    {:local/root "../../omni-auth/main/components/session-rama"}
+                     com.ozimos.omni-auth/revocation-rama {:local/root "../../omni-auth/main/components/revocation-rama"}
+                     com.ozimos.omni-auth/token           {:local/root "../../omni-auth/main/components/token"}
+                     com.ozimos.omni-auth/security        {:local/root "../../omni-auth/main/components/security"}
+                     com.ozimos.omni-auth/pathom          {:local/root "../../omni-auth/main/components/pathom"}
+                     com.ozimos.omni-auth/mfa             {:local/root "../../omni-auth/main/components/mfa"}
+                     com.ozimos.omni-auth/webauthn        {:local/root "../../omni-auth/main/components/webauthn"}
+                     com.ozimos.omni-auth/oauth           {:local/root "../../omni-auth/main/components/oauth"}
+                     com.ozimos.omni-auth/saml            {:local/root "../../omni-auth/main/components/saml"}
 
-                     poly/auth-api   {:local/root "bases/auth-api"}
+                     ;; Workforce application components
+                     poly/org-rama        {:local/root "components/org-rama"}
+                     poly/auth-api        {:local/root "bases/auth-api"}
 
                      ;; Dev tools
                      integrant/integrant      {:mvn/version "1.0.0"}
@@ -42,60 +44,34 @@
         ;; Remove when JNA ships a version using the FFM API.
         :jvm-opts ["--enable-native-access=ALL-UNNAMED"]}
 
-  :test {:extra-paths ["components/schema/test/clojure"
-                       "components/config/test/clojure"
-                       "components/rama/test/clojure"
-                       "components/org-rama/test/clojure"
-                       "components/session-rama/test/clojure"
-                       "components/revocation-rama/test/clojure"
-                       "components/token/test/clojure"
-                       "components/security/test/clojure"
-                       "components/pathom/test/clojure"
-                       "components/mfa/test/clojure"
-                       "components/webauthn/test/clojure"
-                       "components/oauth/test/clojure"
-                       "components/saml/test/clojure"
+  :test {:extra-paths ["components/org-rama/test/clojure"
                        "bases/auth-api/test/clojure"]
          :extra-deps {org.clojure/test.check {:mvn/version "1.1.1"}
                       hato/hato {:mvn/version "1.0.0"}
                       metosin/jsonista {:mvn/version "0.3.14"}}}
 
-  :+rama {:extra-deps {poly/user-rama {:local/root "components/user-rama"}
-                       poly/org-rama {:local/root "components/org-rama"}}
-          :extra-paths ["components/user-rama/test/clojure"
-                        "components/org-rama/test/clojure"]}
+  :+rama {:extra-deps {poly/org-rama {:local/root "components/org-rama"}}
+          :extra-paths ["components/org-rama/test/clojure"]}
 
-  :+default {:extra-deps {poly/schema          {:local/root "components/schema"}
-                          poly/config          {:local/root "components/config"}
-                          poly/rama            {:local/root "components/rama"}
-                          poly/user-rama       {:local/root "components/user-rama"}
+  :+default {:extra-deps {com.ozimos.omni-auth/schema          {:local/root "../../omni-auth/main/components/schema"}
+                          com.ozimos.omni-auth/config          {:local/root "../../omni-auth/main/components/config"}
+                          com.ozimos.omni-auth/rama            {:local/root "../../omni-auth/main/components/rama"}
+                          com.ozimos.omni-auth/user-rama       {:local/root "../../omni-auth/main/components/user-rama"}
+                          com.ozimos.omni-auth/session-rama    {:local/root "../../omni-auth/main/components/session-rama"}
+                          com.ozimos.omni-auth/revocation-rama {:local/root "../../omni-auth/main/components/revocation-rama"}
+                          com.ozimos.omni-auth/token           {:local/root "../../omni-auth/main/components/token"}
+                          com.ozimos.omni-auth/security        {:local/root "../../omni-auth/main/components/security"}
+                          com.ozimos.omni-auth/pathom          {:local/root "../../omni-auth/main/components/pathom"}
+                          com.ozimos.omni-auth/mfa             {:local/root "../../omni-auth/main/components/mfa"}
+                          com.ozimos.omni-auth/webauthn        {:local/root "../../omni-auth/main/components/webauthn"}
+                          com.ozimos.omni-auth/oauth           {:local/root "../../omni-auth/main/components/oauth"}
+                          com.ozimos.omni-auth/saml            {:local/root "../../omni-auth/main/components/saml"}
                           poly/org-rama        {:local/root "components/org-rama"}
-                          poly/session-rama    {:local/root "components/session-rama"}
-                          poly/revocation-rama {:local/root "components/revocation-rama"}
-                          poly/token           {:local/root "components/token"}
-                          poly/security        {:local/root "components/security"}
-                          poly/pathom          {:local/root "components/pathom"}
-                          poly/mfa             {:local/root "components/mfa"}
-                          poly/webauthn        {:local/root "components/webauthn"}
-                          poly/oauth           {:local/root "components/oauth"}
-                          poly/saml            {:local/root "components/saml"}
                           poly/auth-api        {:local/root "bases/auth-api"}}
              :extra-paths ["development/src/clojure" "development/resources"
                            "target/classes"
-                           "components/rama/test/clojure"
                            "components/org-rama/test/clojure"
-                           "components/user-rama/test/clojure"
-                           "components/session-rama/test/clojure"
-                           "components/revocation-rama/test/clojure"
-                           "components/token/test/clojure"
-                           "components/security/test/clojure"
-                           "components/mfa/test/clojure"
-                           "components/webauthn/test/clojure"
-                           "components/oauth/test/clojure"
-                           "components/saml/test/clojure"
-                           "bases/auth-api/test/clojure"
-                           "components/schema/test/clojure"
-                           "components/config/test/clojure"]}
+                           "bases/auth-api/test/clojure"]}
 
   :poly {:main-opts ["-m" "polylith.clj.core.poly-cli.core"]
          :extra-deps {polylith/clj-poly {:mvn/version "0.3.32"}

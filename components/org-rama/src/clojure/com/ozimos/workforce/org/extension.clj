@@ -3,7 +3,7 @@
         [com.rpl.rama.path])
   (:require
    [com.ozimos.workforce.org.records]
-   [com.ozimos.workforce.rama.extension :as ext]
+   [com.ozimos.omni-auth.rama.extension :as ext]
    [integrant.core :as ig])
   (:import
    [com.rpl.rama.helpers ModuleUniqueIdPState]))

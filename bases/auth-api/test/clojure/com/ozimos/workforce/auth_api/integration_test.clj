@@ -3,8 +3,8 @@
    [clojure.string :as string]
    [clojure.test :refer [deftest is testing use-fixtures]]
    [com.ozimos.workforce.auth-api.test-system :as ts]
-   [com.ozimos.workforce.mfa.interface :as mfa]
-   [com.ozimos.workforce.user.interface :as user]
+   [com.ozimos.omni-auth.mfa.interface :as mfa]
+   [com.ozimos.omni-auth.user.interface :as user]
    [hato.client :as http]
    [jsonista.core :as json]
    [muuntaja.core :as m]))

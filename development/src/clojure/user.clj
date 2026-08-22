@@ -4,23 +4,23 @@
    [integrant.repl.state :refer [config system]])
   (:gen-class))
 
-(require 'com.ozimos.workforce.config.core
-         'com.ozimos.workforce.rama.core
-         'com.ozimos.workforce.rama.module
+(require 'com.ozimos.omni-auth.config.core
+         'com.ozimos.omni-auth.rama.core
+         'com.ozimos.omni-auth.rama.module
+         'com.ozimos.omni-auth.user.core
+         'com.ozimos.omni-auth.session.core
+         'com.ozimos.omni-auth.revocation.core
+         'com.ozimos.omni-auth.token.core
+         'com.ozimos.omni-auth.security.core
+         'com.ozimos.omni-auth.pathom.core
          'com.ozimos.workforce.org.extension
          'com.ozimos.workforce.org.core
          'com.ozimos.workforce.org.resolvers
-         'com.ozimos.workforce.user.core
-         'com.ozimos.workforce.session.core
-         'com.ozimos.workforce.revocation.core
-         'com.ozimos.workforce.token.core
-         'com.ozimos.workforce.security.core
-         'com.ozimos.workforce.pathom.core
          'com.ozimos.workforce.auth-api.system)
 
 (set-prep! (fn [] ((requiring-resolve 'com.ozimos.workforce.auth-api.system/load-config) :dev)))
 
-(let [java-dirs ["components/security/src/java"]]
+(let [java-dirs ["../../omni-auth/main/components/security/src/java"]]
   (try
     (require 'virgil)
     (require 'clj-reload.core)
@@ -28,27 +28,27 @@
      {:dirs     ["development/src/clojure"
                  "bases/auth-api/src/clojure"
                  "bases/auth-api/test/clojure"
-                 "components/schema/src/clojure"
-                 "components/config/src/clojure"
-                 "components/rama/src/clojure"
-                 "components/rama/test/clojure"
                  "components/org-rama/src/clojure"
                  "components/org-rama/test/clojure"
-                 "components/user-rama/src/clojure"
-                 "components/session-rama/src/clojure"
-                 "components/revocation-rama/src/clojure"
-                 "components/token/src/clojure"
-                 "components/security/src/clojure"
-                 "components/pathom/src/clojure"
-                 "components/pathom/test/clojure"
-                 "components/mfa/src/clojure"
-                 "components/mfa/test/clojure"
-                 "components/webauthn/src/clojure"
-                 "components/webauthn/test/clojure"
-                 "components/oauth/src/clojure"
-                 "components/oauth/test/clojure"
-                 "components/saml/src/clojure"
-                 "components/saml/test/clojure"]
+                 "../../omni-auth/main/components/schema/src/clojure"
+                 "../../omni-auth/main/components/config/src/clojure"
+                 "../../omni-auth/main/components/rama/src/clojure"
+                 "../../omni-auth/main/components/rama/test/clojure"
+                 "../../omni-auth/main/components/user-rama/src/clojure"
+                 "../../omni-auth/main/components/session-rama/src/clojure"
+                 "../../omni-auth/main/components/revocation-rama/src/clojure"
+                 "../../omni-auth/main/components/token/src/clojure"
+                 "../../omni-auth/main/components/security/src/clojure"
+                 "../../omni-auth/main/components/pathom/src/clojure"
+                 "../../omni-auth/main/components/pathom/test/clojure"
+                 "../../omni-auth/main/components/mfa/src/clojure"
+                 "../../omni-auth/main/components/mfa/test/clojure"
+                 "../../omni-auth/main/components/webauthn/src/clojure"
+                 "../../omni-auth/main/components/webauthn/test/clojure"
+                 "../../omni-auth/main/components/oauth/src/clojure"
+                 "../../omni-auth/main/components/oauth/test/clojure"
+                 "../../omni-auth/main/components/saml/src/clojure"
+                 "../../omni-auth/main/components/saml/test/clojure"]
       :no-reload '#{user}
       :output   :verbose})
     ((resolve 'virgil/watch-and-recompile)
@@ -64,21 +64,21 @@
   []
   (let [loaders (distinct (remove nil? [(clojure.lang.RT/baseLoader)
                                         (.getContextClassLoader (Thread/currentThread))]))
-        paths ["components/config/test/clojure"
-               "components/rama/test/clojure"
-               "components/org-rama/test/clojure"
-               "components/schema/test/clojure"
-               "components/user-rama/test/clojure"
-               "components/session-rama/test/clojure"
-               "components/revocation-rama/test/clojure"
-               "components/token/test/clojure"
-               "components/security/test/clojure"
-               "components/pathom/test/clojure"
-               "components/mfa/test/clojure"
-               "components/webauthn/test/clojure"
-               "components/oauth/test/clojure"
-               "components/saml/test/clojure"
-               "bases/auth-api/test/clojure"]]
+        paths ["components/org-rama/test/clojure"
+               "bases/auth-api/test/clojure"
+               "../../omni-auth/main/components/config/test/clojure"
+               "../../omni-auth/main/components/rama/test/clojure"
+               "../../omni-auth/main/components/schema/test/clojure"
+               "../../omni-auth/main/components/user-rama/test/clojure"
+               "../../omni-auth/main/components/session-rama/test/clojure"
+               "../../omni-auth/main/components/revocation-rama/test/clojure"
+               "../../omni-auth/main/components/token/test/clojure"
+               "../../omni-auth/main/components/security/test/clojure"
+               "../../omni-auth/main/components/pathom/test/clojure"
+               "../../omni-auth/main/components/mfa/test/clojure"
+               "../../omni-auth/main/components/webauthn/test/clojure"
+               "../../omni-auth/main/components/oauth/test/clojure"
+               "../../omni-auth/main/components/saml/test/clojure"]]
     (doseq [p paths
             :let [f (java.io.File. p)]
             :when (.exists f)
@@ -89,16 +89,8 @@
       (try (clojure.lang.RT/addURL url) (catch Exception _ nil)))))
 
 (def test-ns->file
-  '{com.ozimos.workforce.pathom.core-test "components/pathom/test/clojure/com/ozimos/workforce/pathom/core_test.clj"
-    com.ozimos.workforce.org.resolvers-test "components/org-rama/test/clojure/com/ozimos/workforce/org/resolvers_test.clj"
+  '{com.ozimos.workforce.org.resolvers-test "components/org-rama/test/clojure/com/ozimos/workforce/org/resolvers_test.clj"
     com.ozimos.workforce.org.ipc-test "components/org-rama/test/clojure/com/ozimos/workforce/org/ipc_test.clj"
-    com.ozimos.workforce.mfa.core-test "components/mfa/test/clojure/com/ozimos/workforce/mfa/core_test.clj"
-    com.ozimos.workforce.oauth.ipc-test "components/oauth/test/clojure/com/ozimos/workforce/oauth/ipc_test.clj"
-    com.ozimos.workforce.saml.ipc-test "components/saml/test/clojure/com/ozimos/workforce/saml/ipc_test.clj"
-    com.ozimos.workforce.rama.ipc-test "components/rama/test/clojure/com/ozimos/workforce/rama/ipc_test.clj"
-    com.ozimos.workforce.rama.extension-test "components/rama/test/clojure/com/ozimos/workforce/rama/extension_test.clj"
-    com.ozimos.workforce.user.ipc-test "components/user-rama/test/clojure/com/ozimos/workforce/user/ipc_test.clj"
-    com.ozimos.workforce.webauthn.core-test "components/webauthn/test/clojure/com/ozimos/workforce/webauthn/core_test.clj"
     com.ozimos.workforce.auth-api.oauth-integration-test "bases/auth-api/test/clojure/com/ozimos/workforce/auth_api/oauth_integration_test.clj"
     com.ozimos.workforce.auth-api.saml-integration-test "bases/auth-api/test/clojure/com/ozimos/workforce/auth_api/saml_integration_test.clj"
     com.ozimos.workforce.auth-api.integration-test "bases/auth-api/test/clojure/com/ozimos/workforce/auth_api/integration_test.clj"})
@@ -119,16 +111,8 @@
   []
   (ensure-test-paths!)
   (require 'clojure.test)
-  (let [ns-syms '[com.ozimos.workforce.pathom.core-test
-                  com.ozimos.workforce.org.resolvers-test
+  (let [ns-syms '[com.ozimos.workforce.org.resolvers-test
                   com.ozimos.workforce.org.ipc-test
-                  com.ozimos.workforce.mfa.core-test
-                  com.ozimos.workforce.oauth.ipc-test
-                  com.ozimos.workforce.saml.ipc-test
-                  com.ozimos.workforce.rama.ipc-test
-                  com.ozimos.workforce.rama.extension-test
-                  com.ozimos.workforce.user.ipc-test
-                  com.ozimos.workforce.webauthn.core-test
                   com.ozimos.workforce.auth-api.oauth-integration-test
                   com.ozimos.workforce.auth-api.saml-integration-test
                   com.ozimos.workforce.auth-api.integration-test]
@@ -142,7 +126,7 @@
                               (update acc :error (fnil inc 0)))))
                         {:test 0 :pass 0 :fail 0 :error 0}
                         ns-syms)]
-    (println "\n=== Full Test Suite Summary ===")
+    (println "\n=== Workforce Full Test Suite Summary ===")
     (println (str "Tests: " (:test results) ", Passes: " (:pass results) ", Failures: " (:fail results) ", Errors: " (:error results)))
     results))
 

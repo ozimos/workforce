@@ -1,3 +1,0 @@
-{:paths ["src/clojure" "resources"]
- :deps {integrant/integrant {:mvn/version "0.13.1"}}
- :aliases {:test {:extra-paths ["test/clojure"]}}}

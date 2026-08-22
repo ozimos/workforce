@@ -1,7 +1,7 @@
 (ns com.ozimos.workforce.org.resolvers
   (:require
    [com.ozimos.workforce.org.interface :as org]
-   [com.ozimos.workforce.user.interface :as user]
+   [com.ozimos.omni-auth.user.interface :as user]
    [com.wsscode.pathom3.connect.operation :as pco]
    [integrant.core :as ig]))
 

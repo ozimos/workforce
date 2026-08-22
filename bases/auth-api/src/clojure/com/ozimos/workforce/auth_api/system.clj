@@ -1,9 +1,9 @@
 (ns com.ozimos.workforce.auth-api.system
   (:require
-   [com.ozimos.workforce.config.interface :as config]
-   [com.ozimos.workforce.rama.interface :as rama]
-   [com.ozimos.workforce.security.interface :as security]
-   [com.ozimos.workforce.token.interface :as token]
+   [com.ozimos.omni-auth.config.interface :as config]
+   [com.ozimos.omni-auth.rama.interface :as rama]
+   [com.ozimos.omni-auth.security.interface :as security]
+   [com.ozimos.omni-auth.token.interface :as token]
    [integrant.core :as ig]
    [ring.adapter.jetty :as jetty])
   (:import
