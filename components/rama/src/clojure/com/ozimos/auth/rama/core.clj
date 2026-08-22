@@ -65,20 +65,20 @@
 
 (defn all-session-ids
   [rama-map]
-  (let [pstate (rama/foreign-pstate (cmgr rama-map) "AuthModule" "$$all-session-ids")]
+  (let [pstate (rama/foreign-pstate (cmgr rama-map) (module-name) "$$all-session-ids")]
     (rama/foreign-select [(keypath "_sessions") ALL] pstate)))
 
 (defn all-revoked-jtis
   [rama-map]
-  (let [pstate (rama/foreign-pstate (cmgr rama-map) "AuthModule" "$$all-revoked-jtis")]
+  (let [pstate (rama/foreign-pstate (cmgr rama-map) (module-name) "$$all-revoked-jtis")]
     (rama/foreign-select [(keypath "_jtis") ALL] pstate)))
 
 (defn cleanup-expired-sessions
   "Scans all sessions and appends SessionEnd for each expired one.
    Returns the count of expired sessions cleaned up."
   [rama-map]
-  (let [sessions-pstate (rama/foreign-pstate (cmgr rama-map) "AuthModule" "$$sessions")
-        session-end-depot (rama/foreign-depot (cmgr rama-map) "AuthModule" "*session-end-depot")
+  (let [sessions-pstate (rama/foreign-pstate (cmgr rama-map) (module-name) "$$sessions")
+        session-end-depot (rama/foreign-depot (cmgr rama-map) (module-name) "*session-end-depot")
         session-ids (all-session-ids rama-map)
         now (System/currentTimeMillis)
         expired (volatile! 0)]
@@ -94,8 +94,8 @@
   "Scans all revoked token entries and removes those past their expiry.
    Returns the count of expired tokens cleaned up."
   [rama-map]
-  (let [revoked-pstate (rama/foreign-pstate (cmgr rama-map) "AuthModule" "$$revoked-tokens")
-        clear-depot (rama/foreign-depot (cmgr rama-map) "AuthModule" "*clear-revocation-depot")
+  (let [revoked-pstate (rama/foreign-pstate (cmgr rama-map) (module-name) "$$revoked-tokens")
+        clear-depot (rama/foreign-depot (cmgr rama-map) (module-name) "*clear-revocation-depot")
         jtis (all-revoked-jtis rama-map)
         now (System/currentTimeMillis)
         expired (volatile! 0)]

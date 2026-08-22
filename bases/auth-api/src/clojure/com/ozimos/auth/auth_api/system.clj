@@ -90,7 +90,7 @@
           (when-not (.isShutdown scheduler)
             (println "Cleanup: expired sessions" (rama/cleanup-expired-sessions rama)
                      "revocations" (rama/cleanup-expired-revocations rama)))
-          (catch Exception e
+          (catch Throwable e
             (let [msg (.getMessage e)]
               (when-not (and msg (or (.contains msg "Module not alive")
                                      (.contains msg "Cluster not alive")
