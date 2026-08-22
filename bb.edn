@@ -6,6 +6,42 @@
              [babashka.fs :as fs]
              [clojure.string :as str]
              [clojure.pprint :refer [pprint]])
+
+  :init
+  (do
+    (defn resolve-nrepl-port []
+      (or (try (parse-long (str/trim (slurp ".nrepl-port"))) (catch Exception _ nil))
+          (try (parse-long (str/trim (slurp ".shadow-cljs/nrepl.port"))) (catch Exception _ nil))
+          (try (let [local (read-string (slurp "deps.local.edn"))
+                     p (get-in local [:launchpad/options :nrepl-port])]
+                 (when (and (integer? p) (pos? p)) p))
+               (catch Exception _ nil))
+          4005))
+
+    (defn wait-for-port [port timeout-ms]
+      (let [deadline (+ (System/currentTimeMillis) timeout-ms)]
+        (loop []
+          (if (try (let [s (java.net.Socket. "localhost" port)]
+                     (.close s)
+                     true)
+                   (catch Exception _ false))
+            true
+            (when (< (System/currentTimeMillis) deadline)
+              (Thread/sleep 250)
+              (recur))))))
+
+    (defn run-jvm-tests [args]
+      (let [cmd-args (or (seq args) ["test" "project:auth-service"])]
+        (shell "clojure" "-X:deps" "prep" ":aliases" "[:dev :test :+rama :+default :poly]")
+        (apply shell "clojure" "-M:dev:test:+rama:+default:poly" cmd-args)))
+
+    (defn run-in-repl-or-fallback [repl-expr-fn args]
+      (let [port (resolve-nrepl-port)]
+        (if (wait-for-port port 1500)
+          (repl-expr-fn port args)
+          (do (println "\n=== REPL not detected, falling back to standalone JVM test runner ===")
+              (run-jvm-tests args))))))
+
   lint         (shell {:continue true} "clj-kondo" "--lint" "bases" "components" "projects" "development/src/clojure" "bin/launchpad")
   kondo-copy-configs (shell {:continue true} "clj-kondo" "--copy-configs" "--lint" "$(clojure -Spath -A:dev)" "--skip-warnings")
   fmt-check    (shell {:continue true} "standard-clj" "check" "bases" "components" "projects" "development/src/clojure")
@@ -13,70 +49,26 @@
   repl         {:override-builtin true
                 :task (let [args (or (seq *command-line-args*) ["dev" "+rama" "test"])]
                         (apply shell "bin/launchpad" args))}
-  test         (let [args (or (seq *command-line-args*) ["test" "project:auth-service"])]
-                 (shell "clojure" "-X:deps" "prep" ":aliases" "[:dev :test :+rama :+default :poly]")
-                 (apply shell "clojure" "-M:dev:test:+rama:+default:poly" args))
-  test-fast    (let [args *command-line-args*
-                     nrepl-port (or (try (parse-long (str/trim (slurp ".nrepl-port"))) (catch Exception _ nil))
-                                    (try (parse-long (str/trim (slurp ".shadow-cljs/nrepl.port"))) (catch Exception _ nil))
-                                    (try (let [local (read-string (slurp "deps.local.edn"))
-                                               p (get-in local [:launchpad/options :nrepl-port])]
-                                           (when (and (integer? p) (pos? p)) p))
-                                         (catch Exception _ nil))
-                                    4005)
-                     can-connect? (let [deadline (+ (System/currentTimeMillis) 1500)]
-                                    (loop []
-                                      (if (try (let [s (java.net.Socket. "localhost" nrepl-port)]
-                                                 (.close s)
-                                                 true)
-                                               (catch Exception _ false))
-                                        true
-                                        (when (< (System/currentTimeMillis) deadline)
-                                          (Thread/sleep 250)
-                                          (recur)))))]
-                 (if can-connect?
-                   (do (println (str "\n=== Running Backend Tests in Dev REPL (port " nrepl-port ") ==="))
-                       (if (seq args)
-                         (doseq [ns-str args]
-                           (shell "clj-nrepl-eval" "-p" (str nrepl-port)
-                                  (str "((ns-resolve 'user 'test-ns) '" ns-str "')")))
-                         (shell "clj-nrepl-eval" "-p" (str nrepl-port)
-                                "((ns-resolve 'user 'test-all))")))
-                   (do (println "\n=== REPL not detected, falling back to standalone JVM test runner ===")
-                       (let [fallback-args (or (seq args) ["test" "project:auth-service"])]
-                         (shell "clojure" "-X:deps" "prep" ":aliases" "[:dev :test :+rama :+default :poly]")
-                         (apply shell "clojure" "-M:dev:test:+rama:+default:poly" fallback-args)))))
+  test         (run-jvm-tests *command-line-args*)
+  test-fast    (run-in-repl-or-fallback
+                (fn [port args]
+                  (println (str "\n=== Running Backend Tests in Dev REPL (port " port ") ==="))
+                  (if (seq args)
+                    (doseq [ns-str args]
+                      (shell "clj-nrepl-eval" "-p" (str port)
+                             (str "((ns-resolve 'user 'test-ns) '" ns-str ")")))
+                    (shell "clj-nrepl-eval" "-p" (str port)
+                           "((ns-resolve 'user 'test-all))")))
+                *command-line-args*)
   test-fast-clean
-               (let [args *command-line-args*
-                     nrepl-port (or (try (parse-long (str/trim (slurp ".nrepl-port"))) (catch Exception _ nil))
-                                    (try (parse-long (str/trim (slurp ".shadow-cljs/nrepl.port"))) (catch Exception _ nil))
-                                    (try (let [local (read-string (slurp "deps.local.edn"))
-                                               p (get-in local [:launchpad/options :nrepl-port])]
-                                           (when (and (integer? p) (pos? p)) p))
-                                         (catch Exception _ nil))
-                                    4005)
-                     can-connect? (let [deadline (+ (System/currentTimeMillis) 1500)]
-                                    (loop []
-                                      (if (try (let [s (java.net.Socket. "localhost" nrepl-port)]
-                                                 (.close s)
-                                                 true)
-                                               (catch Exception _ false))
-                                        true
-                                        (when (< (System/currentTimeMillis) deadline)
-                                          (Thread/sleep 250)
-                                          (recur)))))]
-                 (if can-connect?
-                   (do (println (str "\n=== Running Clean Backend Tests in Dev REPL (port " nrepl-port ") ==="))
-                       (shell "clj-nrepl-eval" "-p" (str nrepl-port)
-                              "((ns-resolve 'user 'test-clean))"))
-                   (do (println "\n=== REPL not detected, falling back to standalone JVM test runner ===")
-                       (let [fallback-args (or (seq args) ["test" "project:auth-service"])]
-                         (shell "clojure" "-X:deps" "prep" ":aliases" "[:dev :test :+rama :+default :poly]")
-                         (apply shell "clojure" "-M:dev:test:+rama:+default:poly" fallback-args)))))
+               (run-in-repl-or-fallback
+                (fn [port _]
+                  (println (str "\n=== Running Clean Backend Tests in Dev REPL (port " port ") ==="))
+                  (shell "clj-nrepl-eval" "-p" (str port)
+                         "((ns-resolve 'user 'test-clean))"))
+                *command-line-args*)
   test-all     (do (println "\n=== 1/3 Running Clojure JVM Backend Tests ===")
-                   (let [args (or (seq *command-line-args*) ["test" "project:auth-service"])]
-                     (shell "clojure" "-X:deps" "prep" ":aliases" "[:dev :test :+rama :+default :poly]")
-                     (apply shell "clojure" "-M:dev:test:+rama:+default:poly" args))
+                   (run-jvm-tests *command-line-args*)
                    (println "\n=== 2/3 Running Frontend CLJS Tests ===")
                    (shell "bb" "fe-test")
                    (println "\n=== 3/3 Running Node SSR Proxy Test ===")
@@ -98,6 +90,6 @@
   ssr-dev      (do (shell "pnpm" "exec" "shadow-cljs" "watch" "ssr")
                    (shell "node" "ssr-server/server.js"))
   ssr-start    (shell "node" "ssr-server/server.js")
-  build        (do (shell "pnpm" "exec" "tailwindcss" "-i" "components/frontend/src/css/tailwind.css" "-o" "bases/auth-api/resources/public/css/app.css")
+  build        (do (css)
                    (shell "pnpm" "exec" "shadow-cljs" "compile" "app")
                    (shell "pnpm" "exec" "shadow-cljs" "compile" "ssr"))}}
