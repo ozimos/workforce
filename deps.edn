@@ -13,6 +13,7 @@
                      poly/config          {:local/root "components/config"}
                      poly/rama            {:local/root "components/rama"}
                      poly/user-rama       {:local/root "components/user-rama"}
+                     poly/org-rama        {:local/root "components/org-rama"}
                      poly/session-rama    {:local/root "components/session-rama"}
                      poly/revocation-rama {:local/root "components/revocation-rama"}
                      poly/token           {:local/root "components/token"}
@@ -44,6 +45,7 @@
   :test {:extra-paths ["components/schema/test/clojure"
                        "components/config/test/clojure"
                        "components/rama/test/clojure"
+                       "components/org-rama/test/clojure"
                        "components/session-rama/test/clojure"
                        "components/revocation-rama/test/clojure"
                        "components/token/test/clojure"
@@ -58,13 +60,16 @@
                       hato/hato {:mvn/version "1.0.0"}
                       metosin/jsonista {:mvn/version "0.3.14"}}}
 
-  :+rama {:extra-deps {poly/user-rama {:local/root "components/user-rama"}}
-          :extra-paths ["components/user-rama/test/clojure"]}
+  :+rama {:extra-deps {poly/user-rama {:local/root "components/user-rama"}
+                       poly/org-rama {:local/root "components/org-rama"}}
+          :extra-paths ["components/user-rama/test/clojure"
+                        "components/org-rama/test/clojure"]}
 
   :+default {:extra-deps {poly/schema          {:local/root "components/schema"}
                           poly/config          {:local/root "components/config"}
                           poly/rama            {:local/root "components/rama"}
                           poly/user-rama       {:local/root "components/user-rama"}
+                          poly/org-rama        {:local/root "components/org-rama"}
                           poly/session-rama    {:local/root "components/session-rama"}
                           poly/revocation-rama {:local/root "components/revocation-rama"}
                           poly/token           {:local/root "components/token"}
@@ -78,6 +83,7 @@
              :extra-paths ["development/src/clojure" "development/resources"
                            "target/classes"
                            "components/rama/test/clojure"
+                           "components/org-rama/test/clojure"
                            "components/user-rama/test/clojure"
                            "components/session-rama/test/clojure"
                            "components/revocation-rama/test/clojure"

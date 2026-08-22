@@ -7,6 +7,9 @@
 (require 'com.ozimos.workforce.config.core
          'com.ozimos.workforce.rama.core
          'com.ozimos.workforce.rama.module
+         'com.ozimos.workforce.org.extension
+         'com.ozimos.workforce.org.core
+         'com.ozimos.workforce.org.resolvers
          'com.ozimos.workforce.user.core
          'com.ozimos.workforce.session.core
          'com.ozimos.workforce.revocation.core
@@ -28,12 +31,16 @@
                  "components/schema/src/clojure"
                  "components/config/src/clojure"
                  "components/rama/src/clojure"
+                 "components/rama/test/clojure"
+                 "components/org-rama/src/clojure"
+                 "components/org-rama/test/clojure"
                  "components/user-rama/src/clojure"
                  "components/session-rama/src/clojure"
                  "components/revocation-rama/src/clojure"
                  "components/token/src/clojure"
                  "components/security/src/clojure"
                  "components/pathom/src/clojure"
+                 "components/pathom/test/clojure"
                  "components/mfa/src/clojure"
                  "components/mfa/test/clojure"
                  "components/webauthn/src/clojure"
@@ -59,6 +66,7 @@
                                         (.getContextClassLoader (Thread/currentThread))]))
         paths ["components/config/test/clojure"
                "components/rama/test/clojure"
+               "components/org-rama/test/clojure"
                "components/schema/test/clojure"
                "components/user-rama/test/clojure"
                "components/session-rama/test/clojure"
@@ -82,10 +90,13 @@
 
 (def test-ns->file
   '{com.ozimos.workforce.pathom.core-test "components/pathom/test/clojure/com/ozimos/workforce/pathom/core_test.clj"
+    com.ozimos.workforce.org.resolvers-test "components/org-rama/test/clojure/com/ozimos/workforce/org/resolvers_test.clj"
+    com.ozimos.workforce.org.ipc-test "components/org-rama/test/clojure/com/ozimos/workforce/org/ipc_test.clj"
     com.ozimos.workforce.mfa.core-test "components/mfa/test/clojure/com/ozimos/workforce/mfa/core_test.clj"
     com.ozimos.workforce.oauth.ipc-test "components/oauth/test/clojure/com/ozimos/workforce/oauth/ipc_test.clj"
     com.ozimos.workforce.saml.ipc-test "components/saml/test/clojure/com/ozimos/workforce/saml/ipc_test.clj"
     com.ozimos.workforce.rama.ipc-test "components/rama/test/clojure/com/ozimos/workforce/rama/ipc_test.clj"
+    com.ozimos.workforce.rama.extension-test "components/rama/test/clojure/com/ozimos/workforce/rama/extension_test.clj"
     com.ozimos.workforce.user.ipc-test "components/user-rama/test/clojure/com/ozimos/workforce/user/ipc_test.clj"
     com.ozimos.workforce.webauthn.core-test "components/webauthn/test/clojure/com/ozimos/workforce/webauthn/core_test.clj"
     com.ozimos.workforce.auth-api.oauth-integration-test "bases/auth-api/test/clojure/com/ozimos/workforce/auth_api/oauth_integration_test.clj"
@@ -109,10 +120,13 @@
   (ensure-test-paths!)
   (require 'clojure.test)
   (let [ns-syms '[com.ozimos.workforce.pathom.core-test
+                  com.ozimos.workforce.org.resolvers-test
+                  com.ozimos.workforce.org.ipc-test
                   com.ozimos.workforce.mfa.core-test
                   com.ozimos.workforce.oauth.ipc-test
                   com.ozimos.workforce.saml.ipc-test
                   com.ozimos.workforce.rama.ipc-test
+                  com.ozimos.workforce.rama.extension-test
                   com.ozimos.workforce.user.ipc-test
                   com.ozimos.workforce.webauthn.core-test
                   com.ozimos.workforce.auth-api.oauth-integration-test

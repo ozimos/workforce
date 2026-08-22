@@ -1,6 +1,7 @@
 (ns com.ozimos.workforce.rama.core
   (:require
    [com.ozimos.workforce.rama.module :as module]
+   [com.ozimos.workforce.rama.registry :as reg]
    [com.rpl.rama :as rama]
    [com.rpl.rama.path :refer [ALL keypath]]
    [com.rpl.rama.test :as rtest]
@@ -31,11 +32,13 @@
 (defn depot [cmgr module-name depot-name]
   (rama/foreign-depot cmgr module-name depot-name))
 
-(defmethod ig/init-key :rama/cluster [_ {:keys [mode hosts repl-factor tasks threads]
+(defmethod ig/init-key :rama/cluster [_ {:keys [mode hosts repl-factor tasks threads extensions]
                                          :or {mode :ipc
                                               repl-factor 1
                                               tasks 4
                                               threads 2}}]
+  (doseq [ext (or extensions [])]
+    (reg/register-extension! ext))
   (case mode
     :ipc
     (if-let [ipc @ipc-instance]

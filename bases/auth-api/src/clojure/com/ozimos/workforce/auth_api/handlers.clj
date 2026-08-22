@@ -3,6 +3,7 @@
    [clojure.edn :as edn]
    [com.ozimos.workforce.mfa.interface :as mfa]
    [com.ozimos.workforce.oauth.interface :as oauth]
+   [com.ozimos.workforce.org.interface :as org]
    [com.ozimos.workforce.pathom.interface :as pathom]
    [com.ozimos.workforce.revocation.interface :as revocation]
    [com.ozimos.workforce.saml.interface :as saml]
@@ -56,9 +57,9 @@
         user-id (:id user-record)
         sub (str user-id)
         roles (:roles user-record)
-        active-org-id (user/get-active-org system user-id)
+        active-org-id (org/get-active-org system user-id)
         active-org-role (when active-org-id
-                          (:role (user/get-membership system user-id active-org-id)))
+                          (:role (org/get-membership system user-id active-org-id)))
         access-jti (str (random-uuid))
         refresh-jti (str (random-uuid))
         access-ttl 900
@@ -136,9 +137,9 @@
             (if-let [parsed-id (parse-user-id sub)]
               (let [user-record (user/find-by-id system parsed-id)
                     roles (:roles user-record)
-                    active-org-id (user/get-active-org system parsed-id)
+                    active-org-id (org/get-active-org system parsed-id)
                     active-org-role (when active-org-id
-                                      (:role (user/get-membership system parsed-id active-org-id)))
+                                      (:role (org/get-membership system parsed-id active-org-id)))
                     new-access-jti (str (random-uuid))
                     new-refresh-jti (str (random-uuid))
                     issuer "com.ozimos.workforce"
@@ -216,14 +217,14 @@
                      (string? (:eql body-params)) (edn/read-string (:eql body-params))
                      :else (:eql body-params))
         auth-user (get-auth-user request token-decoder)
-        active-org-id (when auth-user (user/get-active-org system (:user-id auth-user)))
+        active-org-id (when auth-user (org/get-active-org system (:user-id auth-user)))
         active-org-role (when (and auth-user active-org-id)
-                          (:role (user/get-membership system (:user-id auth-user) active-org-id)))
+                          (:role (org/get-membership system (:user-id auth-user) active-org-id)))
         auth (when auth-user {:user-id (:user-id auth-user)
                               :current-user (assoc auth-user :id (:user-id auth-user))
                               :active-org-id active-org-id
                               :active-org-role active-org-role})
-        env (pathom/build-env system auth)]
+        env (pathom/build-env system auth (or (:org-resolvers system) (:extra-resolvers system)))]
     (try
       (let [result (pathom/process env query-data)]
         {:status 200 :body {:ok true :data result}})
@@ -292,9 +293,9 @@
                 (let [user-record (user/find-by-id system parsed-id)
                       issuer "com.ozimos.workforce"
                       roles (:roles user-record)
-                      active-org-id (user/get-active-org system parsed-id)
+                      active-org-id (org/get-active-org system parsed-id)
                       active-org-role (when active-org-id
-                                        (:role (user/get-membership system parsed-id active-org-id)))
+                                        (:role (org/get-membership system parsed-id active-org-id)))
                       access-jti (str (random-uuid))
                       refresh-jti (str (random-uuid))
                       access-ttl 900

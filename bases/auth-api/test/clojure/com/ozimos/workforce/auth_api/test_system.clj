@@ -9,8 +9,10 @@
 (defonce sys-atom (atom nil))
 (defonce test-sys-atom (atom nil))
 
+(declare start-system)
+
 (defn get-sys []
-  (or @test-sys-atom irs/system @sys-atom))
+  (or @test-sys-atom irs/system @sys-atom (start-system)))
 
 (defn start-clean-test-sys!
   "Creates a fresh, isolated in-memory IPC cluster, merges it with irs/system,

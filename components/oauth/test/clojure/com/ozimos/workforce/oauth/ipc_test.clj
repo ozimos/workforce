@@ -1,6 +1,7 @@
 (ns com.ozimos.workforce.oauth.ipc-test
   (:require
    [clojure.test :refer [deftest is testing use-fixtures]]
+   [com.ozimos.workforce.oauth.interface :as oauth]
    [com.ozimos.workforce.rama.module :as mod]
    [com.ozimos.workforce.user.interface :as user]
    [com.rpl.rama :as ramaapi]
@@ -72,7 +73,7 @@
       (is (true? (user/mfa-enabled? deps user-id)))
 
       ;; OAuth login with same email -> triggers MFA challenge
-      (let [[cb-ok? cb-res] (com.ozimos.workforce.oauth.interface/handle-oauth-callback
+      (let [[cb-ok? cb-res] (oauth/handle-oauth-callback
                              deps "google" {:provider-user-id sub :email email :name "MFA User"})]
         (is (true? cb-ok?))
         (is (true? (:mfa-required cb-res)))

@@ -1,8 +1,12 @@
-{:rama/cluster
+{:workforce/org-extension {}
+ :workforce/org-resolvers {}
+
+ :rama/cluster
  {:mode #profile {:dev :ipc :test :ipc :prod :cluster}
   :hosts #profile {:dev nil :test nil :prod ["localhost"]}
   :tasks #profile {:dev 4 :test 2 :prod 64}
-  :threads #profile {:dev 2 :test 1 :prod 16}}
+  :threads #profile {:dev 2 :test 1 :prod 16}
+  :extensions [#ig/ref :workforce/org-extension]}
 
  :token/encoder
  {:rsa-key-id "auth-template-key-1"}
@@ -27,7 +31,8 @@
  {:rama #ig/ref :rama/cluster
   :token-encoder #ig/ref :token/encoder
   :token-decoder #ig/ref :token/decoder
-  :policy #ig/ref :auth/policy}
+  :policy #ig/ref :auth/policy
+  :org-resolvers #ig/ref :workforce/org-resolvers}
 
  :adapter/jetty
  {:port #profile {:dev #or [#long #env JETTY_DEV_PORT 8080]
