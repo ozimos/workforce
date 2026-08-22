@@ -193,7 +193,9 @@
     (let [create-depot (rama/foreign-depot *ipc* *module-name* "*org-create-depot")
           uuid (str (random-uuid))
           org-name (str "org-e2e-" (random-uuid))
-          owner-uid 10001
+          owner-uid (+ 10001 (rand-int 100000))
+          joiner-uid (+ 20002 (rand-int 100000))
+          joiner-email (str "joiner-" (subs (str (random-uuid)) 0 8) "@test.com")
           created-at (System/currentTimeMillis)]
 
       ;; Create org
@@ -231,32 +233,29 @@
       (let [invite-depot (rama/foreign-depot *ipc* *module-name* "*org-invite-depot")
             inv-id (str (random-uuid))
             org-id (rama/foreign-select-one (keypath org-name) (rama/foreign-pstate *ipc* *module-name* "$$org-name->id"))
-            inv-result (rama/foreign-append! invite-depot (mod/->OrgInvite inv-id org-id "joiner@test.com" "MEMBER" owner-uid (System/currentTimeMillis) (+ (System/currentTimeMillis) 604800000)))]
+            inv-result (rama/foreign-append! invite-depot (mod/->OrgInvite inv-id org-id joiner-email "MEMBER" owner-uid (System/currentTimeMillis) (+ (System/currentTimeMillis) 604800000)))]
         (println "invite result:" (pr-str inv-result))
-        (is (some? inv-result) "invite should return non-nil"))
-      (Thread/sleep 2000)
+        (is (some? inv-result) "invite should return non-nil")
+        (Thread/sleep 2000)
 
-      ;; Verify invitation
-      (let [invitations (rama/foreign-pstate *ipc* *module-name* "$$invitations")
-            email-inv (rama/foreign-pstate *ipc* *module-name* "$$email->invitations")
-            org-name->id (rama/foreign-pstate *ipc* *module-name* "$$org-name->id")
-            org-id (rama/foreign-select-one (keypath org-name) org-name->id)
-            email-inv-ids (rama/foreign-select [(keypath "joiner@test.com") ALL] email-inv)]
-        (println "email->invitations:" email-inv-ids)
-        (is (seq email-inv-ids) "invitation should be indexed by email")
-        (let [inv (rama/foreign-select-one (keypath (first email-inv-ids)) invitations)]
-          (println "invitation:" (pr-str inv))
-          (is (= "PENDING" (:status inv)) "status should be PENDING")
-          (is (= "MEMBER" (:role inv)) "role should be MEMBER")))
+        ;; Verify invitation
+        (let [invitations (rama/foreign-pstate *ipc* *module-name* "$$invitations")
+              email-inv (rama/foreign-pstate *ipc* *module-name* "$$email->invitations")
+              email-inv-ids (rama/foreign-select [(keypath joiner-email) ALL] email-inv)]
+          (println "email->invitations:" email-inv-ids)
+          (is (seq email-inv-ids) "invitation should be indexed by email")
+          (let [inv (rama/foreign-select-one (keypath (first email-inv-ids)) invitations)]
+            (println "invitation:" (pr-str inv))
+            (is (= "PENDING" (:status inv)) "status should be PENDING")
+            (is (= "MEMBER" (:role inv)) "role should be MEMBER")))
 
-      ;; Join
-      (let [email-inv (rama/foreign-pstate *ipc* *module-name* "$$email->invitations")
-            inv-id (first (rama/foreign-select [(keypath "joiner@test.com") ALL] email-inv))
-            join-depot (rama/foreign-depot *ipc* *module-name* "*org-join-depot")
-            joiner-uid 10002
-            join-result (rama/foreign-append! join-depot (mod/->OrgJoin joiner-uid inv-id (System/currentTimeMillis)))]
-        (println "join result:" (pr-str join-result))
-        (is (some? join-result) "join should return non-nil"))
+        ;; Join
+        (let [email-inv (rama/foreign-pstate *ipc* *module-name* "$$email->invitations")
+              inv-id (first (rama/foreign-select [(keypath joiner-email) ALL] email-inv))
+              join-depot (rama/foreign-depot *ipc* *module-name* "*org-join-depot")
+              join-result (rama/foreign-append! join-depot (mod/->OrgJoin joiner-uid inv-id (System/currentTimeMillis)))]
+          (println "join result:" (pr-str join-result))
+          (is (some? join-result) "join should return non-nil")))
       (Thread/sleep 2000)
 
       ;; Verify membership
@@ -264,12 +263,12 @@
             org-id (rama/foreign-select-one (keypath org-name) org-name->id)
             memberships (rama/foreign-pstate *ipc* *module-name* "$$memberships")
             org-members (rama/foreign-pstate *ipc* *module-name* "$$org-members")
-            m (rama/foreign-select-one (keypath 10002 org-id) memberships)]
+            m (rama/foreign-select-one (keypath joiner-uid org-id) memberships)]
         (println "membership:" (pr-str m))
         (is (some? m) "membership should exist")
         (is (= "MEMBER" (:role m)) "role should be MEMBER")
         (is (= "ACTIVE" (:status m)) "status should be ACTIVE")
-        (let [om (rama/foreign-select-one (keypath org-id 10002) org-members)]
+        (let [om (rama/foreign-select-one (keypath org-id joiner-uid) org-members)]
           (println "org-members:" (pr-str om))
           (is (some? om) "org-members should have entry")))
 
@@ -277,12 +276,12 @@
       (let [switch-depot (rama/foreign-depot *ipc* *module-name* "*org-switch-depot")
             org-name->id (rama/foreign-pstate *ipc* *module-name* "$$org-name->id")
             org-id (rama/foreign-select-one (keypath org-name) org-name->id)]
-        (rama/foreign-append! switch-depot (mod/->OrgSwitch 10002 org-id)))
+        (rama/foreign-append! switch-depot (mod/->OrgSwitch joiner-uid org-id)))
       (Thread/sleep 2000)
       (let [active-org (rama/foreign-pstate *ipc* *module-name* "$$user-active-org")
             org-name->id (rama/foreign-pstate *ipc* *module-name* "$$org-name->id")
             org-id (rama/foreign-select-one (keypath org-name) org-name->id)
-            active (rama/foreign-select-one (keypath 10002) active-org)]
+            active (rama/foreign-select-one (keypath joiner-uid) active-org)]
         (println "active-org after switch:" active)
         (is (= org-id active) "active org should be updated"))
 
@@ -290,12 +289,12 @@
       (let [update-depot (rama/foreign-depot *ipc* *module-name* "*org-member-update-depot")
             org-name->id (rama/foreign-pstate *ipc* *module-name* "$$org-name->id")
             org-id (rama/foreign-select-one (keypath org-name) org-name->id)]
-        (rama/foreign-append! update-depot (mod/->OrgMemberUpdate org-id 10002 "ADMIN")))
+        (rama/foreign-append! update-depot (mod/->OrgMemberUpdate org-id joiner-uid "ADMIN")))
       (Thread/sleep 2000)
       (let [memberships (rama/foreign-pstate *ipc* *module-name* "$$memberships")
             org-name->id (rama/foreign-pstate *ipc* *module-name* "$$org-name->id")
             org-id (rama/foreign-select-one (keypath org-name) org-name->id)
-            m (rama/foreign-select-one (keypath 10002 org-id) memberships)]
+            m (rama/foreign-select-one (keypath joiner-uid org-id) memberships)]
         (println "membership after role update:" (pr-str m))
         (is (= "ADMIN" (:role m)) "role should be ADMIN"))
 
@@ -303,12 +302,12 @@
       (let [remove-depot (rama/foreign-depot *ipc* *module-name* "*org-member-remove-depot")
             org-name->id (rama/foreign-pstate *ipc* *module-name* "$$org-name->id")
             org-id (rama/foreign-select-one (keypath org-name) org-name->id)]
-        (rama/foreign-append! remove-depot (mod/->OrgMemberRemove org-id 10002)))
+        (rama/foreign-append! remove-depot (mod/->OrgMemberRemove org-id joiner-uid)))
       (Thread/sleep 2000)
       (let [memberships (rama/foreign-pstate *ipc* *module-name* "$$memberships")
             org-name->id (rama/foreign-pstate *ipc* *module-name* "$$org-name->id")
             org-id (rama/foreign-select-one (keypath org-name) org-name->id)
-            m (rama/foreign-select-one (keypath 10002 org-id) memberships)]
+            m (rama/foreign-select-one (keypath joiner-uid org-id) memberships)]
         (println "membership after remove:" (pr-str m))
         (is (nil? m) "member should be removed"))
 

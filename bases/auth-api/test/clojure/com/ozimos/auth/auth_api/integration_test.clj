@@ -430,6 +430,7 @@
 (deftest ^:integration auto-token-refresh-integration-test
   (testing "Full token refresh workflow: login -> expired/invalid token query failure -> refresh token -> retried query succeeds"
     (let [user (random-user)
+          new-uname (str "ref-" (short-suffix))
           _ (post-edn "/api/auth/register" user)
           login-resp (post-edn "/api/auth/login"
                        {:identifier (:email user)
@@ -441,7 +442,7 @@
 
       (testing "Step 1: Request with garbage/expired access-token fails with 401"
         (let [query-resp (post-edn "/api/query"
-                           {:eql (pr-str '[(user/update-username {:user/new-username "refreshed-uname"})])}
+                           {:eql (pr-str [(list 'user/update-username {:user/new-username new-uname})])}
                            (auth-header garbage-access-token))]
           (is (= 401 (:status query-resp)))
           (is (= ["Not authenticated"] (get-in query-resp [:body :errors :auth])))))
@@ -455,11 +456,11 @@
 
           (testing "Step 3: Retrying query with new access-token succeeds"
             (let [retry-resp (post-edn "/api/query"
-                               {:eql (pr-str '[(user/update-username {:user/new-username "refreshed-uname"})])}
+                               {:eql (pr-str [(list 'user/update-username {:user/new-username new-uname})])}
                                (auth-header new-access-token))
                   result (get-in retry-resp [:body :data :user/update-username])]
               (is (= 200 (:status retry-resp)))
-              (is (= "refreshed-uname" (:current-user/username result))))))))))
+              (is (= new-uname (:current-user/username result))))))))))
 
 (deftest ^:integration totp-mfa-integration-test
   (testing "Full TOTP MFA lifecycle: setup -> verify-setup -> login step-up -> 2FA challenge verify -> backup code fallback -> disable"

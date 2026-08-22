@@ -87,17 +87,24 @@
     (.scheduleAtFixedRate scheduler
       (fn []
         (try
-          (println "Cleanup: expired sessions" (rama/cleanup-expired-sessions rama)
-                   "revocations" (rama/cleanup-expired-revocations rama))
+          (when-not (.isShutdown scheduler)
+            (println "Cleanup: expired sessions" (rama/cleanup-expired-sessions rama)
+                     "revocations" (rama/cleanup-expired-revocations rama)))
           (catch Exception e
-            (println "Cleanup error:" (.getMessage e)))))
+            (let [msg (.getMessage e)]
+              (when-not (and msg (or (.contains msg "Module not alive")
+                                     (.contains msg "Cluster not alive")
+                                     (.contains msg "closed")))
+                (println "Cleanup error:" msg))))))
       interval-ms interval-ms TimeUnit/MILLISECONDS)
     {:scheduler scheduler}))
 
 (defmethod ig/halt-key! :cleanup/scheduler [_ {:keys [scheduler]}]
   (when scheduler
-    (.shutdown scheduler)
-    (.awaitTermination scheduler 5 TimeUnit/SECONDS)))
+    (.shutdownNow scheduler)
+    (try
+      (.awaitTermination scheduler 2 TimeUnit/SECONDS)
+      (catch Exception _ nil))))
 
 (defn -main [& [profile]]
   (let [cfg (load-config (or (keyword profile) :dev))

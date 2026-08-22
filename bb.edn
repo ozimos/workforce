@@ -6,7 +6,7 @@
              [babashka.fs :as fs]
              [clojure.string :as str]
              [clojure.pprint :refer [pprint]])
-  lint         (shell {:continue true} "clj-kondo" "--lint" "bases" "components" "projects" "development/src/clojure")
+  lint         (shell {:continue true} "clj-kondo" "--lint" "bases" "components" "projects" "development/src/clojure" "bin/launchpad")
   kondo-copy-configs (shell {:continue true} "clj-kondo" "--copy-configs" "--lint" "$(clojure -Spath -A:dev)" "--skip-warnings")
   fmt-check    (shell {:continue true} "standard-clj" "check" "bases" "components" "projects" "development/src/clojure")
   fmt-fix      (shell {:continue true} "standard-clj" "fix" "bases" "components" "projects" "development/src/clojure")
@@ -23,11 +23,18 @@
                                                p (get-in local [:launchpad/options :nrepl-port])]
                                            (when (and (integer? p) (pos? p)) p))
                                          (catch Exception _ nil))
-                                    4005)]
-                 (if (try (let [s (java.net.Socket. "localhost" nrepl-port)]
-                            (.close s)
-                            true)
-                          (catch Exception _ false))
+                                    4005)
+                     can-connect? (let [deadline (+ (System/currentTimeMillis) 1500)]
+                                    (loop []
+                                      (if (try (let [s (java.net.Socket. "localhost" nrepl-port)]
+                                                 (.close s)
+                                                 true)
+                                               (catch Exception _ false))
+                                        true
+                                        (when (< (System/currentTimeMillis) deadline)
+                                          (Thread/sleep 250)
+                                          (recur)))))]
+                 (if can-connect?
                    (do (println (str "\n=== Running Backend Tests in Dev REPL (port " nrepl-port ") ==="))
                        (if (seq args)
                          (doseq [ns-str args]
@@ -47,11 +54,18 @@
                                                p (get-in local [:launchpad/options :nrepl-port])]
                                            (when (and (integer? p) (pos? p)) p))
                                          (catch Exception _ nil))
-                                    4005)]
-                 (if (try (let [s (java.net.Socket. "localhost" nrepl-port)]
-                            (.close s)
-                            true)
-                          (catch Exception _ false))
+                                    4005)
+                     can-connect? (let [deadline (+ (System/currentTimeMillis) 1500)]
+                                    (loop []
+                                      (if (try (let [s (java.net.Socket. "localhost" nrepl-port)]
+                                                 (.close s)
+                                                 true)
+                                               (catch Exception _ false))
+                                        true
+                                        (when (< (System/currentTimeMillis) deadline)
+                                          (Thread/sleep 250)
+                                          (recur)))))]
+                 (if can-connect?
                    (do (println (str "\n=== Running Clean Backend Tests in Dev REPL (port " nrepl-port ") ==="))
                        (shell "clj-nrepl-eval" "-p" (str nrepl-port)
                               "((ns-resolve 'user 'test-clean))"))

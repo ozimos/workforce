@@ -1,0 +1,164 @@
+#!/usr/bin/env bb
+(require '[lambdaisland.launchpad :as lp]
+         '[lambdaisland.launchpad.log :as log]
+         '[babashka.wait :as wait]
+         '[clojure.java.shell :as shell]
+         '[clojure.string :as str]
+         '[clojure.java.io :as io])
+
+(defn ensure-java-min-version
+  "Ensure the JVM major version is >= min-version."
+  [min-version ctx]
+  (let [version (parse-long (last (re-find #"version \"([^\.\"]*)"
+                                            (-> (shell/sh "java" "-version")
+                                                :err
+                                                (str/split #"\n")
+                                                first))))]
+    (log/debug "Found java" version)
+    (when (< version min-version)
+      (log/error "Found java" version ", expected Java >=" min-version)
+      (System/exit -1))
+    ctx))
+
+(defn- read-deps-local
+  []
+  (let [f (io/file "deps.local.edn")]
+    (when (.exists f)
+      (try (read-string (slurp f))
+           (catch Exception _ nil)))))
+
+(defn resolve-nrepl-port
+  "If :launchpad/options :nrepl-port is 0 or nil, allocate a free port at boot."
+  [ctx]
+  (let [local (read-deps-local)
+        configured (get-in local [:launchpad/options :nrepl-port])]
+    (if (or (nil? configured) (not (and (integer? configured) (pos? configured))))
+      (let [port (lp/free-port)]
+        (log/info "Dynamically resolved nREPL port:" port)
+        (assoc-in ctx [:options :nrepl-port] port))
+      ctx)))
+
+(defn resolve-jetty-ports
+  "Reads :jetty/port from deps.local.edn and injects JETTY_DEV_PORT,
+   JETTY_TEST_PORT, JETTY_PROD_PORT into the child process environment.
+
+   :jetty/port is a map with :dev, :test, :prod subkeys. Each value is
+   either a positive integer (fixed port) or 0/nil (pick a random free port).
+   When :jetty/port is absent entirely, no env vars are set and Aero
+   falls back to each profile's default."
+  [ctx]
+  (let [local-file (io/file "deps.local.edn")
+        jetty-cfg  (when (.exists local-file)
+                     (:jetty/port (read-string (slurp local-file))))]
+    (if jetty-cfg
+      (let [profiles  [:dev :test :prod]
+            env-names {:dev "JETTY_DEV_PORT" :test "JETTY_TEST_PORT" :prod "JETTY_PROD_PORT"}]
+        (reduce (fn [acc profile]
+                  (let [val (get jetty-cfg profile)
+                        port (if (and (integer? val) (pos? val))
+                               val
+                               (lp/free-port))]
+                    (log/info (str "Resolved " (env-names profile) ":") port)
+                    (update acc :env assoc (env-names profile) (str port))))
+                ctx
+                profiles))
+      ctx)))
+
+(defn start-frontend-watcher
+  "If deps.local.edn has :frontend/watcher :enabled, add eval forms
+   to start shadow-cljs watch inside the JVM at startup."
+  [ctx]
+  (let [local-file (io/file "deps.local.edn")]
+    (if (and (.exists local-file)
+             (get-in (read-string (slurp local-file)) [:frontend/watcher :enabled]))
+      (do (log/info "Starting shadow-cljs frontend watcher...")
+          (-> ctx
+              (update :eval-forms into
+                      ['(do (require 'shadow.cljs.devtools.server)
+                            (require 'shadow.cljs.devtools.api))
+                       '(shadow.cljs.devtools.server/start!)
+                       '(shadow.cljs.devtools.api/watch :app)
+                       '(shadow.cljs.devtools.api/watch :ssr)])))
+      ctx)))
+
+(defn shadow-cljs-http-port
+  "Resolve the shadow-cljs HTTP server port to wait for.
+
+   Looked up, in order, in deps.local.edn:
+     (:launchpad/options :shadow-cljs-http-port)
+     (:shadow-cljs :http-port)
+
+   Falls back to 9630 (shadow-cljs's own default) when nothing is configured."
+  []
+  (let [local (read-deps-local)]
+    (or (get-in local [:launchpad/options :shadow-cljs-http-port])
+        (get-in local [:shadow-cljs :http-port])
+        9630)))
+
+(defn start-ssr-server
+  "If deps.local.edn has :ssr-server :enabled, spawn the Node SSR server
+   (ssr-server/server.js) as a launchpad-managed background process so it
+   is started/stopped alongside the Clojure REPL and shadow watches."
+  [ctx]
+  (let [local-file (io/file "deps.local.edn")
+        ssr-dir    (io/file "ssr-server")]
+    (if (and (.exists local-file)
+             (.exists ssr-dir)
+             (get-in (read-string (slurp local-file)) [:ssr-server :enabled]))
+      (let [jetty-port (or (get-in ctx [:env "JETTY_DEV_PORT"])
+                           (get-in (read-string (slurp local-file)) [:jetty/port :dev])
+                           "8080")
+            api-target (str "http://localhost:" jetty-port)]
+        (log/info "Starting Node SSR server (ssr-server/server.js)...")
+        ((lambdaisland.launchpad/run-process
+          {:cmd         ["node" "server.js"]
+           :working-dir "ssr-server"
+           :env         (assoc (:env ctx) "API_TARGET" api-target "JETTY_DEV_PORT" (str jetty-port))
+           :background? true
+           :prefix      "ssr-server"})
+         ctx))
+      ctx)))
+
+(defn wait-for-shadow-cljs
+  "Block until the shadow-cljs HTTP server is accepting TCP connections.
+
+   Must run AFTER lp/default-steps (which spawns the JVM via
+   start-clojure-process and waits for nREPL). By the time nREPL is up,
+   shadow-cljs's HTTP server has also started — this step re-confirms
+   that the port is listening so the SSR server's relay client doesn't
+   race the JVM at boot.
+
+   Port is resolved by shadow-cljs-http-port above."
+  [ctx]
+  (let [port    (shadow-cljs-http-port)
+        timeout 300000]
+    (log/info "Waiting for shadow-cljs HTTP server on port" port "...")
+    (if-let [{:keys [took]} (wait/wait-for-port "localhost" port {:timeout timeout :pause 1000})]
+      (do (log/info "shadow-cljs HTTP server reachable after" (/ took 1000.0) "seconds")
+          (Thread/sleep 1000)
+          ctx)
+      (do (log/warn "shadow-cljs HTTP server not reachable on port" port
+                    "after" (/ timeout 1000) "seconds; starting SSR server anyway")
+          ctx))))
+
+(defn auto-start-system
+  "If deps.local.edn has :system/auto-start true (or defaults to true),
+   add eval forms to automatically run (user/go) on JVM startup."
+  [ctx]
+  (let [local (read-deps-local)
+        enabled? (get local :system/auto-start true)]
+    (if enabled?
+      (do (log/info "Configuring automatic system startup (user/go)...")
+          (update ctx :eval-forms conj '(do (in-ns 'user) (go))))
+      ctx)))
+
+(lp/main
+ {:steps
+  (into [(partial ensure-java-min-version 21)
+         resolve-nrepl-port
+         start-frontend-watcher
+         auto-start-system
+         resolve-jetty-ports]
+        (concat lp/default-steps
+                [wait-for-shadow-cljs
+                 start-ssr-server]))})

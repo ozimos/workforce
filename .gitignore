@@ -2,7 +2,6 @@
 .cpcache/
 /.cpcache
 /*.jar
-/bin/launchpad
 target/
 /classes
 /.clojure
@@ -24,3 +23,4 @@ jar-manifest/
 /.dirge
 bun.lock
 session.json
+/.vscode
