@@ -1,0 +1,399 @@
+-- allium: 3
+-- workforce.allium
+
+-- Scope: Workforce org domain extending omni-auth core
+-- Includes: Organization, Membership, Invitation, Active-org switching, Role management
+-- Excludes: Authentication, Session, MFA, WebAuthn, OAuth, SAML (managed in omni-auth core)
+-- Dependencies: User entity defined in omni-auth core (user-id as Long, email as String)
+
+------------------------------------------------------------
+-- External Entities
+------------------------------------------------------------
+
+external entity User {
+    email: String
+}
+
+------------------------------------------------------------
+-- Enumerations
+------------------------------------------------------------
+
+enum Role { admin | member }
+enum InvitationStatus { pending | accepted | expired }
+enum MembershipStatus { active | revoked }
+
+------------------------------------------------------------
+-- Entities
+------------------------------------------------------------
+
+entity Organization {
+    name: String
+    owner: User
+    created_at: Timestamp
+
+    -- Relationships
+    memberships: OrganizationMembership with organization = this
+    invitations: OrganizationInvitation with organization = this
+
+    -- Projections
+    active_memberships: memberships where status = active
+    pending_invitations: invitations where status = pending
+    admins: active_memberships where role = admin
+
+    -- Derived
+    has_admin: admins.count > 0
+}
+
+entity OrganizationMembership {
+    organization: Organization
+    user: User
+    role: Role
+    status: MembershipStatus
+    joined_at: Timestamp
+    invited_by: User
+
+    -- Derived
+    can_admin: role = admin
+    can_invite: role = admin
+}
+
+entity OrganizationInvitation {
+    organization: Organization
+    email: String
+    role: Role
+    invited_by: User
+    created_at: Timestamp
+    expires_at: Timestamp
+    status: InvitationStatus
+
+    -- Derived
+    is_valid: status = pending and expires_at > now
+    is_expired: status = pending and expires_at <= now
+}
+
+entity ActiveOrganization {
+    user: User
+    organization: Organization
+}
+
+------------------------------------------------------------
+-- Config
+------------------------------------------------------------
+
+config {
+    invitation_expiry: Duration = 7.days
+}
+
+------------------------------------------------------------
+-- Rules
+------------------------------------------------------------
+
+-- Org creation: any authenticated user can create, name globally unique, idempotent per dedup
+
+rule CreateOrganization {
+    when: CreateOrganization(owner, name)
+
+    requires: not exists Organization{name: name}
+
+    ensures:
+        let org = Organization.created(
+            name: name,
+            owner: owner,
+            created_at: now
+        )
+        OrganizationMembership.created(
+            organization: org,
+            user: owner,
+            role: admin,
+            status: active,
+            joined_at: now,
+            invited_by: owner
+        )
+        ActiveOrganization.created(
+            user: owner,
+            organization: org
+        )
+}
+
+rule CreateOrganizationDuplicateName {
+    when: CreateOrganization(owner, name)
+
+    requires: exists Organization{name: name}
+
+    ensures: OrganizationAlreadyExists(name: name)
+}
+
+-- Invite: only admin can invite, cannot re-invite already active member
+
+rule InviteMember {
+    when: InviteMember(inviter, organization, email, role)
+
+    let inviter_membership = OrganizationMembership{organization: organization, user: inviter}
+    let existing_membership = OrganizationMembership{organization: organization, user: User{email: email}, status: active}
+    let existing_invitation = OrganizationInvitation{organization: organization, email: email}
+
+    requires: exists inviter_membership
+    requires: inviter_membership.status = active
+    requires: inviter_membership.role = admin
+    requires: not exists existing_membership
+    requires: not exists existing_invitation or not existing_invitation.is_valid
+
+    ensures: OrganizationInvitation.created(
+        organization: organization,
+        email: email,
+        role: role,
+        invited_by: inviter,
+        created_at: now,
+        expires_at: now + config.invitation_expiry,
+        status: pending
+    )
+}
+
+-- Accept: existing user accepts via matching email, must be valid, not already accepted, not expired
+
+rule AcceptInvitation {
+    when: AcceptInvitation(invitation, user)
+
+    requires: invitation.status = pending
+    requires: invitation.is_valid
+    requires: user.email = invitation.email
+
+    ensures: invitation.status = accepted
+    ensures: OrganizationMembership.created(
+        organization: invitation.organization,
+        user: user,
+        role: invitation.role,
+        status: active,
+        joined_at: now,
+        invited_by: invitation.invited_by
+    )
+}
+
+rule AcceptInvitationAlreadyAccepted {
+    when: AcceptInvitation(invitation, user)
+
+    requires: invitation.status = accepted
+
+    ensures: InvitationAlreadyAccepted(invitation: invitation)
+}
+
+rule AcceptInvitationExpired {
+    when: AcceptInvitation(invitation, user)
+
+    requires: invitation.status = pending
+    requires: invitation.expires_at <= now
+
+    ensures: InvitationExpired(invitation: invitation)
+}
+
+rule InvitationExpires {
+    when: invitation: OrganizationInvitation.expires_at <= now
+
+    requires: invitation.status = pending
+
+    ensures: invitation.status = expired
+}
+
+-- Switch active org: requires membership
+
+rule SwitchActiveOrganization {
+    when: SwitchActiveOrganization(user, organization)
+
+    let membership = OrganizationMembership{organization: organization, user: user}
+
+    requires: exists membership
+    requires: membership.status = active
+
+    ensures:
+        let active = ActiveOrganization{user: user}
+        if exists active:
+            active.organization = organization
+        else:
+            ActiveOrganization.created(user: user, organization: organization)
+}
+
+rule SwitchActiveOrganizationNotMember {
+    when: SwitchActiveOrganization(user, organization)
+
+    let membership = OrganizationMembership{organization: organization, user: user}
+
+    requires: not exists membership or membership.status != active
+
+    ensures: NotMemberOfOrganization(user: user, organization: organization)
+}
+
+-- Update role: only admin, cannot demote last admin
+
+rule UpdateMemberRole {
+    when: UpdateMemberRole(actor, organization, target_user, new_role)
+
+    let actor_membership = OrganizationMembership{organization: organization, user: actor}
+    let target_membership = OrganizationMembership{organization: organization, user: target_user}
+
+    requires: exists actor_membership
+    requires: actor_membership.status = active
+    requires: actor_membership.role = admin
+    requires: exists target_membership
+    requires: target_membership.status = active
+    requires: organization.has_admin
+
+    ensures: target_membership.role = new_role
+}
+
+-- Remove member: only admin, cannot remove owner, preserve at least one admin
+
+rule RemoveMember {
+    when: RemoveMember(actor, organization, target_user)
+
+    let actor_membership = OrganizationMembership{organization: organization, user: actor}
+    let target_membership = OrganizationMembership{organization: organization, user: target_user}
+    let active = ActiveOrganization{user: target_user}
+
+    requires: exists actor_membership
+    requires: actor_membership.status = active
+    requires: actor_membership.role = admin
+    requires: exists target_membership
+    requires: target_membership.status = active
+    requires: target_user != organization.owner
+    requires: organization.has_admin
+
+    ensures: target_membership.status = revoked
+    ensures:
+        if exists active and active.organization = organization:
+            not exists active
+}
+
+rule RemoveMemberLastAdminFails {
+    when: RemoveMember(actor, organization, target_user)
+
+    let target_membership = OrganizationMembership{organization: organization, user: target_user}
+
+    requires: exists target_membership
+    requires: target_membership.role = admin
+    requires: organization.admins.count = 1
+
+    ensures: CannotRemoveLastAdmin(organization: organization, user: target_user)
+}
+
+------------------------------------------------------------
+-- Invariants
+------------------------------------------------------------
+
+invariant OrgNameUnique {
+    for o1 in Organizations:
+        for o2 in Organizations:
+            o1 != o2 implies o1.name != o2.name
+}
+
+invariant OrgHasAtLeastOneAdmin {
+    for org in Organizations:
+        org.has_admin
+}
+
+invariant MembershipSymmetry {
+    for m in OrganizationMemberships:
+        m.status = active implies m in m.organization.active_memberships
+}
+
+invariant InvitationSingleUse {
+    for inv in OrganizationInvitations:
+        inv.status = accepted implies not inv.is_valid
+}
+
+------------------------------------------------------------
+-- Actors
+------------------------------------------------------------
+
+actor AuthenticatedUser {
+    identified_by: User
+}
+
+actor OrgAdmin {
+    identified_by: User where exists OrganizationMembership{user: this, role: admin, status: active}
+}
+
+------------------------------------------------------------
+-- Surfaces
+------------------------------------------------------------
+
+surface OrganizationManagement {
+    facing creator: AuthenticatedUser
+
+    provides:
+        CreateOrganization(creator, name)
+
+    @guarantee AnyAuthenticatedCanCreate
+        -- Any authenticated user can create an organization and becomes its admin.
+}
+
+surface OrganizationMembershipManagement {
+    facing admin: OrgAdmin
+
+    context organization: Organization
+
+    let membership = OrganizationMembership{organization: organization, user: admin}
+
+    exposes:
+        organization.name
+        organization.active_memberships
+        organization.pending_invitations
+
+    provides:
+        InviteMember(admin, organization, email, role)
+            when membership.role = admin
+        UpdateMemberRole(admin, organization, target_user, new_role)
+            when membership.role = admin
+        RemoveMember(admin, organization, target_user)
+            when membership.role = admin
+
+    @guarantee AdminOnly
+        -- Only active admins can invite and manage roles/members.
+
+    @guidance
+        -- UI should not present invite/role/remove options to non-admins.
+        -- Switch-active-org UI should only list organizations where membership.status = active.
+}
+
+surface InvitationResponse {
+    facing recipient: AuthenticatedUser
+
+    context invitation: OrganizationInvitation where email = recipient.email
+
+    exposes:
+        invitation.organization.name
+        invitation.role
+        invitation.invited_by.email
+        invitation.expires_at
+        invitation.is_valid
+
+    provides:
+        AcceptInvitation(invitation, recipient)
+            when invitation.is_valid
+
+    @guidance
+        -- Show expiry time and invalid state when invitation.is_valid = false.
+}
+
+surface ActiveOrganizationSwitch {
+    facing user: AuthenticatedUser
+
+    exposes:
+        ActiveOrganization{user: user}.organization.name
+
+    provides:
+        SwitchActiveOrganization(user, organization)
+            when exists OrganizationMembership{organization: organization, user: user} and OrganizationMembership{organization: organization, user: user}.status = active
+
+    @guarantee RequiresMembership
+        -- Switching requires active membership; fail if not member.
+
+    @guidance
+        -- UI should only present organizations where user is active member.
+}
+
+------------------------------------------------------------
+-- Open Questions
+------------------------------------------------------------
+
+-- open question "Should removing a member's active org fallback to another org instead of clearing ActiveOrganization?"
+-- open question "Should invitation revoke be explicitly modeled as pending -> revoked transition via RevokeInvitation?"
