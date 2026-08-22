@@ -10,7 +10,7 @@
               "auth-service" {:alias "auth"}}
     :profiles {:default {:names ["schema" "config" "rama" "user-rama" "session-rama"
                                  "revocation-rama" "token" "security" "pathom"
-                                 "frontend" "auth-api"]}}
+                                 "frontend" "auth-api" "mfa" "webauthn" "oauth" "saml"]}}
    :test {:setup-fn "com.ozimos.auth.auth-api.test-system/setup"
           :teardown-fn "com.ozimos.auth.auth-api.test-system/teardown"
           :create-test-runner

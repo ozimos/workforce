@@ -20,6 +20,8 @@
                      poly/pathom          {:local/root "components/pathom"}
                      poly/mfa             {:local/root "components/mfa"}
                      poly/webauthn        {:local/root "components/webauthn"}
+                     poly/oauth           {:local/root "components/oauth"}
+                     poly/saml            {:local/root "components/saml"}
 
                      poly/auth-api   {:local/root "bases/auth-api"}
 
@@ -49,6 +51,8 @@
                        "components/pathom/test/clojure"
                        "components/mfa/test/clojure"
                        "components/webauthn/test/clojure"
+                       "components/oauth/test/clojure"
+                       "components/saml/test/clojure"
                        "bases/auth-api/test/clojure"]
          :extra-deps {org.clojure/test.check {:mvn/version "1.1.1"}
                       hato/hato {:mvn/version "1.0.0"}
@@ -68,6 +72,8 @@
                           poly/pathom          {:local/root "components/pathom"}
                           poly/mfa             {:local/root "components/mfa"}
                           poly/webauthn        {:local/root "components/webauthn"}
+                          poly/oauth           {:local/root "components/oauth"}
+                          poly/saml            {:local/root "components/saml"}
                           poly/auth-api        {:local/root "bases/auth-api"}}
              :extra-paths ["development/src/clojure" "development/resources"
                            "target/classes"
@@ -79,6 +85,8 @@
                            "components/security/test/clojure"
                            "components/mfa/test/clojure"
                            "components/webauthn/test/clojure"
+                           "components/oauth/test/clojure"
+                           "components/saml/test/clojure"
                            "bases/auth-api/test/clojure"
                            "components/schema/test/clojure"
                            "components/config/test/clojure"]}

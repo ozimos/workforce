@@ -23,6 +23,7 @@
 (defrecord WebAuthnRegister [user-id credential-id public-key-cose sign-count user-handle nickname created-at])
 (defrecord WebAuthnUpdateSignCount [user-id credential-id new-sign-count])
 (defrecord WebAuthnRemoveCredential [user-id credential-id])
+(defrecord OAuthLink [provider provider-user-id user-id])
 
 (defrecord OrgCreate [uuid name owner-user-id created-at])
 (defrecord OrgInvite [invitation-id org-id email role invited-by created-at expires-at])
@@ -51,6 +52,7 @@
   (declare-depot setup *webauthn-register-depot (hash-by :user-id))
   (declare-depot setup *webauthn-sign-count-depot (hash-by :user-id))
   (declare-depot setup *webauthn-remove-depot (hash-by :user-id))
+  (declare-depot setup *oauth-link-depot (hash-by :provider))
   (declare-depot setup *org-create-depot (hash-by :owner-user-id))
   (declare-depot setup *org-invite-depot (hash-by :org-id))
   (declare-depot setup *org-join-depot (hash-by :user-id))
@@ -89,9 +91,9 @@
     (declare-pstate s $$mfa-secrets {Long String})
     ;; MFA: user-id -> boolean flag
     (declare-pstate s $$mfa-enabled {Long Boolean})
-    ;; MFA: user-id -> set of hashed backup codes
+    ;; MFA: user-id -> map of hashed backup code to boolean true
     (declare-pstate s $$mfa-backup-codes
-                    {Long (set-schema String {:subindex? true})})
+                    {Long {String Boolean}})
 
     ;; WebAuthn: user-id -> {credential-id -> {public-key, sign-count, user-handle, nickname, created-at}}
     (declare-pstate s $$webauthn-credentials
@@ -100,6 +102,9 @@
                                                       :user-handle String
                                                       :nickname String
                                                       :created-at Long})}})
+
+    ;; OAuth & SAML Account Links: provider -> provider-user-id -> local user-id
+    (declare-pstate s $$oauth-link {String {String Long}})
 
     ;; Organizations: org-id -> {name, owner-user-id, created-at}
     (declare-pstate s $$orgs
@@ -266,7 +271,7 @@
                  (local-transform> [(keypath *user-id) (termval true)] $$mfa-enabled)
                  (local-transform> [(keypath *user-id) NONE>] $$mfa-backup-codes)
                  (ops/explode *backup-code-hashes :> *code-hash)
-                 (local-transform> [(keypath *user-id) NONE-ELEM (termval *code-hash)] $$mfa-backup-codes)
+                 (local-transform> [(keypath *user-id *code-hash) (termval true)] $$mfa-backup-codes)
 
                  ;; MFA disable
                  (source> *mfa-disable-depot :> {:keys [*user-id]})
@@ -282,11 +287,10 @@
                  (source> *mfa-regenerate-backup-codes-depot :> {:keys [*user-id *backup-code-hashes]})
                  (local-transform> [(keypath *user-id) NONE>] $$mfa-backup-codes)
                  (ops/explode *backup-code-hashes :> *code-hash)
-                 (local-transform> [(keypath *user-id) NONE-ELEM (termval *code-hash)] $$mfa-backup-codes)
+                 (local-transform> [(keypath *user-id *code-hash) (termval true)] $$mfa-backup-codes)
 
                  ;; WebAuthn register
                  (source> *webauthn-register-depot :> {:keys [*user-id *credential-id *public-key-cose *sign-count *user-handle *nickname *created-at]})
-                 (|hash *user-id)
                  (local-transform> [(keypath *user-id *credential-id)
                                     (multi-path [:public-key (termval *public-key-cose)]
                                                 [:sign-count (termval *sign-count)]
@@ -297,13 +301,15 @@
 
                  ;; WebAuthn update sign count
                  (source> *webauthn-sign-count-depot :> {:keys [*user-id *credential-id *new-sign-count]})
-                 (|hash *user-id)
                  (local-transform> [(keypath *user-id *credential-id :sign-count) (termval *new-sign-count)] $$webauthn-credentials)
 
-                 ;; WebAuthn remove credential
-                 (source> *webauthn-remove-depot :> {:keys [*user-id *credential-id]})
-                 (|hash *user-id)
-                 (local-transform> [(keypath *user-id *credential-id) NONE>] $$webauthn-credentials)
+                  ;; WebAuthn remove credential
+                  (source> *webauthn-remove-depot :> {:keys [*user-id *credential-id]})
+                  (local-transform> [(keypath *user-id *credential-id) NONE>] $$webauthn-credentials)
+
+                  ;; OAuth & SAML Link
+                  (source> *oauth-link-depot :> {:keys [*provider *provider-user-id *user-id]})
+                  (local-transform> [(keypath *provider *provider-user-id) (termval *user-id)] $$oauth-link)
 
                 ;; Organization creation
                 (source> *org-create-depot :> {:keys [*uuid *name *owner-user-id *created-at]})

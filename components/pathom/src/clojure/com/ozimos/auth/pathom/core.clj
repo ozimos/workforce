@@ -247,4 +247,9 @@
    `env` is the built Pathom environment.
    `eql` is the EQL query."
   [env eql]
-  (p.eql/process env eql))
+  (let [res (p.eql/process env eql)]
+    (if (map? res)
+      (into {} (map (fn [[k v]]
+                      [(if (symbol? k) (keyword (str k)) k) v])
+                    res))
+      res)))

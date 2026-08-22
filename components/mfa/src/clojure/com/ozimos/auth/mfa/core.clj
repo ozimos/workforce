@@ -15,22 +15,27 @@
   [^bytes bytes-data]
   (let [sb (StringBuilder.)
         len (alength bytes-data)]
-    (loop [i 0 index 0 digit 0]
+    (loop [i 0
+           buffer 0
+           bits-left 0]
       (if (< i len)
-        (let [b (bit-and (aget bytes-data i) 0xff)]
-          (if (> index 3)
-            (let [b-curr (bit-and (bit-shift-right b (- 8 (+ index 5))) 0x1f)
-                  _ (.append sb (.charAt base32-alphabet b-curr))
-                  index' (- (+ index 5) 8)]
-              (recur i index' b))
-            (let [index' (+ index 5)
-                  b-curr (bit-and (bit-shift-right b (- 8 index')) 0x1f)]
-              (.append sb (.charAt base32-alphabet b-curr))
-              (recur (inc i) index' b))))
-        (when (pos? index)
-          (let [b-curr (bit-and (bit-shift-left digit (- 5 index)) 0x1f)]
-            (.append sb (.charAt base32-alphabet b-curr))))))
-    (.toString sb)))
+        (let [b (bit-and (aget bytes-data i) 0xff)
+              buf (bit-or (bit-shift-left buffer 8) b)
+              bits (+ bits-left 8)]
+          (let [rem-buf (loop [cur-buf buf
+                               cur-bits bits]
+                          (if (>= cur-bits 5)
+                            (let [idx (bit-and (bit-shift-right cur-buf (- cur-bits 5)) 0x1f)]
+                              (.append sb (.charAt base32-alphabet idx))
+                              (recur (bit-and cur-buf (dec (bit-shift-left 1 (- cur-bits 5))))
+                                     (- cur-bits 5)))
+                            [cur-buf cur-bits]))]
+            (recur (inc i) (first rem-buf) (second rem-buf))))
+        (do
+          (when (pos? bits-left)
+            (let [idx (bit-and (bit-shift-left buffer (- 5 bits-left)) 0x1f)]
+              (.append sb (.charAt base32-alphabet idx))))
+          (.toString sb))))))
 
 (defn decode-base32
   "Decode a Base32 string into a byte array (RFC 4648)."
@@ -39,21 +44,27 @@
     (byte-array 0)
     (let [clean-str (-> base32-str string/upper-case (string/replace #"=" ""))
           len (.length clean-str)
-          out-bytes (byte-array (quot (* len 5) 8))]
-      (loop [i 0 index 0 current-byte 0 out-idx 0]
+          baos (java.io.ByteArrayOutputStream.)]
+      (loop [i 0
+             buffer 0
+             bits-left 0]
         (if (< i len)
           (let [ch (.charAt clean-str i)
                 val (.indexOf base32-alphabet (int ch))]
             (if (= val -1)
               (throw (IllegalArgumentException. (str "Invalid Base32 char: " ch)))
-              (let [index' (+ index 5)]
-                (if (>= index' 8)
-                  (let [index'' (- index' 8)
-                        b (bit-or current-byte (bit-shift-right val index''))]
-                    (aset-byte out-bytes out-idx (byte b))
-                    (recur (inc i) index'' (bit-and (bit-shift-left val (- 8 index'')) 0xff) (inc out-idx)))
-                  (recur (inc i) index' (bit-or current-byte (bit-shift-left val (- 8 index'))) out-idx)))))
-          out-bytes)))))
+              (let [buf (bit-or (bit-shift-left buffer 5) val)
+                    bits (+ bits-left 5)]
+                (let [rem-buf (loop [cur-buf buf
+                                     cur-bits bits]
+                                (if (>= cur-bits 8)
+                                  (let [b (bit-and (bit-shift-right cur-buf (- cur-bits 8)) 0xff)]
+                                    (.write baos b)
+                                    (recur (bit-and cur-buf (dec (bit-shift-left 1 (- cur-bits 8))))
+                                           (- cur-bits 8)))
+                                  [cur-buf cur-bits]))]
+                  (recur (inc i) (first rem-buf) (second rem-buf))))))
+          (.toByteArray baos))))))
 
 (defn generate-secret
   "Generate a 20-byte (160-bit) Base32 encoded TOTP secret."
@@ -131,7 +142,7 @@
 
 (def ^:private default-system-key-bytes
   ;; 32-byte (256-bit) default key for AES-GCM secret encryption at rest
-  (.getBytes "best-auth-mfa-system-secret-key-32b" "UTF-8"))
+  (java.util.Arrays/copyOf (.getBytes "best-auth-mfa-system-secret-key" "UTF-8") 32))
 
 (defn encrypt-secret
   "Encrypt a TOTP Base32 secret string at rest using AES-GCM."
@@ -142,7 +153,7 @@
          iv (byte-array 12)
          _ (.nextBytes (SecureRandom.) iv)
          gcm-spec (GCMParameterSpec. 128 iv)
-         secret-key (SecretKeySpec. key-bytes "AES")]
+         secret-key (SecretKeySpec. (java.util.Arrays/copyOf key-bytes 32) "AES")]
      (.init cipher Cipher/ENCRYPT_MODE secret-key gcm-spec)
      (let [encrypted (.doFinal cipher (.getBytes secret "UTF-8"))
            combined (byte-array (+ 12 (alength encrypted)))]
@@ -163,6 +174,6 @@
          _ (System/arraycopy combined 12 cipher-bytes 0 cipher-len)
          cipher (Cipher/getInstance "AES/GCM/NoPadding")
          gcm-spec (GCMParameterSpec. 128 iv)
-         secret-key (SecretKeySpec. key-bytes "AES")]
+         secret-key (SecretKeySpec. (java.util.Arrays/copyOf key-bytes 32) "AES")]
      (.init cipher Cipher/DECRYPT_MODE secret-key gcm-spec)
      (String. (.doFinal cipher cipher-bytes) "UTF-8"))))

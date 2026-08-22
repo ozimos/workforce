@@ -5,6 +5,7 @@
    [com.ozimos.auth.oauth.interface :as oauth]
    [com.ozimos.auth.pathom.interface :as pathom]
    [com.ozimos.auth.revocation.interface :as revocation]
+   [com.ozimos.auth.saml.interface :as saml]
    [com.ozimos.auth.schema.interface :as schema]
    [com.ozimos.auth.schema.interface.registration :as reg-schema]
    [com.ozimos.auth.session.interface :as session]
@@ -21,13 +22,23 @@
   [s]
   (try (Long/parseLong s) (catch Exception _ nil)))
 
+(defn- get-decoder [token-decoder]
+  (or (:decoder token-decoder) token-decoder))
+
+(defn- get-encoder [token-encoder]
+  (or (:encoder token-encoder) token-encoder))
+
 (defn- get-auth-user
   "Extract authenticated user info from the JWT in the Authorization header."
   [request token-decoder]
-  (when-let [header (get-in request [:headers "authorization"])]
-    (when-let [token (second (re-find #"(?i)Bearer\s+(.+)" header))]
+  (let [header (or (get-in request [:headers "authorization"])
+                   (get-in request [:headers :authorization])
+                   (get-in request [:headers "Authorization"]))
+        token (when header (second (re-find #"(?i)Bearer\s+(.+)" header)))]
+    (when token
       (try
-        (let [jwt (.decode (:decoder token-decoder) token)
+        (let [decoder (get-decoder token-decoder)
+              jwt (.decode ^org.springframework.security.oauth2.jwt.JwtDecoder decoder token)
               sub (.getSubject jwt)
               roles (.getClaim jwt "roles")]
           (when-let [user-id (parse-user-id sub)]
@@ -39,8 +50,8 @@
 (defn- issue-user-session-tokens
   "Helper to issue JWT access + refresh tokens and record active session for user-record."
   [system user-record]
-  (let [{:keys [token-encoder]} system
-        {:keys [encoder]} token-encoder
+  (let [token-encoder (:token-encoder system)
+        encoder (get-encoder token-encoder)
         issuer "com.ozimos.auth"
         user-id (:id user-record)
         sub (str user-id)
@@ -87,14 +98,14 @@
   [{:keys [body-params system]}]
   (let [{:keys [token-encoder policy]} system
         {:keys [identifier password]} body-params
-        {:keys [encoder]} token-encoder
+        encoder (get-encoder token-encoder)
         user-record (user/find-by-identifier system identifier)
         mode (get policy :verification-mode :soft)]
     (if (and user-record
              (user/matches-password? system password (:pwd-hash user-record)))
       (if (and (= mode :strict) (not (:verified user-record)))
         {:status 403
-         :body {:errors {:auth ["Email verification required before logging in."]}}}
+          :body {:errors {:auth ["Email verification required before logging in."]}}}
         (let [issuer "com.ozimos.auth"
               sub (str (:id user-record))]
           (if (user/mfa-enabled? system (:id user-record))
@@ -105,14 +116,14 @@
             {:status 200
              :body (issue-user-session-tokens system user-record)})))
       {:status 401
-       :body {:errors {:credentials ["Invalid username/email or password"]}}})))
+        :body {:errors {:credentials ["Invalid username/email or password"]}}})))
 
 (defn refresh
   [{:keys [body-params system]}]
   (let [{:keys [token-decoder token-encoder]} system
         {:keys [refresh-token]} body-params
-        {:keys [decoder]} token-decoder
-        {:keys [encoder]} token-encoder]
+        decoder (get-decoder token-decoder)
+        encoder (get-encoder token-encoder)]
     (try
       (let [jwt (token/decode decoder refresh-token)
             jti (.getId jwt)
@@ -175,49 +186,56 @@
         user-record (user/find-by-email system email)]
     (when user-record
       (user/create-reset-token! system (:id user-record)))
-    {:status 200 :body {:message "If the email exists, a reset link has been sent"}}))
+    {:status 200 :body {:message "If an account exists with this email, password reset instructions have been sent."}}))
 
 (defn reset-password
   [{:keys [body-params system]}]
-  (let [{:keys [token password]} body-params]
-    (try
-      (if-let [user-id (user/validate-reset-token system token)]
-        (let [pwd-hash (user/encode-password system password)]
-          (user/change-password! system user-id pwd-hash)
-          (user/clear-reset-token! system token)
-          {:status 200 :body {:message "Password reset successfully"}})
-        {:status 400 :body {:errors {:token ["Invalid or expired reset token"]}}})
-      (catch Exception e
-        (if (instance? clojure.lang.ExceptionInfo e)
-          {:status 400 :body {:errors {:token [(.getMessage e)]}}}
-          (throw e))))))
+  (let [{:keys [token password]} body-params
+        user-id (try
+                  (user/validate-reset-token system token)
+                  (catch Exception _ :expired))]
+    (cond
+      (= user-id :expired)
+      {:status 400 :body {:errors {:token ["Reset token has expired"]}}}
+      (nil? user-id)
+      {:status 400 :body {:errors {:token ["Invalid reset token"]}}}
+      :else
+      (let [encoded (user/encode-password system password)]
+        (user/change-password! system user-id encoded)
+        (user/clear-reset-token! system token)
+        (session/revoke-all! system user-id)
+        (revocation/revoke-all-for-user! system user-id)
+        {:status 200 :body {:message "Password updated successfully"}}))))
 
 (defn query
   [{:keys [body-params system] :as request}]
   (let [{:keys [token-decoder]} system
-        base-env (or (:pathom-env system) (pathom/build-env system))
-        query (cond
-                (vector? body-params) body-params
-                (:query body-params) (:query body-params)
-                (string? (:eql body-params)) (edn/read-string (:eql body-params))
-                :else (:eql body-params))
+        query-data (cond
+                     (vector? body-params) body-params
+                     (:query body-params) (:query body-params)
+                     (string? (:eql body-params)) (edn/read-string (:eql body-params))
+                     :else (:eql body-params))
         auth-user (get-auth-user request token-decoder)
-        auth (when auth-user {:user-id (:user-id auth-user)})
-        env (if auth
-              (assoc base-env :auth auth)
-              base-env)]
+        active-org-id (when auth-user (user/get-active-org system (:user-id auth-user)))
+        active-org-role (when (and auth-user active-org-id)
+                          (:role (user/get-membership system (:user-id auth-user) active-org-id)))
+        auth (when auth-user {:user-id (:user-id auth-user)
+                              :current-user (assoc auth-user :id (:user-id auth-user))
+                              :active-org-id active-org-id
+                              :active-org-role active-org-role})
+        env (pathom/build-env system auth)]
     (try
-      (let [result (pathom/process env query)]
-        {:status 200 :body result})
+      (let [result (pathom/process env query-data)]
+        {:status 200 :body {:ok true :data result}})
       (catch clojure.lang.ExceptionInfo e
         (let [error-type (some #(-> % ex-data :type)
                                (take-while some? (iterate #(.getCause ^Throwable %) e)))]
           (case error-type
-            :unauthenticated {:status 401 :body {:errors {:auth ["Not authenticated"]}}}
-            :forbidden {:status 403 :body {:errors {:auth ["Not authorized"]}}}
-            {:status 400 :body {:errors {:query [(.getMessage e)]}}})))
+            :unauthenticated {:status 401 :body {:ok false :errors {:auth ["Not authenticated"]}}}
+            :forbidden {:status 403 :body {:ok false :errors {:auth ["Not authorized"]}}}
+            {:status 400 :body {:ok false :errors {:query [(.getMessage e)]}}})))
       (catch Exception e
-        {:status 400 :body {:errors {:query [(.getMessage e)]}}}))))
+        {:status 400 :body {:ok false :errors {:query [(.getMessage e)]}}}))))
 
 (defn mfa-setup
   [{:keys [system] :as request}]
@@ -226,7 +244,7 @@
           secret (mfa/generate-secret)
           encrypted-secret (mfa/encrypt-secret secret)
           {:keys [plaintext hashes]} (mfa/generate-backup-codes)
-          otpauth-url (mfa/generate-otpauth-url secret (:email user-record) "BestAuth")]
+          otpauth-url (mfa/generate-otpauth-url secret (or (:email user-record) "user@example.com") "BestAuth")]
       (user/setup-mfa! system (:user-id auth-user) encrypted-secret hashes)
       {:status 200
        :body {:secret secret
@@ -238,10 +256,10 @@
   [{:keys [body-params system] :as request}]
   (if-let [auth-user (get-auth-user request (:token-decoder system))]
     (let [{:keys [code]} body-params
-          encrypted-secret (user/get-mfa-secret system (:user-id auth-user))]
-      (if (and encrypted-secret
-               (let [secret (mfa/decrypt-secret encrypted-secret)]
-                 (mfa/verify-totp secret code)))
+          encrypted-secret (user/get-mfa-secret system (:user-id auth-user))
+          secret (when encrypted-secret (mfa/decrypt-secret encrypted-secret))
+          valid? (boolean (and secret (mfa/verify-totp secret code)))]
+      (if valid?
         (do
           (user/verify-mfa-setup! system (:user-id auth-user))
           {:status 200 :body {:message "MFA enabled successfully"}})
@@ -252,8 +270,8 @@
   [{:keys [body-params system]}]
   (let [{:keys [token-decoder token-encoder]} system
         {:keys [mfa-token code]} body-params
-        {:keys [decoder]} token-decoder
-        {:keys [encoder]} token-encoder]
+        decoder (get-decoder token-decoder)
+        encoder (get-encoder token-encoder)]
     (try
       (let [jwt (token/decode decoder mfa-token)
             type (.getClaim jwt "type")
@@ -413,6 +431,23 @@
         [ok? result] (oauth/handle-oauth-callback system provider {:provider-user-id provider-user-id
                                                       :email email
                                                       :name name})]
+    (if ok?
+      {:status 200 :body result}
+      {:status 400 :body result})))
+
+(defn saml-authenticate
+  [_]
+  {:status 302
+   :headers {"Location" "/api/auth/saml/sso-login-mock"}})
+
+(defn saml-acs
+  [{:keys [params body-params system]}]
+  (let [name-id (or (get params "name-id") (get body-params :name-id) (get params "NameID") (get body-params :NameID) "saml-mock-user-1")
+        email (or (get params "email") (get body-params :email) (str name-id "@saml-provider.com"))
+        name (or (get params "name") (get body-params :name) "SAML User")
+        [ok? result] (saml/handle-saml-assertion system {:name-id name-id
+                                                        :email email
+                                                        :name name})]
     (if ok?
       {:status 200 :body result}
       {:status 400 :body result})))

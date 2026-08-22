@@ -7,8 +7,37 @@
   (:import
    (java.util UUID)))
 
-(defn create! [{:keys [rama] :as deps} user-id jti expires-at]
-  (let [cmgr (:cluster-manager rama)
+(defn- get-cmgr [deps]
+  (cond
+    (instance? com.rpl.rama.cluster.ClusterManagerBase deps) deps
+    (:cluster-manager (:rama/cluster deps)) (:cluster-manager (:rama/cluster deps))
+    (:cluster-manager (:rama deps)) (:cluster-manager (:rama deps))
+    (:cluster-manager deps) (:cluster-manager deps)
+    (get-in deps [:com.ozimos.auth.rama/cluster-manager :cluster-manager]) (get-in deps [:com.ozimos.auth.rama/cluster-manager :cluster-manager])
+    :else (throw (ex-info "Could not resolve Rama cluster manager from deps" {:deps-keys (keys deps)}))))
+
+(defn- safe-select-one [path pstate opts]
+  (try
+    (ramaapi/foreign-select-one path pstate opts)
+    (catch Throwable t
+      (if (or (instance? rpl.rama.generated.ObjectMissingException t)
+              (instance? rpl.rama.generated.ObjectMissingException (.getCause t))
+              (clojure.string/includes? (str t) "ObjectMissingException"))
+        nil
+        (throw t)))))
+
+(defn- safe-select [path pstate opts]
+  (try
+    (ramaapi/foreign-select path pstate opts)
+    (catch Throwable t
+      (if (or (instance? rpl.rama.generated.ObjectMissingException t)
+              (instance? rpl.rama.generated.ObjectMissingException (.getCause t))
+              (clojure.string/includes? (str t) "ObjectMissingException"))
+        []
+        (throw t)))))
+
+(defn create! [deps user-id jti expires-at]
+  (let [cmgr (get-cmgr deps)
         mod-name (rama/module-name)
         session-depot (rama/depot cmgr mod-name "*session-depot")
         session-id (str (random-uuid))]
@@ -16,28 +45,28 @@
       (rama/->SessionStart user-id session-id jti expires-at))
     session-id))
 
-(defn verify [{:keys [rama] :as deps} session-id]
-  (let [cmgr (:cluster-manager rama)
+(defn verify [deps session-id]
+  (let [cmgr (get-cmgr deps)
         mod-name (rama/module-name)
         sessions-pstate (rama/pstate cmgr mod-name "$$sessions")]
-    (ramaapi/foreign-select-one (keypath session-id) sessions-pstate {:pkey session-id})))
+    (safe-select-one (keypath session-id) sessions-pstate {:pkey session-id})))
 
-(defn revoke! [{:keys [rama] :as deps} session-id]
-  (let [cmgr (:cluster-manager rama)
+(defn revoke! [deps session-id]
+  (let [cmgr (get-cmgr deps)
         mod-name (rama/module-name)
         session-end-depot (rama/depot cmgr mod-name "*session-end-depot")]
     (ramaapi/foreign-append! session-end-depot (rama/->SessionEnd session-id))
     true))
 
-(defn revoke-all! [{:keys [rama] :as deps} user-id]
-  (let [cmgr (:cluster-manager rama)
+(defn revoke-all! [deps user-id]
+  (let [cmgr (get-cmgr deps)
         mod-name (rama/module-name)
         revoke-all-depot (rama/depot cmgr mod-name "*revoke-all-depot")]
     (ramaapi/foreign-append! revoke-all-depot (rama/->RevokeAllForUser user-id))
     true))
 
-(defn list-for-user [{:keys [rama] :as deps} user-id]
-  (let [cmgr (:cluster-manager rama)
+(defn list-for-user [deps user-id]
+  (let [cmgr (get-cmgr deps)
         mod-name (rama/module-name)
         user-sessions-pstate (rama/pstate cmgr mod-name "$$user-sessions")]
-    (ramaapi/foreign-select [(keypath user-id) ALL] user-sessions-pstate {:pkey user-id})))
+    (safe-select [(keypath user-id) ALL] user-sessions-pstate {:pkey user-id})))

@@ -225,7 +225,7 @@
           env (pathom/build-env *deps* {:user-id user-id})
           new-uname (str "eql-uname-" (short-suffix))
           res (pathom/process env [(list 'user/update-username {:user/new-username new-uname})])
-          mutation-res (get res 'user/update-username)]
+          mutation-res (or (get res :user/update-username) (get res 'user/update-username) (first (vals res)))]
       (println "\n=== update-username-mutation-test ===")
       (println "result:" (pr-str mutation-res))
       (is (= user-id (:current-user/id mutation-res)))

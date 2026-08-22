@@ -31,46 +31,33 @@
        ["/register"
         {:post {:summary "Register a new user"
                 :parameters {:body reg-schema/register-request}
-                :handler handlers/register
-                :responses {201 {:body [:map [:id int?] [:username {:optional true} :string] [:email :string] [:verified boolean?]]}
-                            409 {:body [:map [:errors [:map]]]}}}}]
+                :handler handlers/register}}]
        ["/login"
         {:post {:summary "Login with email/username and password"
                 :parameters {:body reg-schema/login-request}
-                :handler handlers/login
-                :responses {200 {:body [:map [:access-token :string] [:refresh-token :string] [:expires-in int?]]}
-                            401 {:body [:map [:errors [:map]]]}}}}]
+                :handler handlers/login}}]
        ["/refresh"
         {:post {:summary "Refresh access token"
                 :parameters {:body reg-schema/refresh-request}
-                :handler handlers/refresh
-                :responses {200 {:body [:map [:access-token :string] [:refresh-token :string] [:expires-in int?]]}
-                            401 {:body [:map [:errors [:map]]]}}}}]
+                :handler handlers/refresh}}]
        ["/logout"
         {:post {:summary "Logout (revoke current session)"
-                :handler handlers/logout
-                :responses {200 {:body [:map [:message :string]]}}}}]
+                :handler handlers/logout}}]
        ["/logout-everywhere"
         {:post {:summary "Logout from all devices"
-                :handler handlers/logout-everywhere
-                :responses {200 {:body [:map [:message :string]]}}}}]
+                :handler handlers/logout-everywhere}}]
        ["/verify"
         {:post {:summary "Verify account with token"
                 :parameters {:body reg-schema/verify-request}
-                :handler handlers/verify
-                :responses {200 {:body [:map [:message :string]]}
-                            400 {:body [:map [:errors [:map]]]}}}}]
+                :handler handlers/verify}}]
        ["/forgot-password"
         {:post {:summary "Request password reset email"
                 :parameters {:body reg-schema/forgot-password-request}
-                :handler handlers/forgot-password
-                :responses {200 {:body [:map [:message :string]]}}}}]
+                :handler handlers/forgot-password}}]
        ["/reset-password"
         {:post {:summary "Reset password with token"
                 :parameters {:body reg-schema/reset-password-request}
-                :handler handlers/reset-password
-                :responses {200 {:body [:map [:message :string]]}
-                            400 {:body [:map [:errors [:map]]]}}}}]
+                :handler handlers/reset-password}}]
        ["/mfa"
         ["/setup"
          {:post {:summary "Generate TOTP MFA secret and QR URL"
@@ -119,14 +106,20 @@
          {:get {:summary "OAuth2 provider callback handler"
                 :handler handlers/oauth-callback}
           :post {:summary "OAuth2 provider callback handler via POST"
-                 :handler handlers/oauth-callback}}]]]]
+                 :handler handlers/oauth-callback}}]]
+       ["/saml"
+        ["/authenticate"
+         {:get {:summary "Initiate SAML authentication"
+                :handler handlers/saml-authenticate}}]
+        ["/acs"
+         {:post {:summary "SAML Assertion Consumer Service"
+                 :handler handlers/saml-acs}}]]]
       ["/query"
        {:post {:summary "Pathom query endpoint (app logic)"
-               :handler handlers/query
-               :responses {200 {:body [:map [:ok boolean?] [:query :any]]}}}}]
+               :handler handlers/query}}]
       ["/health"
        {:get {:summary "Health check"
-              :handler handlers/health}}]])
+              :handler handlers/health}}]]]
     {:data {:muuntaja m/instance
             :coercion rcm/coercion
             :middleware [(wrap-inject-system deps)

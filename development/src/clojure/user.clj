@@ -80,6 +80,29 @@
           (try (.addURL ^clojure.lang.DynamicClassLoader loader url) (catch Exception _ nil))))
       (try (clojure.lang.RT/addURL url) (catch Exception _ nil)))))
 
+(def test-ns->file
+  '{com.ozimos.auth.pathom.core-test "components/pathom/test/clojure/com/ozimos/auth/pathom/core_test.clj"
+    com.ozimos.auth.mfa.core-test "components/mfa/test/clojure/com/ozimos/auth/mfa/core_test.clj"
+    com.ozimos.auth.oauth.ipc-test "components/oauth/test/clojure/com/ozimos/auth/oauth/ipc_test.clj"
+    com.ozimos.auth.saml.ipc-test "components/saml/test/clojure/com/ozimos/auth/saml/ipc_test.clj"
+    com.ozimos.auth.rama.ipc-test "components/rama/test/clojure/com/ozimos/auth/rama/ipc_test.clj"
+    com.ozimos.auth.user.ipc-test "components/user-rama/test/clojure/com/ozimos/auth/user/ipc_test.clj"
+    com.ozimos.auth.webauthn.core-test "components/webauthn/test/clojure/com/ozimos/auth/webauthn/core_test.clj"
+    com.ozimos.auth.auth-api.oauth-integration-test "bases/auth-api/test/clojure/com/ozimos/auth/auth_api/oauth_integration_test.clj"
+    com.ozimos.auth.auth-api.saml-integration-test "bases/auth-api/test/clojure/com/ozimos/auth/auth_api/saml_integration_test.clj"
+    com.ozimos.auth.auth-api.integration-test "bases/auth-api/test/clojure/com/ozimos/auth/auth_api/integration_test.clj"})
+
+(defn load-test-ns!
+  "Load or reload a test namespace from classpath or fallback file."
+  [ns-sym]
+  (try
+    (require ns-sym :reload)
+    (catch Exception _
+      (if-let [f (get test-ns->file ns-sym)]
+        (when (.exists (java.io.File. f))
+          (load-file f))
+        (throw (ex-info (str "Could not load test namespace " ns-sym) {:ns ns-sym}))))))
+
 (defn test-all
   "Reload and run all backend unit, IPC, and integration test suites directly in REPL."
   []
@@ -97,7 +120,7 @@
                   com.ozimos.auth.auth-api.integration-test]
         results (reduce (fn [acc sym]
                           (try
-                            (require sym :reload)
+                            (load-test-ns! sym)
                             (let [res ((resolve 'clojure.test/test-ns) sym)]
                               (merge-with + acc res))
                             (catch Exception e
@@ -114,7 +137,7 @@
   [ns-sym]
   (ensure-test-paths!)
   (require 'clojure.test)
-  (require ns-sym :reload)
+  (load-test-ns! ns-sym)
   ((resolve 'clojure.test/test-ns) ns-sym))
 
 (defn test-clean

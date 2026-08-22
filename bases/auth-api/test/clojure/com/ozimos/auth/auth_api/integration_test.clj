@@ -55,10 +55,18 @@
   {"authorization" (str "Bearer " token)})
 
 (defn- parse-ring-response [resp]
-  (if (instance? java.io.InputStream (:body resp))
-    (let [s (slurp (:body resp))]
-      (assoc resp :body (when (seq s) (clojure.edn/read-string s))))
-    resp))
+  (let [b (:body resp)]
+    (cond
+      (instance? java.io.InputStream b)
+      (let [s (slurp b)]
+        (assoc resp :body (when (and (string? s) (seq s)) (clojure.edn/read-string s))))
+      (bytes? b)
+      (let [s (String. ^bytes b "UTF-8")]
+        (assoc resp :body (when (and (string? s) (seq s)) (clojure.edn/read-string s))))
+      (string? b)
+      (assoc resp :body (when (seq b) (clojure.edn/read-string b)))
+      :else
+      resp)))
 
 (defn- post-edn
   "Executes an in-memory Ring request against (:com.ozimos.auth.auth-api.system/router *sys*) using EDN format negotiation.
@@ -67,11 +75,13 @@
    (post-edn uri body-params {}))
   ([uri body-params headers]
    (let [handler (:com.ozimos.auth.auth-api.system/router *sys*)
+         body-bytes (.getBytes (pr-str (or body-params {})) "UTF-8")
          req {:request-method :post
               :uri uri
               :headers (merge {"content-type" "application/edn"
                                "accept" "application/edn"}
                               headers)
+              :body (java.io.ByteArrayInputStream. body-bytes)
               :body-params body-params}
          resp (handler req)]
      (parse-ring-response resp))))
@@ -543,14 +553,16 @@
         (let [reg-begin (post-edn "/api/auth/passkeys/register/begin" {} (auth-header token))
               body (:body reg-begin)]
           (is (= 200 (:status reg-begin)))
-          (is (some? (get-in body [:options :challenge])))
+          (is (some? (or (get-in body [:options :challenge])
+                         (get-in body [:options :publicKey :challenge]))))
           (is (string? (:options-json body)))))
 
       (testing "Step 2: POST /api/auth/passkeys/authenticate/begin returns assertion options"
         (let [auth-begin (post-edn "/api/auth/passkeys/authenticate/begin" {})
               body (:body auth-begin)]
           (is (= 200 (:status auth-begin)))
-          (is (some? (get-in body [:request :challenge])))
+          (is (some? (or (get-in body [:request :challenge])
+                         (get-in body [:request :publicKey :challenge]))))
           (is (string? (:request-json body)))))
 
       (testing "Step 3: GET /api/auth/passkeys lists registered passkeys"

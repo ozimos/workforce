@@ -55,3 +55,4 @@
 (def ->WebAuthnRegister com.ozimos.auth.rama.module/->WebAuthnRegister)
 (def ->WebAuthnUpdateSignCount com.ozimos.auth.rama.module/->WebAuthnUpdateSignCount)
 (def ->WebAuthnRemoveCredential com.ozimos.auth.rama.module/->WebAuthnRemoveCredential)
+(def ->OAuthLink com.ozimos.auth.rama.module/->OAuthLink)

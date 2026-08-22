@@ -151,6 +151,11 @@
   [deps user-id encrypted-secret backup-code-hashes]
   (core/setup-mfa! deps user-id encrypted-secret backup-code-hashes))
 
+(defn verify-mfa-setup!
+  "Verify MFA setup for a user."
+  [deps user-id]
+  (core/verify-mfa-setup! deps user-id))
+
 (defn disable-mfa!
   "Disable MFA for a user."
   [deps user-id]
@@ -200,3 +205,13 @@
   "List all registered WebAuthn passkeys for a user."
   [deps user-id]
   (core/list-passkeys-for-user deps user-id))
+
+(defn link-oauth-account!
+  "Link a 3rd party OAuth or SAML provider account to a local user-id."
+  [deps provider provider-user-id user-id]
+  (core/link-oauth-account! deps provider provider-user-id user-id))
+
+(defn find-by-oauth-link
+  "Look up a local user by OAuth/SAML provider and provider-user-id."
+  [deps provider provider-user-id]
+  (core/find-by-oauth-link deps provider provider-user-id))

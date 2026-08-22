@@ -13,6 +13,8 @@
         poly/pathom          {:local/root "../../components/pathom"}
         poly/mfa             {:local/root "../../components/mfa"}
         poly/webauthn        {:local/root "../../components/webauthn"}
+        poly/oauth           {:local/root "../../components/oauth"}
+        poly/saml            {:local/root "../../components/saml"}
 
         poly/auth-api        {:local/root "../../bases/auth-api"}
 
@@ -23,6 +25,8 @@
                                 "../../components/pathom/test/clojure"
                                 "../../components/mfa/test/clojure"
                                 "../../components/webauthn/test/clojure"
+                                "../../components/oauth/test/clojure"
+                                "../../components/saml/test/clojure"
                                 "../../bases/auth-api/test/clojure"]
                   :extra-deps {hato/hato {:mvn/version "1.0.0"}
                                metosin/jsonista {:mvn/version "0.3.14"}
