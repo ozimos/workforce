@@ -18,30 +18,35 @@
   [s]
   (try (Long/parseLong s) (catch Exception _ nil)))
 
-(defn- get-decoder [token-decoder]
-  (or (:decoder token-decoder) token-decoder))
-
 (defn- get-encoder [token-encoder]
   (or (:encoder token-encoder) token-encoder))
 
 (defn- get-auth-user
-  "Extract authenticated user info from the JWT in the Authorization header."
+  "Extract authenticated user info from request :identity or the JWT in the Authorization header."
   [request token-decoder]
-  (let [header (or (get-in request [:headers "authorization"])
-                   (get-in request [:headers :authorization])
-                   (get-in request [:headers "Authorization"]))
-        token (when header (second (re-find #"(?i)Bearer\s+(.+)" header)))]
-    (when token
-      (try
-        (let [decoder (get-decoder token-decoder)
-              jwt (.decode ^org.springframework.security.oauth2.jwt.JwtDecoder decoder token)
-              sub (.getSubject jwt)
-              roles (.getClaim jwt "roles")]
-          (when-let [user-id (parse-user-id sub)]
-            {:user-id user-id
-             :roles roles
-             :jti (.getId jwt)}))
-        (catch Exception _ nil)))))
+  (if-let [identity (or (:identity request) (:auth-user request))]
+    (let [sub (or (:sub identity) (get identity "sub"))
+          roles (or (:roles identity) (get identity "roles"))
+          jti (or (:jti identity) (get identity "jti"))]
+      (when-let [user-id (parse-user-id (str sub))]
+        {:user-id user-id
+         :roles roles
+         :jti jti}))
+    (let [header (or (get-in request [:headers "authorization"])
+                     (get-in request [:headers :authorization])
+                     (get-in request [:headers "Authorization"]))
+          token-str (when header (second (re-find #"(?i)Bearer\s+(.+)" header)))]
+      (when (and token-str token-decoder)
+        (try
+          (let [jwt (token/decode token-decoder token-str)
+                sub (or (:sub jwt) (.getSubject jwt))
+                roles (or (:roles jwt) (.getClaim jwt "roles"))
+                jti (or (:jti jwt) (.getId jwt))]
+            (when-let [user-id (parse-user-id (str sub))]
+              {:user-id user-id
+               :roles roles
+               :jti jti}))
+          (catch Exception _ nil))))))
 
 (defn- issue-user-session-tokens
   "Helper to issue JWT access + refresh tokens and record active session for user-record."
@@ -118,18 +123,17 @@
   [{:keys [body-params system]}]
   (let [{:keys [token-decoder token-encoder]} system
         {:keys [refresh-token]} body-params
-        decoder (get-decoder token-decoder)
         encoder (get-encoder token-encoder)]
     (try
-      (let [jwt (token/decode decoder refresh-token)
-            jti (.getId jwt)
-            sub (.getSubject jwt)
-            type (.getClaim jwt "type")]
+      (let [jwt (token/decode token-decoder refresh-token)
+            jti (or (:jti jwt) (.getId jwt))
+            sub (or (:sub jwt) (.getSubject jwt))
+            type (or (:type jwt) (.getClaim jwt "type"))]
         (if (not= type "refresh")
           {:status 401 :body {:errors {:token ["Not a refresh token"]}}}
           (if (revocation/is-revoked? system jti)
             {:status 401 :body {:errors {:token ["Token revoked"]}}}
-            (if-let [parsed-id (parse-user-id sub)]
+            (if-let [parsed-id (parse-user-id (str sub))]
               (let [user-record (user/find-by-id system parsed-id)
                     roles (:roles user-record)
                     active-org-id (org/get-active-org system parsed-id)
@@ -142,7 +146,7 @@
                                    (token/issue-access-token encoder issuer sub roles new-access-jti 900 active-org-id active-org-role)
                                    (token/issue-access-token encoder issuer sub roles new-access-jti 900))
                     new-refresh-token (token/issue-refresh-token encoder issuer sub new-refresh-jti 604800)]
-                (revocation/revoke! system jti (.. jwt getExpiresAt toEpochMilli))
+                (revocation/revoke! system jti (+ (System/currentTimeMillis) (* 604800 1000)))
                 {:status 200
                  :body {:access-token access-token
                         :refresh-token new-refresh-token
@@ -266,13 +270,12 @@
   [{:keys [body-params system]}]
   (let [{:keys [token-decoder token-encoder]} system
         {:keys [mfa-token code]} body-params
-        decoder (get-decoder token-decoder)
         encoder (get-encoder token-encoder)]
     (try
-      (let [jwt (token/decode decoder mfa-token)
-            type (.getClaim jwt "type")
-            sub (.getSubject jwt)
-            parsed-id (parse-user-id sub)]
+      (let [jwt (token/decode token-decoder mfa-token)
+            type (or (:type jwt) (.getClaim jwt "type"))
+            sub (or (:sub jwt) (.getSubject jwt))
+            parsed-id (parse-user-id (str sub))]
         (if (or (not= type "mfa-challenge") (nil? parsed-id))
           {:status 401 :body {:errors {:mfa-token ["Invalid 2FA challenge token"]}}}
           (let [encrypted-secret (user/get-mfa-secret system parsed-id)

@@ -15,10 +15,6 @@
  {:encoder #ig/ref :token/encoder
   :rama #ig/ref :rama/cluster}
 
- :security/app-context
- {:jwt-decoder #ig/ref :token/decoder
-  :rama #ig/ref :rama/cluster}
-
  :cleanup/scheduler
  {:rama #ig/ref :rama/cluster
   :interval-ms 300000}
@@ -39,5 +35,4 @@
                   :test #or [#long #env JETTY_TEST_PORT 0]
                   :prod #or [#long #env JETTY_PROD_PORT 8080]}
   :host "0.0.0.0"
-  :filter-chain-proxy #ig/ref :security/app-context
   :handler #ig/ref :com.ozimos.workforce.web.system/router}}

@@ -13,7 +13,6 @@
                      integrant/repl           {:mvn/version "0.4.0"}
                      nrepl/nrepl              {:mvn/version "1.3.0"}
                      io.github.tonsky/clj-reload {:mvn/version "1.0.0"}
-                     virgil/virgil             {:mvn/version "0.5.1"}
 
                      ;; Frontend (shadow-cljs compilation)
                      thheller/shadow-cljs     {:mvn/version "3.4.11"}
@@ -49,7 +48,6 @@
                           poly/org-rama        {:local/root "components/org-rama"}
                           poly/web             {:local/root "bases/web"}}
              :extra-paths ["development/src/clojure" "development/resources"
-                           "target/classes"
                            "components/org-rama/test/clojure"
                            "bases/web/test/clojure"]}
 

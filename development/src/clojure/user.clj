@@ -19,44 +19,38 @@
 
 (set-prep! (fn [] ((requiring-resolve 'com.ozimos.workforce.web.system/load-config) :dev)))
 
-(let [java-dirs ["../../omni-auth/main/components/security/src/java"]]
-  (try
-    (require 'virgil)
-    (require 'clj-reload.core)
-    ((resolve 'clj-reload.core/init)
-     {:dirs     ["development/src/clojure"
-                 "bases/web/src/clojure"
-                 "bases/web/test/clojure"
-                 "components/org-rama/src/clojure"
-                 "components/org-rama/test/clojure"
-                 "../../omni-auth/main/components/schema/src/clojure"
-                 "../../omni-auth/main/components/config/src/clojure"
-                 "../../omni-auth/main/components/rama/src/clojure"
-                 "../../omni-auth/main/components/rama/test/clojure"
-                 "../../omni-auth/main/components/user-rama/src/clojure"
-                 "../../omni-auth/main/components/session-rama/src/clojure"
-                 "../../omni-auth/main/components/revocation-rama/src/clojure"
-                 "../../omni-auth/main/components/token/src/clojure"
-                 "../../omni-auth/main/components/security/src/clojure"
-                 "../../omni-auth/main/components/pathom/src/clojure"
-                 "../../omni-auth/main/components/pathom/test/clojure"
-                 "../../omni-auth/main/components/mfa/src/clojure"
-                 "../../omni-auth/main/components/mfa/test/clojure"
-                 "../../omni-auth/main/components/webauthn/src/clojure"
-                 "../../omni-auth/main/components/webauthn/test/clojure"
-                 "../../omni-auth/main/components/oauth/src/clojure"
-                 "../../omni-auth/main/components/oauth/test/clojure"
-                 "../../omni-auth/main/components/saml/src/clojure"
-                 "../../omni-auth/main/components/saml/test/clojure"]
-      :no-reload '#{user}
-      :output   :verbose})
-    ((resolve 'virgil/watch-and-recompile)
-     java-dirs
-     :options ["-proc:none" "--release" "21"]
-     :post-hook #((resolve 'clj-reload.core/reload) {:only :loaded}))
-    (println "Java hot-reloading active via Virgil + clj-reload!" java-dirs)
-    (catch Exception e
-      (println "Virgil/clj-reload unavailable:" (-> e .getClass .getName) (.getMessage e)))))
+(try
+  (require 'clj-reload.core)
+  ((resolve 'clj-reload.core/init)
+   {:dirs     ["development/src/clojure"
+               "bases/web/src/clojure"
+               "bases/web/test/clojure"
+               "components/org-rama/src/clojure"
+               "components/org-rama/test/clojure"
+               "../../omni-auth/main/components/schema/src/clojure"
+               "../../omni-auth/main/components/config/src/clojure"
+               "../../omni-auth/main/components/rama/src/clojure"
+               "../../omni-auth/main/components/rama/test/clojure"
+               "../../omni-auth/main/components/user-rama/src/clojure"
+               "../../omni-auth/main/components/session-rama/src/clojure"
+               "../../omni-auth/main/components/revocation-rama/src/clojure"
+               "../../omni-auth/main/components/token/src/clojure"
+               "../../omni-auth/main/components/security/src/clojure"
+               "../../omni-auth/main/components/pathom/src/clojure"
+               "../../omni-auth/main/components/pathom/test/clojure"
+               "../../omni-auth/main/components/mfa/src/clojure"
+               "../../omni-auth/main/components/mfa/test/clojure"
+               "../../omni-auth/main/components/webauthn/src/clojure"
+               "../../omni-auth/main/components/webauthn/test/clojure"
+               "../../omni-auth/main/components/oauth/src/clojure"
+               "../../omni-auth/main/components/oauth/test/clojure"
+               "../../omni-auth/main/components/saml/src/clojure"
+               "../../omni-auth/main/components/saml/test/clojure"]
+    :no-reload '#{user}
+    :output   :verbose})
+  (println "Hot-reloading active via clj-reload!")
+  (catch Exception e
+    (println "clj-reload unavailable:" (-> e .getClass .getName) (.getMessage e))))
 
 (defn ensure-test-paths!
   "Ensures all component and base test directories are available on the classloader."

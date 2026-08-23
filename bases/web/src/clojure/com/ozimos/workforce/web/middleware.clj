@@ -1,14 +1,10 @@
-(ns com.ozimos.workforce.web.middleware
-  (:import
-   (org.springframework.security.core.context SecurityContextHolder)))
+(ns com.ozimos.workforce.web.middleware)
 
 (defn wrap-authenticated
-  "Middleware that checks the request is authenticated via Spring Security.
-   The SecurityContext is set by the filter chain before the Ring handler runs."
+  "Middleware that checks the request is authenticated via Buddy."
   [_deps handler]
   (fn [request]
-    (let [ctx (SecurityContextHolder/getContext)
-          auth (.getAuthentication ctx)]
-      (if (or (nil? auth) (not (.isAuthenticated auth)))
+    (let [auth-user (or (:identity request) (:auth-user request))]
+      (if (nil? auth-user)
         {:status 401 :body {:errors {:auth ["Not authenticated"]}}}
-        (handler request)))))
+        (handler (assoc request :auth-user auth-user))))))

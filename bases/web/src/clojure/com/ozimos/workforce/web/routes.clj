@@ -2,6 +2,7 @@
   (:require
    [clojure.java.io :as io]
    [com.ozimos.omni-auth.schema.interface.registration :as reg-schema]
+   [com.ozimos.omni-auth.security.interface :as security]
    [com.ozimos.workforce.web.handlers :as handlers]
    [muuntaja.core :as m]
    [reitit.coercion.malli :as rcm]
@@ -148,9 +149,12 @@
 (defn app
   "Build the Ring handler from the router."
   [deps]
-  (-> (ring/ring-handler
-        (router deps)
-        (wrap-resource
-          (fn [_] {:status 404 :body {:error "not found"}})
-          "public"))
-      (wrap-spa)))
+  (let [token-decoder (:token-decoder deps)
+        auth-backend (when token-decoder (security/make-auth-backend token-decoder))]
+    (cond-> (ring/ring-handler
+              (router deps)
+              (wrap-resource
+                (fn [_] {:status 404 :body {:error "not found"}})
+                "public"))
+      true (wrap-spa)
+      auth-backend (security/wrap-authentication auth-backend))))

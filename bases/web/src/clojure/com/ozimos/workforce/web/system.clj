@@ -6,11 +6,8 @@
    [ring.adapter.jetty :as jetty])
   (:import
    (java.util.concurrent Executors TimeUnit)
-   (org.eclipse.jetty.ee9.servlet ServletContextHandler)
    (org.eclipse.jetty.server Server)
-   (org.eclipse.jetty.util.thread QueuedThreadPool)
-   (org.springframework.web.context WebApplicationContext)
-   (org.springframework.web.filter DelegatingFilterProxy)))
+   (org.eclipse.jetty.util.thread QueuedThreadPool)))
 
 (defn load-config
   "Load Integrant config from resources. `profile` is :dev or :prod."
@@ -27,22 +24,6 @@
   (fn [_] {:status 200
            :headers {"Content-Type" "application/json"}
            :body "{\"ok\":true}"}))
-
-(defn- spring-security-configurator
-  "Returns a :configurator fn that injects DelegatingFilterProxy into the
-   ServletContextHandler that ring-jetty-adapter creates internally.
-   Called after handler is set, before server starts."
-  [spring-app-context]
-  (fn [^Server server]
-    (let [handler (.getHandler server)]
-      (when (instance? ServletContextHandler handler)
-        (let [^ServletContextHandler ctx handler]
-          (.setAttribute ctx
-                         WebApplicationContext/ROOT_WEB_APPLICATION_CONTEXT_ATTRIBUTE
-                         ^Object spring-app-context)
-          (.addFilter ctx
-                      (DelegatingFilterProxy. "springSecurityFilterChain")
-                      "/*"))))))
 
 (defn- build-ring-handler
   "Build the Ring handler from the routes deps.
@@ -63,15 +44,11 @@
   (build-ring-handler deps))
 
 (defmethod ig/init-key :adapter/jetty
-  [_ {:keys [port host filter-chain-proxy handler]}]
-  (let [app-ctx (:app-context filter-chain-proxy)
-        opts {:port port
+  [_ {:keys [port host handler]}]
+  (let [opts {:port port
               :host host
               :join? false
               :thread-pool (virtual-thread-pool)}
-        opts (if app-ctx
-               (assoc opts :configurator (spring-security-configurator app-ctx))
-               opts)
         server (jetty/run-jetty handler opts)]
     {:server server}))
 
