@@ -60,6 +60,39 @@
               (println (str "SSR port " port " is now free.")))
           (println (str "No active process found listening on SSR port " port ".")))))
 
+    (defn resolve-dev-ports []
+      (let [local (try (read-string (slurp "deps.local.edn")) (catch Exception _ nil))
+            nrepl-p (or (get-in local [:launchpad/options :nrepl-port]) 4005)
+            shadow-p (or (get-in local [:launchpad/options :shadow-cljs-http-port])
+                         (get-in local [:shadow-cljs :http-port])
+                         9630)
+            ssr-p (resolve-ssr-port)
+            jetty-p (get-in local [:jetty/port :dev] 8100)]
+        [nrepl-p shadow-p (inc shadow-p) ssr-p jetty-p]))
+
+    (defn kill-port-pids! [port]
+      (when (and (integer? port) (pos? port))
+        (let [res (p/shell {:out :string :err :string :continue true}
+                           "lsof" "-ti" (str "tcp:" port) "-sTCP:LISTEN")
+              pids (->> (str/split-lines (:out res))
+                        (map str/trim)
+                        (filter seq))]
+          (when (seq pids)
+            (println (str "Terminating stale process(es) listening on port " port " (PID: " (str/join ", " pids) ")..."))
+            (doseq [pid pids]
+              (p/shell {:continue true} "kill" "-15" pid))
+            (Thread/sleep 300)
+            (let [res2 (p/shell {:out :string :continue true} "lsof" "-ti" (str "tcp:" port) "-sTCP:LISTEN")
+                  rem (->> (str/split-lines (:out res2)) (map str/trim) (filter seq))]
+              (when (seq rem)
+                (doseq [pid rem]
+                  (p/shell {:continue true} "kill" "-9" pid))))
+            (println (str "Port " port " is now free."))))))
+
+    (defn kill-dev-ports! []
+      (doseq [p (distinct (resolve-dev-ports))]
+        (kill-port-pids! p)))
+
     (defn run-jvm-tests [args]
       (let [cmd-args (or (seq args) ["test" "project:auth-service"])]
         (shell "clojure" "-X:deps" "prep" ":aliases" "[:dev :test :+rama :+default :poly]")
@@ -77,13 +110,15 @@
                        (shell {:continue true} "clj-kondo" "--copy-configs" "--lint" cp "--skip-warnings"))
   fmt-check    (shell {:continue true} "standard-clj" "check" "bases" "components" "projects" "development/src/clojure")
   fmt-fix      (shell {:continue true} "standard-clj" "fix" "bases" "components" "projects" "development/src/clojure")
+  kill-ports   {:doc "Terminate any lingering processes on dev ports (nREPL, shadow-cljs, SSR, Jetty)."
+                :task (kill-dev-ports!)}
   ssr-kill     {:doc "Detect SSR port (from env SSR_PORT, deps.local.edn, or 3000) and kill listening process."
                 :task (kill-ssr-port!)}
   kill-ssr     {:doc "Alias for ssr-kill."
                 :task (kill-ssr-port!)}
   repl         {:override-builtin true
                 :task (let [args (or (seq *command-line-args*) ["+default" "dev" "+rama" "test"])]
-                        (kill-ssr-port!)
+                        (kill-dev-ports!)
                         (apply shell "bin/launchpad" args))}
   test         (run-jvm-tests *command-line-args*)
   test-fast    (run-in-repl-or-fallback

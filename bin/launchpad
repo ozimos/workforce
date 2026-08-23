@@ -138,17 +138,37 @@
              (catch Exception _ nil)))
       (Thread/sleep 200))))
 
-(defn register-ssr-shutdown-hook!
-  "Add JVM/Babashka shutdown hook to terminate any process listening on the SSR port when launchpad exits."
+(defn register-shutdown-cleanup!
+  "Add JVM/Babashka shutdown hook to terminate any process listening on SSR and shadow ports when launchpad exits."
   [ctx]
-  (let [local (read-deps-local)]
-    (when (and local (get-in local [:ssr-server :enabled]))
-      (let [ssr-port (resolve-ssr-port local)]
-        (.addShutdownHook
-          (Runtime/getRuntime)
-          (Thread.
-            (fn []
-              (kill-port! ssr-port))))))
+  (let [local (read-deps-local)
+        ssr-port (resolve-ssr-port local)
+        shadow-port (shadow-cljs-http-port)]
+    (.addShutdownHook
+      (Runtime/getRuntime)
+      (Thread.
+        (fn []
+          (when ssr-port (kill-port! ssr-port))
+          (when shadow-port (kill-port! shadow-port))))))
+  ctx)
+
+(defn cleanup-stale-dev-ports
+  "Clean up stale listeners on configured dev ports (nREPL, shadow-cljs, SSR, Jetty) before boot."
+  [ctx]
+  (let [local (read-deps-local)
+        nrepl-p (get-in local [:launchpad/options :nrepl-port])
+        shadow-p (shadow-cljs-http-port)
+        ssr-p (resolve-ssr-port local)
+        jetty-dev-p (get-in local [:jetty/port :dev])]
+    (when (and (integer? nrepl-p) (pos? nrepl-p))
+      (kill-port! nrepl-p))
+    (when (and (integer? shadow-p) (pos? shadow-p))
+      (kill-port! shadow-p)
+      (kill-port! (inc shadow-p)))
+    (when (and (integer? ssr-p) (pos? ssr-p))
+      (kill-port! ssr-p))
+    (when (and (integer? jetty-dev-p) (pos? jetty-dev-p))
+      (kill-port! jetty-dev-p))
     ctx))
 
 (defn start-ssr-server
@@ -218,8 +238,9 @@
 (lp/main
  {:steps
   (into [(partial ensure-java-min-version 21)
+         cleanup-stale-dev-ports
          resolve-nrepl-port
-         register-ssr-shutdown-hook!
+         register-shutdown-cleanup!
          start-frontend-watcher
          auto-start-system
          resolve-jetty-ports]
