@@ -8,7 +8,7 @@ function testApiProxy() {
 
   const options = {
     hostname: "localhost",
-    port: 3000,
+    port: process.env.SSR_PORT || 3000,
     path: "/api/auth/login",
     method: "POST",
     headers: {

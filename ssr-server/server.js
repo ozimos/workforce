@@ -35,7 +35,7 @@ function getApiTarget() {
 const PORT = process.env.SSR_PORT || 3000;
 const API_TARGET = getApiTarget();
 
-const PUBLIC_DIR = path.resolve(__dirname, "..", "bases", "auth-api", "resources", "public");
+const PUBLIC_DIR = path.resolve(__dirname, "..", "bases", "web", "resources", "public");
 const SSR_OUTPUT_DIR = path.resolve(__dirname, "..", "ssr-output");
 
 let ssrModule = null;
