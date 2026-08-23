@@ -1,0 +1,8 @@
+{:source-paths ["development/src/clojure"
+                "components/org-rama/src/clojure"
+                "components/frontend/src/cljs"
+                "bases/web/src/clojure"]
+ :deps         {com.fulcrologic/statecharts {:mvn/version "1.4.0-RC19"}}
+ :tools-ns     [com.ozimos.workforce.org.tools.escapement]
+ :work-dir     ".escapement"
+ :default-chart com.ozimos.workforce.org.workflows.headcount/hiring-approval-chart}

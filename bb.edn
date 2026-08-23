@@ -190,4 +190,14 @@
   ssr-start    (shell "node" "ssr-server/server.js")
   build        (do (css)
                    (shell "pnpm" "exec" "shadow-cljs" "compile" "app")
-                   (shell "pnpm" "exec" "shadow-cljs" "compile" "ssr"))}}
+                   (shell "pnpm" "exec" "shadow-cljs" "compile" "ssr"))
+  agent        {:doc "Run an Escapement autonomous workflow chart."
+                :task (let [chart (or (first *command-line-args*) "com.ozimos.workforce.org.workflows.headcount/hiring-approval-chart")]
+                        (apply shell "escapement" "run" chart (rest *command-line-args*)))}
+  agent-debug  {:doc "Run Escapement with live Web Debugger and EQL server."
+                :task (let [port (or (first *command-line-args*) "8920")]
+                        (shell "escapement" "run" "com.ozimos.workforce.org.workflows.headcount/hiring-approval-chart"
+                               "--api-server" port "--debug"))}
+  agent-sim    {:doc "Run headless multi-agent HR hiring cycle simulation."
+                :task (shell "escapement" "run" "com.ozimos.workforce.org.workflows.headcount/hiring-approval-chart"
+                             "--no-tui")}}}
