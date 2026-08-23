@@ -1,214 +1,142 @@
 # workforce
 
-A modern multi-tenant workforce and organization management application built with Clojure, Rama, Fulcro, and the `omni-auth` core engine.
+A multi-tenant workforce and organization management system built with Clojure, Red Planet Labs Rama, Polylith, Pathom 3, Fulcro, Buddy, and the `omni-auth` security engine.
 
 ## Prerequisites
 
-- **JDK 25** (Temurin 25+)
-- **Babashka** (`bb`) — for the launchpad dev script
-- **Clojure CLI** (`clojure`) — tools.deps
-
-Install Babashka:
-
-```bash
-brew install babashka
-```
+- **JDK 21+** (Temurin 21 or 25 recommended)
+- **Babashka** (`bb`) — task runner and dev launchpad
+- **Clojure CLI** (`clojure`) — `tools.deps`
+- **Node.js** (v18+) — for frontend build and SSR server
 
 ## Quick Start
 
 ```bash
-# Start the dev REPL (defaults to +default dev +rama test via launchpad)
+# Start the dev REPL and Launchpad (nREPL + Shadow-CLJS + SSR server)
 bb repl
 
-# Or start directly with bin/launchpad:
-bb bin/launchpad --cider-nrepl +default dev +rama
+# Or launch directly with bin/launchpad:
+bb bin/launchpad +default dev +rama test
 ```
 
-> **Note:** The `+default` alias defines all workspace and core components (`omni-auth/*`, `poly/*`). It is required alongside `dev` for development and REPL sessions.
+> **Note:** The `+default` alias defines all workspace and core components (`omni-auth/*`, `poly/*`).
 
-Launchpad starts a JVM with Java 25, boots an nREPL server (dynamic port, printed to the terminal), and loads `user.clj` which:
+Launchpad starts a JVM, boots an nREPL server (default port `4005`), compiles ClojureScript via Shadow-CLJS, starts the Node SSR server on port `3000` (proxying `/api/*` to Jetty dev port `8100`), and loads `user.clj` which:
 
-1. Initializes **Integrant** config via `integrant-repl`
-2. Starts **Virgil** Java hot-reload watcher (watches `components/security/src/java`)
-3. Initializes **clj-reload** (Clojure namespace reload on Java recompile)
+1. Initializes **Integrant** system lifecycle (`user/go`, `user/halt`, `user/reset`)
+2. Activates **clj-reload** for automatic namespace reloading
+3. Automatically mounts the Rama cluster and workforce organization topologies
 
-You'll see output like:
-
-```
-Compiling 1 Java source files in [components/security/src/java] ...
-Java hot-reloading active via Virgil + clj-reload! [components/security/src/java]
-nREPL server started on port 50872 on host localhost - nrepl://localhost:50872
-```
-
-Connect your editor to the nREPL port, then in the REPL:
+In your connected editor or REPL:
 
 ```clojure
-(go)     ;; Start the system (Jetty on port 8080)
+(go)     ;; Start the system (Jetty on port 8100)
 (halt)   ;; Stop the system
 (reset)  ;; Reload changed namespaces + restart system
 ```
 
-## Profiles
-
-| Profile | Flag | User store | Use case |
-|---|---|---|---|---|
-| `+rama` | `--` | Rama-backed (`user`) | Full integration testing / production |
-
 ## Verification
 
-After `(go)` in the REPL:
-
 ```bash
-curl http://localhost:8080/api/health
-# {"status" "ok"}
-```
+# Verify backend API (Jetty dev port 8100)
+curl http://localhost:8100/api/health
+# {"status":"ok"}
 
-## Hot Reloading
-
-### Clojure
-
-- Edit any `.clj` file and call `(reset)` in the REPL
-- `clj-reload` unloads changed namespaces and their dependents, then reloads in topological order
-- Integrant halts/reinits affected components
-
-### Java
-
-- Edit `SecurityConfig.java` (or any `.java` file under watched dirs) and save
-- **Virgil** automatically recompiles the Java source and loads the new bytecode into the JVM
-- **clj-reload** then refreshes all loaded Clojure namespaces so `:import` forms pick up the new class definitions
-- No REPL restart needed
-
-### deps.edn
-
-- Launchpad watches `deps.edn` and `deps.local.edn` for changes
-- Adding/upgrading dependencies or activating aliases happens without restarting the JVM
-
-## Polylith
-
-This is a [Polylith](https://cldoc.org/d/com.ozimos.workforce/doc/user-poly/welcome) workspace. Use the `:poly` alias:
-
-```bash
-clojure -A:poly check
-clojure -A:poly info
+# Verify SSR frontend server (port 3000)
+curl http://localhost:3000/api/health
+# {"status":"ok"}
 ```
 
 ## Testing
 
-`best_auth` provides a tiered testing architecture designed for instant in-REPL feedback (<0.5s), isolated ephemeral test clusters, and complete multi-runtime verification.
+`workforce` provides a tiered testing setup for rapid in-REPL feedback (<0.5s) and multi-runtime verification:
 
-### Testing Methods & Decision Matrix
+| Command | Environment | Description | Speed |
+|---|---|---|---|
+| `bb test-fast` | Warm Dev REPL | Runs all backend test suites against active dev system | **< 0.5s** |
+| `bb test-fast <ns>` | Warm Dev REPL | Runs a single test namespace | **~ 50ms** |
+| `bb test-fast-clean` | Warm Dev REPL | Runs test suite on a fresh ephemeral in-memory Rama cluster | **~ 1.0s** |
+| `bb fe-test` | Node.js (`shadow-cljs`) | Headless ClojureScript Fulcro unit tests | **~ 5s** |
+| `bb test-all` | JVM + Node + Proxy | Full multi-tier test suites sequentially | **~ 25s** |
+| `bb test` | Standalone JVM | Cold Polylith test runner (`poly test`) | **~ 35s** |
 
-| Method | Execution Environment | State Isolation | Speed | When Best to Use |
-|---|---|---|---|---|
-| **`(user/test-all)`**<br>`bb test-fast` | Warm REPL | Runs against active dev state (`irs/system`) | **< 0.5s** | **Inner-loop TDD**: Run constantly while editing code or resolvers. Instant feedback with zero boot overhead. |
-| **`(user/test-ns 'ns)`**<br>`bb test-fast <ns>` | Warm REPL | Runs single test namespace | **~ 50ms** | **Focused feature debugging**: Test a single component/namespace in isolation while writing new features. |
-| **`(user/test-clean)`**<br>`bb test-fast-clean` | Warm REPL | Ephemeral in-memory Rama IPC cluster (auto-mounted & torn down) | **~ 1.0s** | **Clean-slate integration check**: Verifies clean database behavior without restarting the JVM or polluting dev state. |
-| **`bb fe-test`** | Node.js (`shadow-cljs`) | Headless Node test runner | **~ 5s** | **Frontend validation**: Tests ClojureScript Fulcro/UI client logic and state machines. |
-| **`bb test-all`** | JVM + Node + Proxy | Multi-runtime test suites | **~ 30s** | **Pre-commit / CI verification**: Runs Clojure JVM backend, Frontend CLJS, and Node SSR proxy tests sequentially. |
-| **`bb test`** | Cold Polylith JVM | Isolated process (`poly test`) | **~ 40s** | Standalone Polylith component validation without an active dev REPL. |
-
----
-
-### 1. In-REPL Testing (Recommended for Active Development)
-
-Connect your editor (Calva, CIDER, Conjure, etc.) to the running nREPL server:
+### In-REPL Testing
 
 ```clojure
-;; Run all 10 backend unit, IPC, and integration test suites:
+;; Run all workforce test suites (30 tests, 225 assertions):
 (user/test-all)
 
-;; Run a specific test namespace:
-(user/test-ns 'com.ozimos.workforce.oauth.ipc-test)
+;; Run workforce organization resolvers & IPC test suites:
+(user/test-ns 'com.ozimos.workforce.org.resolvers-test)
+(user/test-ns 'com.ozimos.workforce.org.ipc-test)
 
-;; Run all tests against a pristine, temporary in-memory Rama cluster:
+;; Run web integration tests:
+(user/test-ns 'com.ozimos.workforce.web.integration-test)
+
+;; Run tests against an isolated ephemeral Rama cluster:
 (user/test-clean)
 ```
 
----
-
-### 2. Fast CLI Testing via Active REPL
-
-If your development REPL is running, Babashka connects via nREPL to execute tests with zero cold-boot penalty:
+## Production Build
 
 ```bash
-# Run all backend tests instantly inside the warm REPL (< 0.5s)
-bb test-fast
-
-# Run a specific test namespace
-bb test-fast com.ozimos.workforce.oauth.ipc-test
-
-# Run tests against a fresh ephemeral Rama IPC cluster in the REPL (~ 1s)
-bb test-fast-clean
-```
-
----
-
-### 3. Full Multi-Runtime & CI Testing
-
-```bash
-# Run frontend ClojureScript tests
-bb fe-test
-
-# Run complete multi-tier test suite (Backend JVM + Frontend CLJS + Node SSR Proxy)
-bb test-all
-
-# Run standalone backend Polylith test runner in a cold JVM
-bb test
-```
-
-## Production Uberjar
-
-```bash
+# Build production uberjar
 clojure -T:build uberjar
+
+# Run production service
 java --enable-native-access=ALL-UNNAMED -jar target/auth-service.jar
 ```
 
 ## Project Structure
 
 ```
-best_auth/
-├── workspace.edn              # Polylith config
-├── deps.edn                  # Root deps (dev/test/profiles/poly/build aliases)
-├── bb.edn                    # Launchpad dep
-├── bin/launchpad             # Dev REPL launcher (babashka)
-├── plan.md                   # Architecture & milestone documentation
+workforce/
+├── workspace.edn              # Polylith configuration
+├── deps.edn                  # Root dependencies & aliases (:dev, :test, :+rama, :+default, :poly)
+├── bb.edn                    # Babashka dev tasks & port management
+├── bin/launchpad             # Development launchpad script
+├── shadow-cljs.edn           # Frontend build (:app, :ssr, :test)
+├── ssr-server/               # Express SSR & API reverse proxy (port 3000)
 │
-├── components/               # Polylith components (8 interfaces)
-│   ├── schema/               # Malli validation schemas
-│   ├── config/               # Aero-based config loading
-│   ├── rama/                 # Rama cluster + AuthModule (defmodule)
-│   ├── user/                 # Rama-backed user store + BCrypt
-│   ├── session/              # Session lifecycle management
-│   ├── revocation/           # Token revocation (OAuth2TokenValidator)
-│   ├── token/                # JWT issuance + validation (Nimbus)
-│   └── security/             # Spring Security filter chain (Java + Clojure)
+├── components/               # Polylith components
+│   ├── org-rama/             # Rama OrgModule, depots, PStates, and Pathom 3 resolvers
+│   │                         # (Organizations, Members, Invitations, Roles, Teams)
+│   ├── schema/               # Malli schemas & validation
+│   ├── config/               # Aero configuration loader
+│   ├── rama/                 # Rama cluster lifecycle & IPC fixtures
+│   ├── security/             # Buddy authentication & authorization middleware
+│   ├── token/                # JWT issuance & verification (Buddy Sign)
+│   ├── user-rama/            # User depot, PState & password hashing (Buddy Hashers)
+│   ├── session-rama/         # Session lifecycle management & depot
+│   ├── revocation-rama/      # Token revocation depot & Bloom filter PState
+│   └── frontend/             # Fulcro client UI components & organization views
 │
 ├── bases/
-│   └── auth-api/             # HTTP API (Ring + Jetty + Reitit + Malli)
+│   └── web/                  # Ring HTTP API, Reitit routes, Jetty 12 adapter, SSR bridge
 │
 ├── development/
-│   ├── resources/config.edn  # Dev Integrant config
-│   └── src/clojure/user.clj  # REPL bridge (integrant-repl + Virgil + clj-reload)
+│   ├── resources/config.edn  # Dev Integrant configuration
+│   └── src/clojure/user.clj  # Dev REPL entry point
 │
 └── projects/
-    └── auth-service/         # Production project (uberjar target)
+    └── auth-service/         # Production deployment uberjar configuration
 ```
 
 ## Tech Stack
 
 | Layer | Technology |
 |---|---|
-| Language | Clojure 1.12.4 on JDK 25 |
-| Code organization | Polylith |
-| Data layer | Rama (Red Planet Labs) |
-| HTTP | Ring + Jetty 12 (virtual threads) + Reitit |
-| Validation | Malli |
-| Security | Spring Security 6 (JWT, OAuth2 Resource Server) |
-| Lifecycle | Integrant |
-| Config | Aero |
-| Dev workflow | Launchpad + integrant-repl + Virgil + clj-reload |
-| Build | tools.build |
-
+| Language | Clojure 1.12 on JDK 21+ |
+| Architecture | Polylith Architecture |
+| Data Layer | Red Planet Labs Rama (Depots, PStates, Topologies) |
+| Resolvers & Graph | Pathom 3 (EQL Attribute Resolution) |
+| HTTP & Routing | Ring + Jetty 12 (Virtual Threads) + Reitit |
+| Authentication | Buddy (buddy-auth, buddy-sign, buddy-hashers) |
+| Schemas | Malli |
+| Frontend | ClojureScript + Fulcro 3 + Shadow-CLJS |
+| SSR Gateway | Node.js Express SSR proxy |
+| System Lifecycle | Integrant + integrant-repl |
+| Hot Reloading | clj-reload + Launchpad |
 ## License
 
 MIT
