@@ -1,6 +1,8 @@
 (ns com.ozimos.workforce.org.interface
   (:require
-   [com.ozimos.workforce.org.core :as core]))
+   [com.ozimos.workforce.org.core :as core]
+   [com.ozimos.workforce.org.extension]
+   [com.ozimos.workforce.org.resolvers]))
 
 (defn create-org!
   "Create a new organization. The creating user becomes the ADMIN.

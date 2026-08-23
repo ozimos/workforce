@@ -1,5 +1,6 @@
 (ns com.ozimos.workforce.auth-api.system
   (:require
+   [com.ozimos.workforce.org.interface :as org]
    [com.ozimos.omni-auth.config.interface :as config]
    [com.ozimos.omni-auth.rama.interface :as rama]
    [com.ozimos.omni-auth.security.interface :as security]

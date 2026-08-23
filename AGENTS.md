@@ -26,6 +26,8 @@
    - Never run `shadow-cljs stop` or `pnpm exec shadow-cljs stop`. Launchpad embeds the shadow-cljs server inside the main Clojure JVM process. Stopping it terminates the embedded server and breaks frontend watching for the rest of the session.
 10. **Rama REPL Inspection**:
     - Use the `?<-` macro to test Rama queries and expressions in the REPL. Docs: https://redplanetlabs.com/clojuredoc/com.rpl.rama.html
+11. **`+default` Profile Alias**:
+    - All workspace and core component dependencies (`com.ozimos.omni-auth/*`, `poly/*`) and base test paths reside in `:+default`. Whenever invoking Clojure CLI or Launchpad, `+default` is required alongside `dev` (e.g. `bb bin/launchpad +default dev +rama test` or `clojure -M:+default:dev`).
 
 do not write code like this
 

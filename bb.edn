@@ -43,11 +43,12 @@
               (run-jvm-tests args))))))
 
   lint         (shell {:continue true} "clj-kondo" "--lint" "bases" "components" "projects" "development/src/clojure" "bin/launchpad")
-  kondo-copy-configs (shell {:continue true} "clj-kondo" "--copy-configs" "--lint" "$(clojure -Spath -A:dev)" "--skip-warnings")
+  kondo-copy-configs (let [cp (str/trim (:out (p/shell {:out :string} "clojure" "-Spath" "-A:+default:dev")))]
+                       (shell {:continue true} "clj-kondo" "--copy-configs" "--lint" cp "--skip-warnings"))
   fmt-check    (shell {:continue true} "standard-clj" "check" "bases" "components" "projects" "development/src/clojure")
   fmt-fix      (shell {:continue true} "standard-clj" "fix" "bases" "components" "projects" "development/src/clojure")
   repl         {:override-builtin true
-                :task (let [args (or (seq *command-line-args*) ["dev" "+rama" "test"])]
+                :task (let [args (or (seq *command-line-args*) ["+default" "dev" "+rama" "test"])]
                         (apply shell "bin/launchpad" args))}
   test         (run-jvm-tests *command-line-args*)
   test-fast    (run-in-repl-or-fallback
@@ -70,7 +71,7 @@
   test-repl-boot
                (do
                  (println "\n=== [CI] 1/4 Starting fresh background dev REPL ===")
-                 (let [repl-proc (p/process ["bin/launchpad" "dev" "+rama" "test"]
+                 (let [repl-proc (p/process ["bin/launchpad" "+default" "dev" "+rama" "test"]
                                             {:out :inherit :err :inherit :dir "."})]
                    (try
                      (let [port (resolve-nrepl-port)]

@@ -17,12 +17,14 @@ brew install babashka
 ## Quick Start
 
 ```bash
-# Start the dev REPL with the default (in-memory) profile
-bb bin/launchpad  --cider-nrepl dev +default
+# Start the dev REPL (defaults to +default dev +rama test via launchpad)
+bb repl
 
-# Or with the Rama-backed profile
-bb bin/launchpad --cider-nrepl dev +rama
+# Or start directly with bin/launchpad:
+bb bin/launchpad --cider-nrepl +default dev +rama
 ```
+
+> **Note:** The `+default` alias defines all workspace and core components (`omni-auth/*`, `poly/*`). It is required alongside `dev` for development and REPL sessions.
 
 Launchpad starts a JVM with Java 25, boots an nREPL server (dynamic port, printed to the terminal), and loads `user.clj` which:
 

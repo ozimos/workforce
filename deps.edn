@@ -3,30 +3,10 @@
              "rpl"     {:url "https://nexus.redplanetlabs.com/repository/maven-public-releases/"}}
 
  :aliases
- {:dev {:extra-paths ["development/src/clojure" "development/resources" "target/classes" "bases/auth-api/test/clojure"
-                      "components/frontend/src/cljs" "components/frontend/test/cljs"]
+ {:dev {:extra-paths ["components/frontend/src/cljs" "components/frontend/test/cljs"]
         :extra-deps {org.clojure/clojure {:mvn/version "1.12.4"}
                      hato/hato {:mvn/version "1.0.0"}
                      metosin/jsonista {:mvn/version "0.3.14"}
-
-                     ;; Reusable omni-auth core components
-                     com.ozimos.omni-auth/schema          {:local/root "../../omni-auth/main/components/schema"}
-                     com.ozimos.omni-auth/config          {:local/root "../../omni-auth/main/components/config"}
-                     com.ozimos.omni-auth/rama            {:local/root "../../omni-auth/main/components/rama"}
-                     com.ozimos.omni-auth/user-rama       {:local/root "../../omni-auth/main/components/user-rama"}
-                     com.ozimos.omni-auth/session-rama    {:local/root "../../omni-auth/main/components/session-rama"}
-                     com.ozimos.omni-auth/revocation-rama {:local/root "../../omni-auth/main/components/revocation-rama"}
-                     com.ozimos.omni-auth/token           {:local/root "../../omni-auth/main/components/token"}
-                     com.ozimos.omni-auth/security        {:local/root "../../omni-auth/main/components/security"}
-                     com.ozimos.omni-auth/pathom          {:local/root "../../omni-auth/main/components/pathom"}
-                     com.ozimos.omni-auth/mfa             {:local/root "../../omni-auth/main/components/mfa"}
-                     com.ozimos.omni-auth/webauthn        {:local/root "../../omni-auth/main/components/webauthn"}
-                     com.ozimos.omni-auth/oauth           {:local/root "../../omni-auth/main/components/oauth"}
-                     com.ozimos.omni-auth/saml            {:local/root "../../omni-auth/main/components/saml"}
-
-                     ;; Workforce application components
-                     poly/org-rama        {:local/root "components/org-rama"}
-                     poly/auth-api        {:local/root "bases/auth-api"}
 
                      ;; Dev tools
                      integrant/integrant      {:mvn/version "1.0.0"}
