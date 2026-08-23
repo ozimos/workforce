@@ -69,7 +69,7 @@
       resp)))
 
 (defn- post-edn
-  "Executes an in-memory Ring request against (:com.ozimos.workforce.auth-api.system/router *sys*) using EDN format negotiation.
+  "Executes an in-memory Ring request against (:com.ozimos.workforce.web.system/router *sys*) using EDN format negotiation.
    Returns the response map with parsed native Clojure data in `:body`."
   ([uri body-params]
    (post-edn uri body-params {}))
@@ -87,7 +87,7 @@
      (parse-ring-response resp))))
 
 (defn- get-edn
-  "Executes an in-memory Ring GET request against (:com.ozimos.workforce.auth-api.system/router *sys*) using EDN format negotiation."
+  "Executes an in-memory Ring GET request against (:com.ozimos.workforce.web.system/router *sys*) using EDN format negotiation."
   ([uri]
    (get-edn uri {}))
   ([uri headers]
@@ -100,7 +100,7 @@
      (parse-ring-response resp))))
 
 (defn- delete-edn
-  "Executes an in-memory Ring DELETE request against (:com.ozimos.workforce.auth-api.system/router *sys*) using EDN format negotiation."
+  "Executes an in-memory Ring DELETE request against (:com.ozimos.workforce.web.system/router *sys*) using EDN format negotiation."
   ([uri]
    (delete-edn uri {}))
   ([uri headers]

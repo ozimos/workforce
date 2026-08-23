@@ -13,17 +13,14 @@
 
 (defn uber [_]
   (clean nil)
-  (b/copy-dir {:src-dirs ["bases/auth-api/src/clojure"
-                          "bases/auth-api/resources"]
+  (b/copy-dir {:src-dirs ["bases/web/src/clojure"
+                          "bases/web/resources"]
                :target-dir class-dir})
-  (b/compile-java {:basis basis
-                   :src-dirs ["components/security/src/java"]
-                   :class-dir class-dir})
   (b/compile-clj {:basis basis
-                  :src-dirs ["bases/auth-api/src/clojure"
+                  :src-dirs ["bases/web/src/clojure"
                              "components/*/src/clojure"]
                   :class-dir class-dir})
   (b/uber {:class-dir class-dir
            :uber-file uber-file
            :basis basis
-           :main "com.ozimos.workforce.auth-api.main"}))
+           :main "com.ozimos.workforce.web.main"}))
