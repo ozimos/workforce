@@ -1,7 +1,7 @@
 (ns com.ozimos.workforce.org.resolvers
   (:require
-   [com.ozimos.workforce.org.core :as org]
    [com.ozimos.omni-auth.user.interface :as user]
+   [com.ozimos.workforce.org.core :as org]
    [com.wsscode.pathom3.connect.operation :as pco]
    [integrant.core :as ig]))
 
@@ -32,8 +32,8 @@
     user-id))
 
 (pco/defresolver user-orgs-resolver
-  "Resolve all organizations for the current user."
-  [env params]
+  "Resolve organizations for the current user."
+  [env _params]
   {::pco/output [{:user/orgs [:org/id :org/name :org/role :org/status]}]}
   (let [user-id (require-auth env)
         store (get-store (:deps env))
@@ -48,7 +48,7 @@
 
 (pco/defresolver active-org-resolver
   "Resolve the current user's active org."
-  [env params]
+  [env _params]
   {::pco/output [{:user/active-org [:org/id :org/name :org/role]}]}
   (let [user-id (require-auth env)
         store (get-store (:deps env))
@@ -80,7 +80,7 @@
 
 (pco/defresolver user-invitations-resolver
   "Resolve pending invitations for the current user by email."
-  [env params]
+  [env _params]
   {::pco/output [{:user/invitations [:invitation/id :invitation/org-id
                                      :invitation/org-name :invitation/role
                                      :invitation/status :invitation/expires-at]}]}

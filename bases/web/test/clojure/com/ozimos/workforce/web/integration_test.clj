@@ -1,13 +1,13 @@
-(ns com.ozimos.workforce.auth-api.integration-test
+(ns com.ozimos.workforce.web.integration-test
   (:require
+   [clojure.edn :as edn]
    [clojure.string :as string]
    [clojure.test :refer [deftest is testing use-fixtures]]
-   [com.ozimos.workforce.auth-api.test-system :as ts]
    [com.ozimos.omni-auth.mfa.interface :as mfa]
    [com.ozimos.omni-auth.user.interface :as user]
+   [com.ozimos.workforce.web.test-system :as ts]
    [hato.client :as http]
-   [jsonista.core :as json]
-   [muuntaja.core :as m]))
+   [jsonista.core :as json]))
 
 (def ^:dynamic *sys* nil)
 (def ^:dynamic *base-url* nil)
@@ -27,7 +27,7 @@
           (recur (dec retries)))))))
 
 (defn system-fixture [tests]
-  (ts/with-sys
+  (let [sys (ts/get-sys)]
     (binding [*sys* sys
               *base-url* (ts/get-base-url sys)]
       (tests))))
@@ -59,12 +59,12 @@
     (cond
       (instance? java.io.InputStream b)
       (let [s (slurp b)]
-        (assoc resp :body (when (and (string? s) (seq s)) (clojure.edn/read-string s))))
+        (assoc resp :body (when (and (string? s) (seq s)) (edn/read-string s))))
       (bytes? b)
       (let [s (String. ^bytes b "UTF-8")]
-        (assoc resp :body (when (and (string? s) (seq s)) (clojure.edn/read-string s))))
+        (assoc resp :body (when (and (string? s) (seq s)) (edn/read-string s))))
       (string? b)
-      (assoc resp :body (when (seq b) (clojure.edn/read-string b)))
+      (assoc resp :body (when (seq b) (edn/read-string b)))
       :else
       resp)))
 
@@ -74,7 +74,7 @@
   ([uri body-params]
    (post-edn uri body-params {}))
   ([uri body-params headers]
-   (let [handler (:com.ozimos.workforce.auth-api.system/router *sys*)
+   (let [handler (:com.ozimos.workforce.web.system/router *sys*)
          body-bytes (.getBytes (pr-str (or body-params {})) "UTF-8")
          req {:request-method :post
               :uri uri
@@ -91,7 +91,7 @@
   ([uri]
    (get-edn uri {}))
   ([uri headers]
-   (let [handler (:com.ozimos.workforce.auth-api.system/router *sys*)
+   (let [handler (:com.ozimos.workforce.web.system/router *sys*)
          req {:request-method :get
               :uri uri
               :headers (merge {"accept" "application/edn"}
@@ -104,7 +104,7 @@
   ([uri]
    (delete-edn uri {}))
   ([uri headers]
-   (let [handler (:com.ozimos.workforce.auth-api.system/router *sys*)
+   (let [handler (:com.ozimos.workforce.web.system/router *sys*)
          req {:request-method :delete
               :uri uri
               :headers (merge {"accept" "application/edn"}

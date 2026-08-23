@@ -1,4 +1,4 @@
-(ns com.ozimos.workforce.auth-api.handlers
+(ns com.ozimos.workforce.web.handlers
   (:require
    [clojure.edn :as edn]
    [com.ozimos.omni-auth.mfa.interface :as mfa]
@@ -6,17 +6,12 @@
    [com.ozimos.omni-auth.pathom.interface :as pathom]
    [com.ozimos.omni-auth.revocation.interface :as revocation]
    [com.ozimos.omni-auth.saml.interface :as saml]
-   [com.ozimos.omni-auth.schema.interface :as schema]
-   [com.ozimos.omni-auth.schema.interface.registration :as reg-schema]
    [com.ozimos.omni-auth.session.interface :as session]
    [com.ozimos.omni-auth.token.interface :as token]
    [com.ozimos.omni-auth.user.interface :as user]
    [com.ozimos.omni-auth.webauthn.interface :as webauthn]
    [com.ozimos.workforce.org.interface :as org]
-   [jsonista.core :as json]
-   [malli.core :as m])
-  (:import
-   (java.util UUID)))
+   [jsonista.core :as json]))
 
 (defn- parse-user-id
   "Parse a user-id string to Long, returning nil on parse failure."
@@ -106,7 +101,7 @@
              (user/matches-password? system password (:pwd-hash user-record)))
       (if (and (= mode :strict) (not (:verified user-record)))
         {:status 403
-          :body {:errors {:auth ["Email verification required before logging in."]}}}
+         :body {:errors {:auth ["Email verification required before logging in."]}}}
         (let [issuer "com.ozimos.workforce"
               sub (str (:id user-record))]
           (if (user/mfa-enabled? system (:id user-record))
@@ -117,7 +112,7 @@
             {:status 200
              :body (issue-user-session-tokens system user-record)})))
       {:status 401
-        :body {:errors {:credentials ["Invalid username/email or password"]}}})))
+       :body {:errors {:credentials ["Invalid username/email or password"]}}})))
 
 (defn refresh
   [{:keys [body-params system]}]
@@ -365,8 +360,8 @@
   (if-let [auth-user (get-auth-user request (:token-decoder system))]
     (let [user-record (user/find-by-id system (:user-id auth-user))
           rp (webauthn/make-relying-party {:rp-id "localhost"
-                                          :rp-name "BestAuth"
-                                          :origins "http://localhost:8080"})
+                                           :rp-name "BestAuth"
+                                           :origins "http://localhost:8080"})
           creation-opts (webauthn/start-registration-options rp (:user-id auth-user) (:username user-record) (:email user-record))
           opts-json (webauthn/creation-options-to-json creation-opts)]
       {:status 200
@@ -379,8 +374,8 @@
   (if-let [auth-user (get-auth-user request (:token-decoder system))]
     (let [{:keys [options-json response-json nickname]} body-params
           rp (webauthn/make-relying-party {:rp-id "localhost"
-                                          :rp-name "BestAuth"
-                                          :origins "http://localhost:8080"})]
+                                           :rp-name "BestAuth"
+                                           :origins "http://localhost:8080"})]
       (try
         (let [result (webauthn/finish-registration rp options-json response-json)
               {:keys [credential-id public-key-cose sign-count user-handle]} result]
@@ -391,10 +386,10 @@
     {:status 401 :body {:errors {:auth ["Not authenticated"]}}}))
 
 (defn passkey-authenticate-begin
-  [{:keys [system]}]
+  [_request]
   (let [rp (webauthn/make-relying-party {:rp-id "localhost"
-                                          :rp-name "BestAuth"
-                                          :origins "http://localhost:8080"})
+                                         :rp-name "BestAuth"
+                                         :origins "http://localhost:8080"})
         assertion-req (webauthn/start-assertion-options rp)
         req-json (webauthn/assertion-request-to-json assertion-req)]
     {:status 200
@@ -430,8 +425,8 @@
         email (or (get params "email") (get body-params :email) (str provider-user-id "@" provider ".com"))
         name (or (get params "name") (get body-params :name) "OAuth User")
         [ok? result] (oauth/handle-oauth-callback system provider {:provider-user-id provider-user-id
-                                                      :email email
-                                                      :name name})]
+                                                                   :email email
+                                                                   :name name})]
     (if ok?
       {:status 200 :body result}
       {:status 400 :body result})))
@@ -447,12 +442,11 @@
         email (or (get params "email") (get body-params :email) (str name-id "@saml-provider.com"))
         name (or (get params "name") (get body-params :name) "SAML User")
         [ok? result] (saml/handle-saml-assertion system {:name-id name-id
-                                                        :email email
-                                                        :name name})]
+                                                         :email email
+                                                         :name name})]
     (if ok?
       {:status 200 :body result}
       {:status 400 :body result})))
 
 (defn health [_]
   {:status 200 :body {:status "ok"}})
-

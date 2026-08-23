@@ -1,14 +1,14 @@
-(ns com.ozimos.workforce.auth-api.oauth-integration-test
+(ns com.ozimos.workforce.web.oauth-integration-test
   (:require
    [clojure.test :refer [deftest is testing use-fixtures]]
-   [com.ozimos.workforce.auth-api.test-system :as ts]
    [com.ozimos.omni-auth.oauth.interface :as oauth]
-   [com.ozimos.omni-auth.user.interface :as user]))
+   [com.ozimos.omni-auth.user.interface :as user]
+   [com.ozimos.workforce.web.test-system :as ts]))
 
 (def ^:dynamic *sys* nil)
 
 (defn system-fixture [tests]
-  (ts/with-sys
+  (let [sys (ts/get-sys)]
     (binding [*sys* sys]
       (tests))))
 

@@ -1,7 +1,7 @@
 (ns com.ozimos.workforce.org.core
   (:require
-   [com.ozimos.workforce.org.records :as rec]
    [com.ozimos.omni-auth.rama.interface :as rama]
+   [com.ozimos.workforce.org.records :as rec]
    [com.rpl.rama :as ramaapi]
    [com.rpl.rama.path :refer [ALL keypath]]))
 

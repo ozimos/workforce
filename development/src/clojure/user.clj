@@ -1,7 +1,6 @@
 (ns user
   (:require
-   [integrant.repl :refer [clear go halt reset reset-all set-prep!]]
-   [integrant.repl.state :refer [config system]])
+   [integrant.repl :refer [clear go halt reset reset-all set-prep!]])
   (:gen-class))
 
 (require 'com.ozimos.omni-auth.config.core
@@ -16,9 +15,9 @@
          'com.ozimos.workforce.org.extension
          'com.ozimos.workforce.org.core
          'com.ozimos.workforce.org.resolvers
-         'com.ozimos.workforce.auth-api.system)
+         'com.ozimos.workforce.web.system)
 
-(set-prep! (fn [] ((requiring-resolve 'com.ozimos.workforce.auth-api.system/load-config) :dev)))
+(set-prep! (fn [] ((requiring-resolve 'com.ozimos.workforce.web.system/load-config) :dev)))
 
 (let [java-dirs ["../../omni-auth/main/components/security/src/java"]]
   (try
@@ -26,8 +25,8 @@
     (require 'clj-reload.core)
     ((resolve 'clj-reload.core/init)
      {:dirs     ["development/src/clojure"
-                 "bases/auth-api/src/clojure"
-                 "bases/auth-api/test/clojure"
+                 "bases/web/src/clojure"
+                 "bases/web/test/clojure"
                  "components/org-rama/src/clojure"
                  "components/org-rama/test/clojure"
                  "../../omni-auth/main/components/schema/src/clojure"
@@ -65,7 +64,7 @@
   (let [loaders (distinct (remove nil? [(clojure.lang.RT/baseLoader)
                                         (.getContextClassLoader (Thread/currentThread))]))
         paths ["components/org-rama/test/clojure"
-               "bases/auth-api/test/clojure"
+               "bases/web/test/clojure"
                "../../omni-auth/main/components/config/test/clojure"
                "../../omni-auth/main/components/rama/test/clojure"
                "../../omni-auth/main/components/schema/test/clojure"
@@ -85,15 +84,15 @@
             :let [url (.. f toURI toURL)]]
       (doseq [loader loaders]
         (when (instance? clojure.lang.DynamicClassLoader loader)
-          (try (.addURL ^clojure.lang.DynamicClassLoader loader url) (catch Exception _ nil))))
-      (try (clojure.lang.RT/addURL url) (catch Exception _ nil)))))
+          (try (.addURL ^clojure.lang.DynamicClassLoader loader url) (catch Throwable _ nil))))
+      (try (clojure.lang.RT/addURL url) (catch Throwable _ nil)))))
 
 (def test-ns->file
   '{com.ozimos.workforce.org.resolvers-test "components/org-rama/test/clojure/com/ozimos/workforce/org/resolvers_test.clj"
     com.ozimos.workforce.org.ipc-test "components/org-rama/test/clojure/com/ozimos/workforce/org/ipc_test.clj"
-    com.ozimos.workforce.auth-api.oauth-integration-test "bases/auth-api/test/clojure/com/ozimos/workforce/auth_api/oauth_integration_test.clj"
-    com.ozimos.workforce.auth-api.saml-integration-test "bases/auth-api/test/clojure/com/ozimos/workforce/auth_api/saml_integration_test.clj"
-    com.ozimos.workforce.auth-api.integration-test "bases/auth-api/test/clojure/com/ozimos/workforce/auth_api/integration_test.clj"})
+    com.ozimos.workforce.web.oauth-integration-test "bases/web/test/clojure/com/ozimos/workforce/web/oauth_integration_test.clj"
+    com.ozimos.workforce.web.saml-integration-test "bases/web/test/clojure/com/ozimos/workforce/web/saml_integration_test.clj"
+    com.ozimos.workforce.web.integration-test "bases/web/test/clojure/com/ozimos/workforce/web/integration_test.clj"})
 
 (defn load-test-ns!
   "Load or reload a test namespace from classpath or fallback file."
@@ -113,9 +112,9 @@
   (require 'clojure.test)
   (let [ns-syms '[com.ozimos.workforce.org.resolvers-test
                   com.ozimos.workforce.org.ipc-test
-                  com.ozimos.workforce.auth-api.oauth-integration-test
-                  com.ozimos.workforce.auth-api.saml-integration-test
-                  com.ozimos.workforce.auth-api.integration-test]
+                  com.ozimos.workforce.web.oauth-integration-test
+                  com.ozimos.workforce.web.saml-integration-test
+                  com.ozimos.workforce.web.integration-test]
         results (reduce (fn [acc sym]
                           (try
                             (load-test-ns! sym)
@@ -130,6 +129,15 @@
     (println (str "Tests: " (:test results) ", Passes: " (:pass results) ", Failures: " (:fail results) ", Errors: " (:error results)))
     results))
 
+(defn test-all-cli
+  "Runs test-all for CLI/CI, halts the test system, and exits the JVM with 0 (success) or 1 (failure)."
+  []
+  (let [results (test-all)
+        stop-fn (resolve 'com.ozimos.workforce.web.test-system/stop-system)]
+    (when stop-fn (try (stop-fn) (catch Throwable _ nil)))
+    (let [failed? (or (pos? (:fail results 0)) (pos? (:error results 0)))]
+      (System/exit (if failed? 1 0)))))
+
 (defn test-ns
   "Reload and run tests for a single test namespace."
   [ns-sym]
@@ -143,9 +151,9 @@
    then halts and cleans it up, without affecting the running dev system."
   []
   (ensure-test-paths!)
-  (require 'clojure.test '[com.ozimos.workforce.auth-api.test-system :as ts])
-  (let [start-fn (resolve 'com.ozimos.workforce.auth-api.test-system/start-clean-test-sys!)
-        stop-fn  (resolve 'com.ozimos.workforce.auth-api.test-system/stop-clean-test-sys!)]
+  (require 'clojure.test '[com.ozimos.workforce.web.test-system :as ts])
+  (let [start-fn (resolve 'com.ozimos.workforce.web.test-system/start-clean-test-sys!)
+        stop-fn  (resolve 'com.ozimos.workforce.web.test-system/stop-clean-test-sys!)]
     (println "\n=== Starting Clean In-Memory Test System ===")
     (when start-fn (start-fn))
     (try
@@ -162,4 +170,4 @@
   (clear)      ;; Discard prepped config + system
   (test-all)   ;; Run all backend tests against running dev state (< 0.5s)
   (test-clean) ;; Run all backend tests against a fresh ephemeral test system (~1s)
-  (test-ns 'com.ozimos.workforce.auth-api.oauth-integration-test))
+  (test-ns 'com.ozimos.workforce.web.oauth-integration-test))

@@ -36,7 +36,8 @@
 
 (defsc JoinOrg [this _props]
   {:query [:invitations :loading :error-msg :accepting :accepted]
-   :initial-state {:invitations [] :loading true :error-msg nil :accepting nil :accepted false}}
+   :initial-state {:invitations [] :loading true :error-msg nil :accepting nil :accepted false}
+   :componentDidMount (fn [this] (load-invitations this))}
   (let [{:keys [invitations loading error-msg accepting accepted]} (comp/get-state this)]
     (div {:className "flex min-h-full flex-col justify-center px-6 py-12 lg:px-8"}
       (div {:className "sm:mx-auto sm:w-full sm:max-w-md"}

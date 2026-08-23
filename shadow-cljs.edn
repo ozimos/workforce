@@ -1,7 +1,7 @@
 {:source-paths ["components/frontend/src/cljs" "components/frontend/test/cljs"]
  :dependencies [[com.fulcrologic/fulcro "3.9.5"]]
  :builds {:app {:target :browser
-                :output-dir "bases/auth-api/resources/public/js"
+                :output-dir "bases/web/resources/public/js"
                 :compiler {:preloads [shadow.cljs.devtools.client.browser
                      com.fulcrologic.fulcro.inspect.preload]}
                 :devtools {:after-load com.ozimos.workforce.frontend.core/refresh}

@@ -1,14 +1,14 @@
-(ns com.ozimos.workforce.auth-api.saml-integration-test
+(ns com.ozimos.workforce.web.saml-integration-test
   (:require
    [clojure.test :refer [deftest is testing use-fixtures]]
-   [com.ozimos.workforce.auth-api.test-system :as ts]
    [com.ozimos.omni-auth.saml.interface :as saml]
-   [com.ozimos.omni-auth.user.interface :as user]))
+   [com.ozimos.omni-auth.user.interface :as user]
+   [com.ozimos.workforce.web.test-system :as ts]))
 
 (def ^:dynamic *sys* nil)
 
 (defn system-fixture [tests]
-  (ts/with-sys
+  (let [sys (ts/get-sys)]
     (binding [*sys* sys]
       (tests))))
 
@@ -53,8 +53,8 @@
 
       ;; SAML assertion with matching email
       (let [sub (str "saml-mfa-" (short-id))
-          saml-info {:name-id sub :email email :name "MFA SAML User"}
-          [ok? result] (saml/handle-saml-assertion sys saml-info)]
+            saml-info {:name-id sub :email email :name "MFA SAML User"}
+            [ok? result] (saml/handle-saml-assertion sys saml-info)]
         (is (true? ok?))
         (is (true? (:mfa-required result)))
         (is (string? (:mfa-token result)))))))

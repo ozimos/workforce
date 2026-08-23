@@ -27,7 +27,7 @@
  {:verification-mode #profile {:dev :soft :test :soft :prod :strict}
   :auto-verify-social true}
 
- :com.ozimos.workforce.auth-api.system/router
+ :com.ozimos.workforce.web.system/router
  {:rama #ig/ref :rama/cluster
   :token-encoder #ig/ref :token/encoder
   :token-decoder #ig/ref :token/decoder
@@ -36,8 +36,8 @@
 
  :adapter/jetty
  {:port #profile {:dev #or [#long #env JETTY_DEV_PORT 8080]
-                  :test #or [#long #env JETTY_TEST_PORT 8081]
+                  :test #or [#long #env JETTY_TEST_PORT 0]
                   :prod #or [#long #env JETTY_PROD_PORT 8080]}
   :host "0.0.0.0"
   :filter-chain-proxy #ig/ref :security/app-context
-  :handler #ig/ref :com.ozimos.workforce.auth-api.system/router}}
+  :handler #ig/ref :com.ozimos.workforce.web.system/router}}

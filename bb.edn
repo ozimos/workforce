@@ -107,8 +107,8 @@
                    (println "Usage: bb wt-new <branch-name> [target-dir]")
                    (let [target (or target-dir (str "../" branch))]
                      (shell "git" "worktree" "add" target branch))))
-  css          (shell "pnpm" "exec" "tailwindcss" "-i" "components/frontend/src/css/tailwind.css" "-o" "bases/auth-api/resources/public/css/app.css")
-  css-watch    (shell "pnpm" "exec" "tailwindcss" "-i" "components/frontend/src/css/tailwind.css" "-o" "bases/auth-api/resources/public/css/app.css" "--watch")
+  css          (shell "pnpm" "exec" "tailwindcss" "-i" "components/frontend/src/css/tailwind.css" "-o" "bases/web/resources/public/css/app.css")
+  css-watch    (shell "pnpm" "exec" "tailwindcss" "-i" "components/frontend/src/css/tailwind.css" "-o" "bases/web/resources/public/css/app.css" "--watch")
   fe           (shell "pnpm" "exec" "shadow-cljs" "compile" "app")
   fe-watch     (shell "pnpm" "exec" "shadow-cljs" "watch" "app")
   fe-ssr       (shell "pnpm" "exec" "shadow-cljs" "compile" "ssr")

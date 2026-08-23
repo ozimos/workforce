@@ -25,7 +25,7 @@
         :jvm-opts ["--enable-native-access=ALL-UNNAMED"]}
 
   :test {:extra-paths ["components/org-rama/test/clojure"
-                       "bases/auth-api/test/clojure"]
+                       "bases/web/test/clojure"]
          :extra-deps {org.clojure/test.check {:mvn/version "1.1.1"}
                       hato/hato {:mvn/version "1.0.0"}
                       metosin/jsonista {:mvn/version "0.3.14"}}}
@@ -47,11 +47,11 @@
                           com.ozimos.omni-auth/oauth           {:local/root "../../omni-auth/main/components/oauth"}
                           com.ozimos.omni-auth/saml            {:local/root "../../omni-auth/main/components/saml"}
                           poly/org-rama        {:local/root "components/org-rama"}
-                          poly/auth-api        {:local/root "bases/auth-api"}}
+                          poly/web             {:local/root "bases/web"}}
              :extra-paths ["development/src/clojure" "development/resources"
                            "target/classes"
                            "components/org-rama/test/clojure"
-                           "bases/auth-api/test/clojure"]}
+                           "bases/web/test/clojure"]}
 
   :poly {:main-opts ["-m" "polylith.clj.core.poly-cli.core"]
          :extra-deps {polylith/clj-poly {:mvn/version "0.3.32"}

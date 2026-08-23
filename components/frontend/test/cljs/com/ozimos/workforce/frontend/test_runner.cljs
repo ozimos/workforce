@@ -7,6 +7,6 @@
 
 (defn main []
   (run-tests
-   'com.ozimos.workforce.frontend.ui.components.nav-test
-   'com.ozimos.workforce.frontend.ui.pages.login-test
-   'com.ozimos.workforce.frontend.ui.pages.profile-test))
+    'com.ozimos.workforce.frontend.ui.components.nav-test
+    'com.ozimos.workforce.frontend.ui.pages.login-test
+    'com.ozimos.workforce.frontend.ui.pages.profile-test))

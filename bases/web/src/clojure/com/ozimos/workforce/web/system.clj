@@ -1,10 +1,7 @@
-(ns com.ozimos.workforce.auth-api.system
+(ns com.ozimos.workforce.web.system
   (:require
-   [com.ozimos.workforce.org.interface :as org]
    [com.ozimos.omni-auth.config.interface :as config]
    [com.ozimos.omni-auth.rama.interface :as rama]
-   [com.ozimos.omni-auth.security.interface :as security]
-   [com.ozimos.omni-auth.token.interface :as token]
    [integrant.core :as ig]
    [ring.adapter.jetty :as jetty])
   (:import
@@ -55,13 +52,13 @@
   (if (empty? routes-deps)
     stub-handler
     (do
-      (require 'com.ozimos.workforce.auth-api.routes)
-      ((ns-resolve (find-ns 'com.ozimos.workforce.auth-api.routes) 'app) routes-deps))))
+      (require 'com.ozimos.workforce.web.routes)
+      ((ns-resolve (find-ns 'com.ozimos.workforce.web.routes) 'app) routes-deps))))
 
 (defmethod ig/init-key :auth/policy [_ config]
   config)
 
-(defmethod ig/init-key :com.ozimos.workforce.auth-api.system/router
+(defmethod ig/init-key :com.ozimos.workforce.web.system/router
   [_ deps]
   (build-ring-handler deps))
 

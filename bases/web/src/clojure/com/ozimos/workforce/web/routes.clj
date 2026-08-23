@@ -1,8 +1,8 @@
-(ns com.ozimos.workforce.auth-api.routes
+(ns com.ozimos.workforce.web.routes
   (:require
    [clojure.java.io :as io]
-   [com.ozimos.workforce.auth-api.handlers :as handlers]
    [com.ozimos.omni-auth.schema.interface.registration :as reg-schema]
+   [com.ozimos.workforce.web.handlers :as handlers]
    [muuntaja.core :as m]
    [reitit.coercion.malli :as rcm]
    [reitit.ring :as ring]

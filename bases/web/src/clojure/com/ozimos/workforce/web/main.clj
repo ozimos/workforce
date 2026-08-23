@@ -1,6 +1,6 @@
-(ns com.ozimos.workforce.auth-api.main
+(ns com.ozimos.workforce.web.main
   (:require
-   [com.ozimos.workforce.auth-api.system :as system]
+   [com.ozimos.workforce.web.system :as system]
    [integrant.core :as ig])
   (:gen-class))
 

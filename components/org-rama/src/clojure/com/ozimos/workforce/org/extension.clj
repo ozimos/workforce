@@ -1,12 +1,18 @@
 (ns com.ozimos.workforce.org.extension
-  (:use [com.rpl.rama]
-        [com.rpl.rama.path])
   (:require
-   [com.ozimos.workforce.org.records]
    [com.ozimos.omni-auth.rama.extension :as ext]
+   [com.ozimos.workforce.org.records]
+   [com.rpl.rama :refer :all]
+   [com.rpl.rama.path :refer :all]
    [integrant.core :as ig])
   (:import
-   [com.rpl.rama.helpers ModuleUniqueIdPState]))
+   (com.rpl.rama.helpers ModuleUniqueIdPState)))
+
+(declare
+  *org-create-depot *org-invite-depot *org-join-depot *org-switch-depot
+  *org-member-update-depot *org-member-remove-depot
+  $$orgs $$org-name->id $$org-create-ids $$memberships $$user-orgs $$org-users
+  $$user-active-org $$invitations $$org-invitations $$email->invitations $$org-members)
 
 (defrecord OrgExtension []
   ext/RamaModuleExtension
@@ -34,44 +40,45 @@
                                                     :status String
                                                     :joined-at Long
                                                     :invited-by Long})}})
-    ;; Org -> {user-id {role, status, joined-at, invited-by}}
-    (declare-pstate s $$org-members
-                    {Long {Long (fixed-keys-schema {:role String
-                                                    :status String
-                                                    :joined-at Long
-                                                    :invited-by Long})}})
-    ;; User -> active org-id
-    (declare-pstate s $$user-active-org {Long Long})
-    ;; User -> set of org-ids (for fast listing)
+    ;; User organizations: user-id -> #{org-id}
     (declare-pstate s $$user-orgs
                     {Long (set-schema Long {:subindex? true})})
-    ;; Org -> set of user-ids (for fast listing, includes pending)
+    ;; Org users: org-id -> #{user-id}
     (declare-pstate s $$org-users
                     {Long (set-schema Long {:subindex? true})})
-    ;; Invitations: invitation-id -> {org-id, email, role, invited-by, status, created-at, expires-at}
+    ;; User active org: user-id -> org-id
+    (declare-pstate s $$user-active-org
+                    {Long Long})
+    ;; Invitations: invitation-id -> {org-id, email, role, invited-by, created-at, expires-at, status}
     (declare-pstate s $$invitations
                     {String (fixed-keys-schema {:org-id Long
                                                 :email String
                                                 :role String
                                                 :invited-by Long
-                                                :status String
                                                 :created-at Long
-                                                :expires-at Long})})
-    ;; Invitation by email: email -> set of invitation-ids
+                                                :expires-at Long
+                                                :status String})})
+    ;; Org pending invitations: org-id -> #{invitation-id}
+    (declare-pstate s $$org-invitations
+                    {Long (set-schema String {:subindex? true})})
+    ;; Email pending invitations: email -> #{invitation-id}
     (declare-pstate s $$email->invitations
                     {String (set-schema String {:subindex? true})})
-    ;; Org -> set of pending invitation-ids
-    (declare-pstate s $$org-invitations
-                    {Long (set-schema String {:subindex? true})}))
+    ;; Org -> {user-id {role, status, joined-at, invited-by}}
+    (declare-pstate s $$org-members
+                    {Long {Long (fixed-keys-schema {:role String
+                                                    :status String
+                                                    :joined-at Long
+                                                    :invited-by Long})}}))
 
   (build-topology [_ s]
     (let [id-gen (ModuleUniqueIdPState. "$$org-id-gen")]
       (.declarePState id-gen s)
+      #_{:clj-kondo/ignore [:unused-binding]}
       (<<sources s
                  ;; Organization creation
                  (source> *org-create-depot :> {:keys [*uuid *name *owner-user-id *created-at]})
                  (local-select> (keypath *name) $$org-name->id :> *existing-org-id)
-                 (local-select> (keypath *uuid) $$org-create-ids :> *existing-create-uuid)
                  (<<if (nil? *existing-org-id)
                        (java-macro! (.genId id-gen "*org-id"))
                        (|hash *name)
@@ -115,13 +122,13 @@
                  (source> *org-invite-depot :> {:keys [*invitation-id *org-id *email *role *invited-by *created-at *expires-at]})
                  (|hash *invitation-id)
                  (local-transform> [(keypath *invitation-id)
-                                     (multi-path [:org-id (termval *org-id)]
-                                                 [:email (termval *email)]
-                                                 [:role (termval *role)]
-                                                 [:invited-by (termval *invited-by)]
-                                                 [:status (termval "PENDING")]
-                                                 [:created-at (termval *created-at)]
-                                                 [:expires-at (termval *expires-at)])]
+                                    (multi-path [:org-id (termval *org-id)]
+                                                [:email (termval *email)]
+                                                [:role (termval *role)]
+                                                [:invited-by (termval *invited-by)]
+                                                [:status (termval "PENDING")]
+                                                [:created-at (termval *created-at)]
+                                                [:expires-at (termval *expires-at)])]
                                    $$invitations)
                  ;; Index by email and org for fast lookup
                  (|hash *email)

@@ -53,7 +53,7 @@
   {:query [:new-username :error-msg :success-msg :loading :mfa-stage :mfa-secret :mfa-qr-url :mfa-backup-codes :totp-code]
    :initial-state {:new-username "" :error-msg nil :success-msg nil :loading false
                    :mfa-stage :disabled :mfa-secret nil :mfa-qr-url nil :mfa-backup-codes [] :totp-code ""}}
-  (let [{:keys [new-username error-msg success-msg loading mfa-stage mfa-secret mfa-qr-url mfa-backup-codes totp-code]} (comp/get-state this)
+  (let [{:keys [new-username error-msg success-msg loading mfa-stage mfa-secret mfa-backup-codes totp-code]} (comp/get-state this)
         current-username (and (exists? js/localStorage) (.getItem js/localStorage "username"))
         mfa-enabled? (and (exists? js/localStorage) (= "true" (.getItem js/localStorage "mfa-enabled")))]
     (div {:className "flex min-h-full flex-col justify-center px-6 py-12 lg:px-8"}

@@ -1,9 +1,8 @@
-(ns com.ozimos.workforce.auth-api.test-system
+(ns com.ozimos.workforce.web.test-system
   (:require
-   [com.ozimos.workforce.org.interface :as org]
-   [com.ozimos.workforce.auth-api.system]
    [com.ozimos.omni-auth.config.interface :as config]
    [com.ozimos.omni-auth.rama.core :as rama-core]
+   [com.ozimos.workforce.web.system]
    [integrant.core :as ig]
    [integrant.repl.state :as irs]))
 
@@ -29,10 +28,11 @@
   "Halts the clean test IPC cluster and clears test-sys-atom."
   []
   (when-let [test-sys @test-sys-atom]
-    (when-let [clean-ipc (select-keys test-sys [:rama/cluster])]
-      (try
-        (ig/halt! clean-ipc)
-        (catch Exception _ nil)))
+    (let [clean-ipc (select-keys test-sys [:rama/cluster])]
+      (when (seq clean-ipc)
+        (try
+          (ig/halt! clean-ipc)
+          (catch Exception _ nil))))
     (rama-core/clear-ipc!)
     (reset! test-sys-atom nil)))
 

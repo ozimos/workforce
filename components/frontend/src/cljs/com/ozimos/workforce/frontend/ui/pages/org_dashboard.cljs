@@ -16,7 +16,7 @@
         (.catch (fn [_]
                   (comp/set-state! this {:members-error "Failed to load members" :members-loading false}))))))
 
-(defn- switch-org [this org-id]
+(defn- switch-org [_this org-id]
   (let [mut  (list 'org/switch {:org/id org-id})
         query [{mut [:org/id]}]]
     (-> (transit/fetch-transit "/api/query" query)
@@ -50,7 +50,7 @@
    :initial-state {:loading true :error-msg nil :active-org nil :orgs []
                    :members [] :members-loading false :members-error nil
                    :invite-email "" :invite-role "MEMBER" :invite-loading false :invite-msg nil}}
-  (let [{:keys [loading error-msg active-org orgs members members-loading members-error
+  (let [{:keys [loading active-org orgs members members-loading members-error
                 invite-email invite-role invite-loading invite-msg]} (comp/get-state this)]
     (div {:className "mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8"}
       (div {:key "header" :className "border-b border-gray-200 pb-6"}

@@ -1,9 +1,7 @@
 (ns com.ozimos.workforce.frontend.ssr
   (:require
-   [clojure.string :as str]
    [com.fulcrologic.fulcro.application :as app]
    [com.fulcrologic.fulcro.components :as comp]
-   [com.fulcrologic.fulcro.dom :as dom :refer [div p]]
    [com.ozimos.workforce.frontend.ui.root :as root]))
 
 (def React (js/require "react"))
