@@ -95,6 +95,62 @@
         (get-in local [:shadow-cljs :http-port])
         9630)))
 
+(defn resolve-ssr-port
+  "Resolve SSR server port. Checked in order:
+   - SSR_PORT environment variable
+   - deps.local.edn (:ssr-server :port, :ssr/port, :ssr-port)
+   - default 3000"
+  ([] (resolve-ssr-port (read-deps-local)))
+  ([local]
+   (or (when-let [p (System/getenv "SSR_PORT")]
+         (try (parse-long p) (catch Exception _ nil)))
+       (when local
+         (or (get-in local [:ssr-server :port])
+             (get local :ssr/port)
+             (get local :ssr-port)))
+       3000)))
+
+(defn find-pids-on-port
+  "Find PIDs of processes listening on the given TCP port."
+  [port]
+  (try
+    (let [res (shell/sh "lsof" "-ti" (str "tcp:" port) "-sTCP:LISTEN")]
+      (when (zero? (:exit res))
+        (->> (str/split-lines (:out res))
+             (map str/trim)
+             (filter seq)
+             (map parse-long)
+             (filter some?))))
+    (catch Exception _ nil)))
+
+(defn kill-port!
+  "Kill any process listening on the given TCP port."
+  [port]
+  (when-let [pids (seq (find-pids-on-port port))]
+    (log/info (str "Terminating stale process(es) on port " port " (PID: " (str/join ", " pids) ")..."))
+    (doseq [pid pids]
+      (try (shell/sh "kill" "-15" (str pid))
+           (catch Exception _ nil)))
+    (Thread/sleep 300)
+    (when-let [remaining (seq (find-pids-on-port port))]
+      (doseq [pid remaining]
+        (try (shell/sh "kill" "-9" (str pid))
+             (catch Exception _ nil)))
+      (Thread/sleep 200))))
+
+(defn register-ssr-shutdown-hook!
+  "Add JVM/Babashka shutdown hook to terminate any process listening on the SSR port when launchpad exits."
+  [ctx]
+  (let [local (read-deps-local)]
+    (when (and local (get-in local [:ssr-server :enabled]))
+      (let [ssr-port (resolve-ssr-port local)]
+        (.addShutdownHook
+          (Runtime/getRuntime)
+          (Thread.
+            (fn []
+              (kill-port! ssr-port))))))
+    ctx))
+
 (defn start-ssr-server
   "If deps.local.edn has :ssr-server :enabled, spawn the Node SSR server
    (ssr-server/server.js) as a launchpad-managed background process so it
@@ -105,15 +161,22 @@
     (if (and (.exists local-file)
              (.exists ssr-dir)
              (get-in (read-string (slurp local-file)) [:ssr-server :enabled]))
-      (let [jetty-port (or (get-in ctx [:env "JETTY_DEV_PORT"])
-                           (get-in (read-string (slurp local-file)) [:jetty/port :dev])
+      (let [local      (read-deps-local)
+            ssr-port   (resolve-ssr-port local)
+            jetty-port (or (get-in ctx [:env "JETTY_DEV_PORT"])
+                           (get-in local [:jetty/port :dev])
                            "8080")
             api-target (str "http://localhost:" jetty-port)]
-        (log/info "Starting Node SSR server (ssr-server/server.js)...")
+        ;; Ensure any stale process on the SSR port is killed before spawning
+        (kill-port! ssr-port)
+        (log/info (str "Starting Node SSR server on port " ssr-port " (ssr-server/server.js)..."))
         ((lambdaisland.launchpad/run-process
           {:cmd         ["node" "server.js"]
            :working-dir "ssr-server"
-           :env         (assoc (:env ctx) "API_TARGET" api-target "JETTY_DEV_PORT" (str jetty-port))
+           :env         (assoc (:env ctx)
+                               "API_TARGET" api-target
+                               "JETTY_DEV_PORT" (str jetty-port)
+                               "SSR_PORT" (str ssr-port))
            :background? true
            :prefix      "ssr-server"})
          ctx))
@@ -156,6 +219,7 @@
  {:steps
   (into [(partial ensure-java-min-version 21)
          resolve-nrepl-port
+         register-ssr-shutdown-hook!
          start-frontend-watcher
          auto-start-system
          resolve-jetty-ports]

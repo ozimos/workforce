@@ -47,8 +47,37 @@
                        (shell {:continue true} "clj-kondo" "--copy-configs" "--lint" cp "--skip-warnings"))
   fmt-check    (shell {:continue true} "standard-clj" "check" "bases" "components" "projects" "development/src/clojure")
   fmt-fix      (shell {:continue true} "standard-clj" "fix" "bases" "components" "projects" "development/src/clojure")
+  ssr-kill     {:doc "Detect SSR port (from env SSR_PORT, deps.local.edn, or 3000) and kill listening process."
+                :task (let [local (try (read-string (slurp "deps.local.edn")) (catch Exception _ nil))
+                            port (or (when-let [p (System/getenv "SSR_PORT")]
+                                       (try (parse-long p) (catch Exception _ nil)))
+                                     (when local
+                                       (or (get-in local [:ssr-server :port])
+                                           (get local :ssr/port)
+                                           (get local :ssr-port)))
+                                     3000)
+                            res (p/shell {:out :string :err :string :continue true}
+                                         "lsof" "-ti" (str "tcp:" port) "-sTCP:LISTEN")
+                            pids (->> (str/split-lines (:out res))
+                                      (map str/trim)
+                                      (filter seq))]
+                        (if (seq pids)
+                          (do (println (str "Terminating process(es) listening on SSR port " port " (PID: " (str/join ", " pids) ")..."))
+                              (doseq [pid pids]
+                                (p/shell {:continue true} "kill" "-15" pid))
+                              (Thread/sleep 300)
+                              (let [res2 (p/shell {:out :string :continue true} "lsof" "-ti" (str "tcp:" port) "-sTCP:LISTEN")
+                                    rem (->> (str/split-lines (:out res2)) (map str/trim) (filter seq))]
+                                (when (seq rem)
+                                  (doseq [pid rem]
+                                    (p/shell {:continue true} "kill" "-9" pid))))
+                              (println (str "SSR port " port " is now free.")))
+                          (println (str "No active process found listening on SSR port " port "."))))}
+  kill-ssr     {:doc "Alias for ssr-kill."
+                :task (ssr-kill)}
   repl         {:override-builtin true
                 :task (let [args (or (seq *command-line-args*) ["+default" "dev" "+rama" "test"])]
+                        (ssr-kill)
                         (apply shell "bin/launchpad" args))}
   test         (run-jvm-tests *command-line-args*)
   test-fast    (run-in-repl-or-fallback
