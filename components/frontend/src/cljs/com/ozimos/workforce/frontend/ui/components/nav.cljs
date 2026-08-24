@@ -107,12 +107,14 @@
       (nav {:className "bg-white shadow-sm border-b border-gray-200"}
         (div {:className "mx-auto max-w-7xl px-4 sm:px-6 lg:px-8"}
           (div {:className "flex h-16 justify-between"}
-            (div {:className "flex items-center gap-6"}
-              (a {:href "/" :className "text-xl font-bold text-gray-900"} "Best Auth")
+            (div {:className "flex items-center gap-5"}
+              (a {:href "/" :className "text-xl font-bold text-gray-900"} "Workforce")
               (org-switcher this active-org orgs dropdown-open)
-              (a {:href "/org-dashboard" :className "text-sm font-medium text-gray-600 hover:text-indigo-600"} "Dashboard")
-              (a {:href "/create-org" :className "text-sm font-medium text-gray-600 hover:text-indigo-600"} "Create Org")
-              (a {:href "/join-org" :className "text-sm font-medium text-gray-600 hover:text-indigo-600"} "Join Org"))
+              (a {:href "/org-chart" :className "text-sm font-medium text-gray-600 hover:text-indigo-600"} "Org Chart")
+              (a {:href "/dept-dashboard" :className "text-sm font-medium text-gray-600 hover:text-indigo-600"} "Analytics")
+              (a {:href "/headcount" :className "text-sm font-medium text-gray-600 hover:text-indigo-600"} "Headcount")
+              (a {:href "/policies" :className "text-sm font-medium text-gray-600 hover:text-indigo-600"} "Policies")
+              (a {:href "/org-dashboard" :className "text-sm font-medium text-gray-600 hover:text-indigo-600"} "Members"))
             (div {:className "flex items-center gap-4"}
               (a {:href "/profile" :className "flex items-center gap-2 text-sm font-semibold text-indigo-600 hover:text-indigo-500"}
                 (dom/svg {:xmlns "http://www.w3.org/2000/svg"

@@ -208,7 +208,7 @@
         {:status 200 :body {:message "Password updated successfully"}}))))
 
 (defn query
-  [{:keys [body-params system] :as request}]
+  [{:keys [body-params system idempotency-key] :as request}]
   (let [{:keys [token-decoder]} system
         query-data (cond
                      (vector? body-params) body-params
@@ -223,19 +223,42 @@
                               :current-user (assoc auth-user :id (:user-id auth-user))
                               :active-org-id active-org-id
                               :active-org-role active-org-role})
-        env (pathom/build-env system auth (or (:org-resolvers system) (:extra-resolvers system)))]
+        base-env (pathom/build-env system auth (or (:org-resolvers system) (:extra-resolvers system)))
+        env (assoc base-env
+                   :request request
+                   :idempotency-key idempotency-key)]
     (try
       (let [result (pathom/process env query-data)]
         {:status 200 :body {:ok true :data result}})
       (catch clojure.lang.ExceptionInfo e
-        (let [error-type (some #(-> % ex-data :type)
-                               (take-while some? (iterate #(.getCause ^Throwable %) e)))]
+        (let [data (ex-data e)
+              error-type (or (:type data)
+                             (some #(-> % ex-data :type)
+                                   (take-while some? (iterate #(.getCause ^Throwable %) e))))]
           (case error-type
-            :unauthenticated {:status 401 :body {:ok false :errors {:auth ["Not authenticated"]}}}
-            :forbidden {:status 403 :body {:ok false :errors {:auth ["Not authorized"]}}}
-            {:status 400 :body {:ok false :errors {:query [(.getMessage e)]}}})))
+            :unauthenticated {:status 401 :body {:ok false
+                                                 :error (org/make-error :unauthorized "Not authenticated")
+                                                 :errors {:auth ["Not authenticated"]}}}
+            :forbidden {:status 403 :body {:ok false
+                                           :error (org/make-error :unauthorized "Not authorized")
+                                           :errors {:auth ["Not authorized"]}}}
+            {:status 400 :body {:ok false
+                                :error (org/make-error :bad_request (.getMessage e) data)
+                                :errors {:query [(.getMessage e)]}}})))
       (catch Exception e
-        {:status 400 :body {:ok false :errors {:query [(.getMessage e)]}}}))))
+        {:status 400 :body {:ok false
+                            :error (org/make-error :bad_request (.getMessage e))
+                            :errors {:query [(.getMessage e)]}}}))))
+
+(defn mcp-handler
+  [{:keys [body-params body system idempotency-key] :as request}]
+  (let [auth-user (get-auth-user request (:token-decoder system))
+        ctx {:user-id (:user-id auth-user)
+             :roles (:roles auth-user)
+             :idempotency-key idempotency-key}
+        req-data (or body-params body {})
+        response (org/handle-mcp-request system ctx req-data)]
+    {:status 200 :body response}))
 
 (defn mfa-setup
   [{:keys [system] :as request}]

@@ -620,3 +620,37 @@
           (is (not= backup-codes new-codes))
           (let [status-resp3 (get-edn "/api/auth/mfa/backup-codes" (auth-header token))]
             (is (= 10 (get-in status-resp3 [:body :remaining])))))))))
+
+(deftest ^:integration eql-endpoint-and-idempotency-http-test
+  (testing "Pathom 3 /api/eql endpoint: queries, mutations, idempotency-key header, and structured errors"
+    (let [user (random-user)
+          _ (post-edn "/api/auth/register" user)
+          login-resp (post-edn "/api/auth/login" {:identifier (:username user) :password (:password user)})
+          token (get-in login-resp [:body :access-token])]
+      (is (string? token))
+
+      (testing "Step 1: Unauthenticated request to /api/eql returns 401 with structured error"
+        (let [unauth-resp (post-edn "/api/eql" {:eql [{:user/orgs [:org/id]}]})]
+          (is (= 401 (:status unauth-resp)))
+          (is (= false (get-in unauth-resp [:body :ok])))
+          (is (= :unauthorized (get-in unauth-resp [:body :error :error-code])))))
+
+      (testing "Step 2: Authenticated EQL query to /api/eql returns 200 with data"
+        (let [query-resp (post-edn "/api/eql" {:eql [{:user/orgs [:org/id :org/name]}]} (auth-header token))
+              body (:body query-resp)]
+          (is (= 200 (:status query-resp)))
+          (is (= true (:ok body)))
+          (is (vector? (get-in body [:data :user/orgs])))))
+
+      (testing "Step 3: Authenticated EQL mutation with Idempotency-Key header"
+        (let [org-name (str "HttpEqlOrg-" (short-suffix))
+              mut-resp (post-edn "/api/eql"
+                                 {:eql [(list 'org/create {:org/name org-name})]}
+                                 (merge (auth-header token)
+                                        {"idempotency-key" (str "idem-http-" (short-suffix))}))
+              body (:body mut-resp)]
+          (is (= 200 (:status mut-resp)))
+          (is (= true (:ok body)))
+          (let [org-data (first (vals (get body :data)))]
+            (is (some? (:org/id org-data)))
+            (is (= "ADMIN" (:org/role org-data)))))))))

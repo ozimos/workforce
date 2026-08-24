@@ -2,6 +2,8 @@
   (:require
    [com.ozimos.omni-auth.config.interface :as config]
    [com.ozimos.omni-auth.rama.interface :as rama]
+   [com.ozimos.omni-auth.token.interface]
+   [com.ozimos.workforce.org.interface]
    [integrant.core :as ig]
    [ring.adapter.jetty :as jetty])
   (:import

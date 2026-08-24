@@ -1,8 +1,10 @@
 (ns com.ozimos.workforce.org.interface
   (:require
    [com.ozimos.workforce.org.core :as core]
+   [com.ozimos.workforce.org.errors :as errors]
    [com.ozimos.workforce.org.extension]
-   [com.ozimos.workforce.org.resolvers]))
+   [com.ozimos.workforce.org.resolvers]
+   [com.ozimos.workforce.org.tools.mcp :as mcp]))
 
 (defn create-org!
   "Create a new organization. The creating user becomes the ADMIN.
@@ -72,3 +74,93 @@
    Returns {:role :status :joined-at} or nil."
   [deps user-id org-id]
   (core/get-membership deps user-id org-id))
+
+;; --- Org Unit Management ---
+
+(defn create-org-unit! [deps input]
+  (core/create-org-unit! deps input))
+
+(defn reparent-org-unit! [deps input]
+  (core/reparent-org-unit! deps input))
+
+(defn set-org-unit-budget! [deps input]
+  (core/set-org-unit-budget! deps input))
+
+(defn get-org-unit [deps unit-id]
+  (core/get-org-unit deps unit-id))
+
+(defn get-org-hierarchy
+  ([deps]
+   (core/get-org-hierarchy deps))
+  ([deps parent-id]
+   (core/get-org-hierarchy deps parent-id)))
+
+(defn get-org-children [deps parent-id]
+  (core/get-org-children deps parent-id))
+
+(defn get-unit-headcount-stats [deps unit-id]
+  (core/get-unit-headcount-stats deps unit-id))
+
+;; --- Headcount Requisitions ---
+
+(defn create-headcount-request! [deps input]
+  (core/create-headcount-request! deps input))
+
+(defn approve-headcount-step! [deps input]
+  (core/approve-headcount-step! deps input))
+
+(defn reject-headcount-request! [deps input]
+  (core/reject-headcount-request! deps input))
+
+(defn edit-headcount-field! [deps input]
+  (core/edit-headcount-field! deps input))
+
+(defn transition-headcount-to-hire! [deps input]
+  (core/transition-headcount-to-hire! deps input))
+
+(defn get-headcount-request [deps request-id]
+  (core/get-headcount-request deps request-id))
+
+(defn get-user-pending-approvals [deps user-id]
+  (core/get-user-pending-approvals deps user-id))
+
+(defn get-request-timeline [deps request-id]
+  (core/get-request-timeline deps request-id))
+
+;; --- Scoped Actors & Policies ---
+
+(defn assign-org-actor! [deps input]
+  (core/assign-org-actor! deps input))
+
+(defn remove-org-actor! [deps input]
+  (core/remove-org-actor! deps input))
+
+(defn set-approval-rules! [deps org-id rules]
+  (core/set-approval-rules! deps org-id rules))
+
+(defn get-approval-rules [deps org-id]
+  (core/get-approval-rules deps org-id))
+
+(defn set-role-permissions! [deps org-id role permissions]
+  (core/set-role-permissions! deps org-id role permissions))
+
+(defn get-role-permissions [deps org-id]
+  (core/get-role-permissions deps org-id))
+
+(defn get-unit-actors [deps unit-id]
+  (core/get-unit-actors deps unit-id))
+
+(defn get-approval-sla-latencies [deps unit-id]
+  (core/get-approval-sla-latencies deps unit-id))
+
+(defn make-error
+  ([error-code message]
+   (errors/make-error error-code message nil))
+  ([error-code message details]
+   (errors/make-error error-code message details)))
+
+(defn valid-error? [err]
+  (errors/valid-error? err))
+
+(defn handle-mcp-request [deps ctx request-body]
+  (mcp/handle-mcp-request deps ctx request-body))

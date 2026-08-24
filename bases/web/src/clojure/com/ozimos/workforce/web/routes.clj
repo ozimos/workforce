@@ -4,6 +4,7 @@
    [com.ozimos.omni-auth.schema.interface.registration :as reg-schema]
    [com.ozimos.omni-auth.security.interface :as security]
    [com.ozimos.workforce.web.handlers :as handlers]
+   [com.ozimos.workforce.web.middleware :as middleware]
    [muuntaja.core :as m]
    [reitit.coercion.malli :as rcm]
    [reitit.ring :as ring]
@@ -118,12 +119,19 @@
       ["/query"
        {:post {:summary "Pathom query endpoint (app logic)"
                :handler handlers/query}}]
+      ["/eql"
+       {:post {:summary "Pathom 3 EQL batched query/mutation endpoint"
+               :handler handlers/query}}]
+      ["/mcp"
+       {:post {:summary "Model Context Protocol endpoint"
+               :handler handlers/mcp-handler}}]
       ["/health"
        {:get {:summary "Health check"
               :handler handlers/health}}]]]
     {:data {:muuntaja m/instance
             :coercion rcm/coercion
             :middleware [(wrap-inject-system deps)
+                         middleware/wrap-idempotency-key
                          parameters/parameters-middleware
                          muuntaja/format-negotiate-middleware
                          muuntaja/format-response-middleware

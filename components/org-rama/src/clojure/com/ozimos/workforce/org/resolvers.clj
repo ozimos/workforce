@@ -2,13 +2,23 @@
   (:require
    [com.ozimos.omni-auth.user.interface :as user]
    [com.ozimos.workforce.org.core :as org]
+   [com.ozimos.workforce.org.errors :as errors]
+   [com.ozimos.workforce.org.rbac :as rbac]
+   [com.ozimos.workforce.org.rule-engine :as re]
    [com.wsscode.pathom3.connect.operation :as pco]
    [integrant.core :as ig]))
+
+;; -----------------------------------------------------------------------------
+;; Authentication & Context Helpers
+;; -----------------------------------------------------------------------------
 
 (defn- authenticated-user-id
   "Extract the authenticated user-id from the Pathom env."
   [env]
-  (get-in env [:auth :user-id]))
+  (or (get-in env [:auth :user-id])
+      (get-in env [:auth :id])
+      (get-in env [:request :identity :user-id])
+      (get-in env [:request :identity :id])))
 
 (defn- require-auth
   "Returns user-id if authenticated, throws otherwise."
@@ -30,6 +40,22 @@
               (not= (:role membership) "ADMIN"))
       (throw (ex-info "Not authorized: admin role required" {:type :forbidden})))
     user-id))
+
+(defn- get-viewer-context
+  "Constructs viewer context map {:user-id ... :role ... :unit-id ...} for RBAC evaluation."
+  [env store org-id]
+  (let [user-id (authenticated-user-id env)
+        membership (when (and user-id org-id) (org/get-membership store user-id org-id))
+        raw-role (or (:role membership) "employee")
+        role-kw (keyword (clojure.string/lower-case (str raw-role)))]
+    {:user-id user-id
+     :role role-kw
+     :org-id org-id
+     :unit-id (:unit-id membership)}))
+
+;; -----------------------------------------------------------------------------
+;; Organization & Membership Resolvers
+;; -----------------------------------------------------------------------------
 
 (pco/defresolver user-orgs-resolver
   "Resolve organizations for the current user."
@@ -106,6 +132,195 @@
        :org/name (:name o)
        :org/owner-id (:owner-user-id o)
        :org/created-at (:created-at o)})))
+
+;; -----------------------------------------------------------------------------
+;; Org Units & Hierarchy Resolvers
+;; -----------------------------------------------------------------------------
+
+(pco/defresolver org-chart-resolver
+  "Resolve full organization chart hierarchy and department trees."
+  [{:keys [deps] :as env} params]
+  {::pco/input [:org/id]
+   ::pco/output [{:org/chart [:org/id :org/hierarchy]}]}
+  (let [user-id (require-auth env)
+        store (get-store deps)
+        org-id (:org/id params)]
+    (when (nil? (org/get-membership store user-id org-id))
+      (throw (ex-info "Not a member of this org" {:type :forbidden})))
+    (let [hierarchy (org/get-org-hierarchy store)]
+      {:org/chart
+       {:org/id org-id
+        :org/hierarchy hierarchy}})))
+
+(pco/defresolver dept-dashboard-resolver
+  "Resolve department analytics dashboard: budget, filled, open, pending, avg SLA."
+  [{:keys [deps] :as _env} params]
+  {::pco/input [:unit/id]
+   ::pco/output [{:dept/dashboard [:unit/id :unit/budget :unit/filled :unit/open
+                                   :unit/pending :unit/avg-sla-ms :unit/actors]}]}
+  (let [store (get-store deps)
+        unit-id (:unit/id params)
+        stats (or (org/get-unit-headcount-stats store unit-id)
+                  {:budget 0 :filled 0 :open 0 :pending 0})
+        sla-list (org/get-approval-sla-latencies store unit-id)
+        avg-sla (if (seq sla-list) (quot (reduce + sla-list) (count sla-list)) 0)
+        actors (org/get-unit-actors store unit-id)]
+    {:dept/dashboard
+     {:unit/id unit-id
+      :unit/budget (:budget stats 0)
+      :unit/filled (:filled stats 0)
+      :unit/open (:open stats 0)
+      :unit/pending (:pending stats 0)
+      :unit/avg-sla-ms avg-sla
+      :unit/actors actors}}))
+
+;; -----------------------------------------------------------------------------
+;; Headcount Requisitions & Timeline Resolvers
+;; -----------------------------------------------------------------------------
+
+(pco/defresolver user-pending-approvals-resolver
+  "Resolve all headcount requests awaiting approval by current user."
+  [env _params]
+  {::pco/output [{:user/pending-approvals [:headcount/id :headcount/title :headcount/unit-id
+                                          :headcount/job-level :headcount/status :headcount/current-step]}]}
+  (let [user-id (require-auth env)
+        store (get-store (:deps env))
+        req-ids (org/get-user-pending-approvals store user-id)
+        reqs (->> req-ids
+                  (mapv (fn [rid]
+                          (when-let [req (org/get-headcount-request store rid)]
+                            {:headcount/id rid
+                             :headcount/title (:title req)
+                             :headcount/unit-id (:unit-id req)
+                             :headcount/job-level (:job-level req)
+                             :headcount/status (:status req)
+                             :headcount/current-step (:current-step req)})))
+                  (filterv some?))]
+    {:user/pending-approvals reqs}))
+
+(pco/defresolver headcount-request-resolver
+  "Resolve single headcount requisition with RBAC visibility and field masking."
+  [{:keys [deps] :as env} params]
+  {::pco/input [:headcount/id]
+   ::pco/output [:headcount/id :headcount/title :headcount/org-id :headcount/unit-id
+                 :headcount/division-id :headcount/dept-id :headcount/location
+                 :headcount/job-level :headcount/employee-type :headcount/requester-id
+                 :headcount/justification :headcount/job-description :headcount/salary-band
+                 :headcount/bonus-target :headcount/status :headcount/current-step
+                 :headcount/current-approver-id :headcount/chain-snapshot :headcount/approved-by
+                 :headcount/created-at]}
+  (let [user-id (require-auth env)
+        store (get-store deps)
+        req-id (:headcount/id params)
+        raw-req (org/get-headcount-request store req-id)]
+    (when raw-req
+      (let [org-id (:org-id raw-req)
+            viewer (get-viewer-context env store org-id)
+            hierarchy (org/get-org-hierarchy store)
+            role-perms (org/get-role-permissions store org-id)
+            masked-req (rbac/eval-headcount-visibility viewer raw-req hierarchy role-perms)]
+        (when masked-req
+          {:headcount/id (:request-id masked-req)
+           :headcount/title (:title masked-req)
+           :headcount/org-id (:org-id masked-req)
+           :headcount/unit-id (:unit-id masked-req)
+           :headcount/division-id (:division-id masked-req)
+           :headcount/dept-id (:dept-id masked-req)
+           :headcount/location (:location masked-req)
+           :headcount/job-level (:job-level masked-req)
+           :headcount/employee-type (:employee-type masked-req)
+           :headcount/requester-id (:requester-id masked-req)
+           :headcount/justification (:justification masked-req)
+           :headcount/job-description (:job-description masked-req)
+           :headcount/salary-band (:salary-band masked-req)
+           :headcount/bonus-target (:bonus-target masked-req)
+           :headcount/status (:status masked-req)
+           :headcount/current-step (:current-step masked-req)
+           :headcount/current-approver-id (:current-approver-id masked-req)
+           :headcount/chain-snapshot (:chain-snapshot masked-req)
+           :headcount/approved-by (:approved-by masked-req)
+           :headcount/created-at (:created-at masked-req)})))))
+
+(pco/defresolver headcount-timeline-resolver
+  "Resolve audit event timeline for a headcount requisition."
+  [{:keys [deps] :as _env} params]
+  {::pco/input [:headcount/id]
+   ::pco/output [{:headcount/timeline [:event :actor :timestamp :step :reason :field :new-value]}]}
+  (let [store (get-store deps)
+        req-id (:headcount/id params)
+        timeline (org/get-request-timeline store req-id)]
+    {:headcount/timeline timeline}))
+
+(pco/defresolver org-approval-rules-resolver
+  "Resolve custom approval routing rules for an organization."
+  [{:keys [deps] :as _env} params]
+  {::pco/input [:org/id]
+   ::pco/output [{:org/approval-rules [:rule-id :priority :name :conditions :chain]}]}
+  (let [store (get-store deps)
+        org-id (:org/id params)
+        rules (org/get-approval-rules store org-id)]
+    {:org/approval-rules rules}))
+
+(pco/defresolver org-role-permissions-resolver
+  "Resolve role permission policies for an organization."
+  [{:keys [deps] :as _env} params]
+  {::pco/input [:org/id]
+   ::pco/output [:org/role-permissions]}
+  (let [store (get-store deps)
+        org-id (:org/id params)
+        perms (org/get-role-permissions store org-id)]
+    {:org/role-permissions perms}))
+
+;; -----------------------------------------------------------------------------
+;; Capability Advertisement Resolver (:headcount/available-actions)
+;; -----------------------------------------------------------------------------
+
+(defn- compute-available-actions
+  "Calculates what actions the current viewer can execute on the target headcount requisition."
+  [viewer req]
+  (let [viewer-id (:user-id viewer)
+        status (:status req)
+        requester-id (:requester-id req)
+        current-approver-id (:current-approver-id req)
+        is-requester? (= viewer-id requester-id)
+        is-admin? (= (:role viewer) :admin)
+        is-approver? (or (= viewer-id current-approver-id) is-admin?)]
+    (cond-> []
+      ;; Draft state: submit, edit, cancel
+      (= status :draft)
+      (into (cond-> [:headcount/edit-field]
+              (or is-requester? is-admin?) (conj :headcount/submit :headcount/cancel)))
+
+      ;; In-approval state: approve/reject if approver, edit/cancel if requester/admin
+      (= status :in-approval)
+      (into (cond-> [:headcount/edit-field]
+              is-approver? (conj :headcount/approve :headcount/reject)
+              (or is-requester? is-admin?) (conj :headcount/cancel)))
+
+      ;; Approved state: transition to hire, edit, cancel
+      (= status :approved)
+      (into (cond-> [:headcount/edit-field]
+              (or is-admin? (= (:role viewer) :recruiter) (= (:role viewer) :hr)) (conj :headcount/transition-hire)
+              is-admin? (conj :headcount/cancel))))))
+
+(pco/defresolver headcount-available-actions-resolver
+  "Capability advertisement: dynamically resolves permissible actions on a headcount requisition."
+  [{:keys [deps] :as env} params]
+  {::pco/input [:headcount/id]
+   ::pco/output [:headcount/available-actions]}
+  (let [user-id (require-auth env)
+        store (get-store deps)
+        req-id (:headcount/id params)
+        raw-req (org/get-headcount-request store req-id)]
+    (if raw-req
+      (let [viewer (get-viewer-context env store (:org-id raw-req))
+            actions (compute-available-actions viewer raw-req)]
+        {:headcount/available-actions actions})
+      {:headcount/available-actions []})))
+
+;; -----------------------------------------------------------------------------
+;; Organization & Member Mutations
+;; -----------------------------------------------------------------------------
 
 (pco/defmutation create-org-mutation
   "Create a new organization. The current user becomes ADMIN."
@@ -189,18 +404,293 @@
       (org/remove-member! store org-id target-user-id)
       {:success true})))
 
+;; -----------------------------------------------------------------------------
+;; Org Unit & Policy Mutations
+;; -----------------------------------------------------------------------------
+
+(pco/defmutation create-org-unit-mutation
+  "Create a new division or department org unit."
+  [env params]
+  {::pco/op-name 'unit/create
+   ::pco/params [:unit/id :unit/org-id :unit/name :unit/parent-id :unit/budget
+                 :unit/division-id :unit/dept-id]
+   ::pco/output [:unit/id :unit/name :error]}
+  (let [org-id (or (:unit/org-id params) (:org/id params))]
+    (require-org-admin env (:deps env) org-id)
+    (let [store (get-store (:deps env))
+          [ok result] (org/create-org-unit! store {:unit-id (:unit/id params)
+                                                   :org-id org-id
+                                                   :name (:unit/name params)
+                                                   :parent-id (:unit/parent-id params)
+                                                   :budget (:unit/budget params 0)
+                                                   :division-id (:unit/division-id params)
+                                                   :dept-id (:unit/dept-id params)})]
+      (if ok
+        {:unit/id (:unit-id result) :unit/name (:name result)}
+        {:error (errors/make-error :bad_request "Failed to create unit" result)}))))
+
+(pco/defmutation reparent-org-unit-mutation
+  "Re-parent an org unit to a new parent division/department."
+  [env params]
+  {::pco/op-name 'unit/reparent
+   ::pco/params [:unit/org-id :unit/id :unit/new-parent-id]
+   ::pco/output [:unit/id :unit/parent-id :error]}
+  (let [org-id (or (:unit/org-id params) (:org/id params))]
+    (require-org-admin env (:deps env) org-id)
+    (let [store (get-store (:deps env))
+          [ok result] (org/reparent-org-unit! store {:org-id org-id
+                                                     :unit-id (:unit/id params)
+                                                     :new-parent-id (:unit/new-parent-id params)})]
+      (if ok
+        {:unit/id (:unit-id result) :unit/parent-id (:parent-id result)}
+        {:error (errors/make-error :bad_request "Failed to reparent unit" result)}))))
+
+(pco/defmutation set-unit-budget-mutation
+  "Update headcount budget allocation for an org unit."
+  [env params]
+  {::pco/op-name 'unit/set-budget
+   ::pco/params [:unit/org-id :unit/id :unit/budget]
+   ::pco/output [:unit/id :unit/budget :error]}
+  (let [org-id (or (:unit/org-id params) (:org/id params))]
+    (require-org-admin env (:deps env) org-id)
+    (let [store (get-store (:deps env))
+          [ok result] (org/set-org-unit-budget! store {:org-id org-id
+                                                       :unit-id (:unit/id params)
+                                                       :budget (:unit/budget params)})]
+      (if ok
+        {:unit/id (:unit-id result) :unit/budget (:budget result)}
+        {:error (errors/make-error :bad_request "Failed to set budget" result)}))))
+
+(pco/defmutation assign-actor-mutation
+  "Assign a user to a scoped role for a specific org unit."
+  [env params]
+  {::pco/op-name 'org/assign-actor
+   ::pco/params [:org/id :unit/id :user/id :role]
+   ::pco/output [:unit/id :user/id :role :error]}
+  (let [org-id (:org/id params)]
+    (require-org-admin env (:deps env) org-id)
+    (let [store (get-store (:deps env))
+          [ok result] (org/assign-org-actor! store {:org-id org-id
+                                                    :unit-id (:unit/id params)
+                                                    :user-id (:user/id params)
+                                                    :role (:role params)})]
+      (if ok
+        {:unit/id (:unit-id result) :user/id (:user-id result) :role (:role result)}
+        {:error (errors/make-error :bad_request "Failed to assign actor" result)}))))
+
+(pco/defmutation remove-actor-mutation
+  "Remove a scoped role assignment from a specific org unit."
+  [env params]
+  {::pco/op-name 'org/remove-actor
+   ::pco/params [:org/id :unit/id :user/id :role]
+   ::pco/output [:unit/id :role :error]}
+  (let [org-id (:org/id params)]
+    (require-org-admin env (:deps env) org-id)
+    (let [store (get-store (:deps env))
+          [ok result] (org/remove-org-actor! store {:org-id org-id
+                                                    :unit-id (:unit/id params)
+                                                    :user-id (:user/id params)
+                                                    :role (:role params)})]
+      (if ok
+        {:unit/id (:unit-id result) :role (:role result)}
+        {:error (errors/make-error :bad_request "Failed to remove actor" result)}))))
+
+(pco/defmutation set-approval-rules-mutation
+  "Set custom approval routing rules for an organization."
+  [env params]
+  {::pco/op-name 'policy/set-approval-rules
+   ::pco/params [:org/id :rules]
+   ::pco/output [:org/id :count :error]}
+  (let [org-id (:org/id params)]
+    (require-org-admin env (:deps env) org-id)
+    (let [store (get-store (:deps env))
+          [ok result] (org/set-approval-rules! store org-id (:rules params))]
+      (if ok
+        {:org/id org-id :count (:count result)}
+        {:error (errors/make-error :bad_request "Failed to set approval rules" result)}))))
+
+(pco/defmutation set-role-permissions-mutation
+  "Set granular role permission policies for an organization."
+  [env params]
+  {::pco/op-name 'policy/set-role-permissions
+   ::pco/params [:org/id :role :permissions]
+   ::pco/output [:org/id :role :permissions :error]}
+  (let [org-id (:org/id params)]
+    (require-org-admin env (:deps env) org-id)
+    (let [store (get-store (:deps env))
+          [ok result] (org/set-role-permissions! store org-id (:role params) (:permissions params))]
+      (if ok
+        {:org/id org-id :role (:role result) :permissions (:permissions result)}
+        {:error (errors/make-error :bad_request "Failed to set permissions" result)}))))
+
+;; -----------------------------------------------------------------------------
+;; Headcount Requisition Mutations
+;; -----------------------------------------------------------------------------
+
+(pco/defmutation create-headcount-mutation
+  "Create and submit a new headcount requisition for approval."
+  [env params]
+  {::pco/op-name 'headcount/create
+   ::pco/params [:headcount/org-id :headcount/unit-id :headcount/title :headcount/job-level
+                 :headcount/employee-type :headcount/salary-band :headcount/bonus-target
+                 :headcount/justification :headcount/job-description :headcount/chain-snapshot
+                 :headcount/idempotency-key]
+   ::pco/output [:headcount/id :headcount/status :headcount/current-step :error]}
+  (let [user-id (require-auth env)
+        store (get-store (:deps env))
+        org-id (:headcount/org-id params)
+        chain (or (:headcount/chain-snapshot params)
+                  (let [rules (org/get-approval-rules store org-id)
+                        matching-rule (re/find-routing-rule rules params)]
+                    (or (:chain matching-rule)
+                        [{:step 1 :role :hiring-manager}
+                         {:step 2 :role :dept-head}])))
+        input {:org-id org-id
+               :unit-id (:headcount/unit-id params)
+               :division-id (:headcount/division-id params)
+               :dept-id (:headcount/dept-id params)
+               :location (:headcount/location params "remote")
+               :job-level (:headcount/job-level params "L3")
+               :employee-type (:headcount/employee-type params :full-time)
+               :requester-id user-id
+               :title (:headcount/title params)
+               :justification (:headcount/justification params)
+               :job-description (:headcount/job-description params)
+               :salary-band (:headcount/salary-band params)
+               :bonus-target (:headcount/bonus-target params)
+               :chain-snapshot chain
+               :idempotency-key (or (:headcount/idempotency-key params)
+                                    (get-in env [:request :headers "idempotency-key"]))}
+        [ok result] (org/create-headcount-request! store input)]
+    (if ok
+      {:headcount/id (:request-id result)
+       :headcount/status (:status result)
+       :headcount/current-step (:current-step result)}
+      {:error (errors/make-error :bad_request "Failed to create headcount request" result)})))
+
+(pco/defmutation approve-headcount-mutation
+  "Approve the current step in a headcount requisition's approval chain."
+  [env params]
+  {::pco/op-name 'headcount/approve-step
+   ::pco/params [:headcount/org-id :headcount/request-id :headcount/idempotency-key]
+   ::pco/output [:headcount/request-id :headcount/result :error]}
+  (let [user-id (require-auth env)
+        store (get-store (:deps env))
+        input {:org-id (:headcount/org-id params)
+               :request-id (:headcount/request-id params)
+               :approver-user-id user-id
+               :idempotency-key (or (:headcount/idempotency-key params)
+                                    (get-in env [:request :headers "idempotency-key"]))}
+        [ok result] (org/approve-headcount-step! store input)]
+    (if ok
+      {:headcount/request-id (:request-id result)
+       :headcount/result (:result result)}
+      {:error (errors/make-error :bad_request "Failed to approve step" result)})))
+
+(pco/defmutation reject-headcount-mutation
+  "Reject a headcount requisition."
+  [env params]
+  {::pco/op-name 'headcount/reject
+   ::pco/params [:headcount/org-id :headcount/request-id :headcount/reason :headcount/idempotency-key]
+   ::pco/output [:headcount/request-id :headcount/status :error]}
+  (let [user-id (require-auth env)
+        store (get-store (:deps env))
+        input {:org-id (:headcount/org-id params)
+               :request-id (:headcount/request-id params)
+               :rejecter-user-id user-id
+               :reason (:headcount/reason params)
+               :idempotency-key (or (:headcount/idempotency-key params)
+                                    (get-in env [:request :headers "idempotency-key"]))}
+        [ok result] (org/reject-headcount-request! store input)]
+    (if ok
+      {:headcount/request-id (:request-id result)
+       :headcount/status (:status result)}
+      {:error (errors/make-error :bad_request "Failed to reject request" result)})))
+
+(pco/defmutation edit-headcount-field-mutation
+  "Edit a field on a headcount requisition. Resets approval chain to :draft if currently :in-approval."
+  [env params]
+  {::pco/op-name 'headcount/edit-field
+   ::pco/params [:headcount/org-id :headcount/request-id :headcount/field-name
+                 :headcount/new-value :headcount/idempotency-key]
+   ::pco/output [:headcount/request-id :headcount/field-name :headcount/new-value :error]}
+  (let [user-id (require-auth env)
+        store (get-store (:deps env))
+        input {:org-id (:headcount/org-id params)
+               :request-id (:headcount/request-id params)
+               :editor-user-id user-id
+               :field-name (:headcount/field-name params)
+               :new-value (:headcount/new-value params)
+               :idempotency-key (or (:headcount/idempotency-key params)
+                                    (get-in env [:request :headers "idempotency-key"]))}
+        [ok result] (org/edit-headcount-field! store input)]
+    (if ok
+      {:headcount/request-id (:request-id result)
+       :headcount/field-name (:field-name result)
+       :headcount/new-value (:new-value result)}
+      {:error (errors/make-error :bad_request "Failed to edit field" result)})))
+
+(pco/defmutation transition-hire-mutation
+  "Transition an approved headcount requisition to a filled hire."
+  [env params]
+  {::pco/op-name 'headcount/transition-hire
+   ::pco/params [:headcount/org-id :headcount/request-id :headcount/hired-user-id
+                 :headcount/role :headcount/idempotency-key]
+   ::pco/output [:headcount/request-id :headcount/hired-user-id :headcount/status :error]}
+  (let [user-id (require-auth env)
+        store (get-store (:deps env))
+        input {:org-id (:headcount/org-id params)
+               :request-id (:headcount/request-id params)
+               :hired-user-id (:headcount/hired-user-id params)
+               :role (:headcount/role params "MEMBER")
+               :idempotency-key (or (:headcount/idempotency-key params)
+                                    (get-in env [:request :headers "idempotency-key"]))}
+        [ok result] (org/transition-headcount-to-hire! store input)]
+    (if ok
+      {:headcount/request-id (:request-id result)
+       :headcount/hired-user-id (:hired-user-id result)
+       :headcount/status (:status result)}
+      {:error (errors/make-error :bad_request "Failed to transition hire" result)})))
+
+;; -----------------------------------------------------------------------------
+;; Full Resolvers Index & Integrant Method
+;; -----------------------------------------------------------------------------
+
 (def resolvers
-  [user-orgs-resolver
+  [;; Query Resolvers
+   user-orgs-resolver
    active-org-resolver
    org-members-resolver
    user-invitations-resolver
    org-by-id-resolver
+   org-chart-resolver
+   dept-dashboard-resolver
+   user-pending-approvals-resolver
+   headcount-request-resolver
+   headcount-timeline-resolver
+   org-approval-rules-resolver
+   org-role-permissions-resolver
+   headcount-available-actions-resolver
+
+   ;; Mutations
    create-org-mutation
    invite-to-org-mutation
    join-org-mutation
    switch-org-mutation
    update-member-role-mutation
-   remove-member-mutation])
+   remove-member-mutation
+   create-org-unit-mutation
+   reparent-org-unit-mutation
+   set-unit-budget-mutation
+   assign-actor-mutation
+   remove-actor-mutation
+   set-approval-rules-mutation
+   set-role-permissions-mutation
+   create-headcount-mutation
+   approve-headcount-mutation
+   reject-headcount-mutation
+   edit-headcount-field-mutation
+   transition-hire-mutation])
 
 (defmethod ig/init-key :workforce/org-resolvers [_ _]
   resolvers)

@@ -14,7 +14,7 @@
   [tests]
   (let [sys (ts/get-sys)
         us (ts/user-store sys)]
-    (binding [*deps* (assoc us :user-store us)]
+    (binding [*deps* (assoc us :user-store us :cluster-manager (ts/rama-cluster sys))]
       (tests))))
 
 (use-fixtures :once system-fixture)
@@ -142,3 +142,168 @@
           result (pathom/process env [(list 'org/join {:invitation/id inv-id})])
           r (first (vals result))]
       (is (= (:id o) (:org/id r)) "org-id should match"))))
+
+(deftest ^:integration org-unit-and-dashboard-resolvers-test
+  (testing "Org units mutations and dept dashboard resolver"
+    (let [admin (register-user)
+          [ok o] (org/create-org! *deps* {:name (str "unit-test-org-" (short-suffix)) :owner-user-id (:id admin)})
+          _ (is ok)
+          org-id (:id o)
+          env (build-env-with-org {:user-id (:id admin)})
+
+          ;; 1. Create Division Unit via mutation
+          div-id (str "div-" (short-suffix))
+          div-res (pathom/process env [(list 'unit/create {:unit/id div-id
+                                                          :unit/org-id org-id
+                                                          :unit/name "Engineering Division"
+                                                          :unit/parent-id nil
+                                                          :unit/budget 20
+                                                          :unit/division-id "ENG"})])
+          _ (is (= div-id (:unit/id (first (vals div-res)))))
+
+          ;; 2. Create Dept Unit via mutation
+          dept-id (str "dept-" (short-suffix))
+          dept-res (pathom/process env [(list 'unit/create {:unit/id dept-id
+                                                           :unit/org-id org-id
+                                                           :unit/name "Backend Dept"
+                                                           :unit/parent-id div-id
+                                                           :unit/budget 8
+                                                           :unit/division-id "ENG"
+                                                           :unit/dept-id "BACKEND"})])
+          _ (is (= dept-id (:unit/id (first (vals dept-res)))))
+
+          ;; 3. Resolve Dept Dashboard
+          dash-res (p.eql/process env {:unit/id dept-id}
+                     [{:dept/dashboard [:unit/id :unit/budget :unit/filled :unit/open :unit/pending :unit/avg-sla-ms]}])
+          dash (:dept/dashboard dash-res)]
+      (is (= dept-id (:unit/id dash)))
+      (is (= 8 (:unit/budget dash)))
+      (is (= 0 (:unit/filled dash)))
+      (is (= 8 (:unit/open dash)))
+      (is (= 0 (:unit/pending dash))))))
+
+(deftest ^:integration headcount-lifecycle-and-capability-advertisement-test
+  (testing "Headcount creation, approval, capability advertisement (:headcount/available-actions), and timeline"
+    (let [admin (register-user)
+          [ok o] (org/create-org! *deps* {:name (str "hc-test-org-" (short-suffix)) :owner-user-id (:id admin)})
+          _ (is ok)
+          org-id (:id o)
+          admin-id (:id admin)
+
+          mgr (register-user)
+          mgr-id (:id mgr)
+          _ (org/invite-to-org! *deps* {:org-id org-id :email (:email mgr) :role "MEMBER" :invited-by admin-id})
+          inv-id (-> (org/list-invitations-for-user *deps* (:email mgr)) first :invitation/id)
+          _ (org/join-org! *deps* {:user-id mgr-id :invitation-id inv-id})
+
+          ;; Create dept unit and assign manager
+          dept-id (str "dept-hc-" (short-suffix))
+          _ (org/create-org-unit! *deps* {:unit-id dept-id :org-id org-id :name "AI Dept" :parent-id nil :budget 5})
+          _ (org/assign-org-actor! *deps* {:org-id org-id :unit-id dept-id :user-id mgr-id :role :hiring-manager})
+
+          admin-env (build-env-with-org {:user-id admin-id})
+          mgr-env   (build-env-with-org {:user-id mgr-id})
+
+          ;; 1. Admin creates headcount request
+          chain [{:step 1 :role :hiring-manager}]
+          create-res (pathom/process admin-env
+                       [(list 'headcount/create
+                          {:headcount/org-id org-id
+                           :headcount/unit-id dept-id
+                           :headcount/title "Staff AI Engineer"
+                           :headcount/job-level "L6"
+                           :headcount/employee-type :full-time
+                           :headcount/salary-band "$180k - $220k"
+                           :headcount/bonus-target "20%"
+                           :headcount/chain-snapshot chain})])
+          create-data (first (vals create-res))
+          req-id (:headcount/id create-data)
+          _ (is (some? req-id))
+          _ (is (= :in-approval (:headcount/status create-data)))
+
+          ;; 2. Capability Advertisement for Approver (Manager)
+          mgr-actions-res (p.eql/process mgr-env {:headcount/id req-id}
+                            [:headcount/available-actions])
+          mgr-actions (:headcount/available-actions mgr-actions-res)
+          _ (is (contains? (set mgr-actions) :headcount/approve))
+          _ (is (contains? (set mgr-actions) :headcount/reject))
+
+          ;; 3. Approver (Manager) approves step 1
+          approve-res (pathom/process mgr-env
+                        [(list 'headcount/approve-step
+                           {:headcount/org-id org-id
+                            :headcount/request-id req-id})])
+          approve-data (first (vals approve-res))
+          _ (is (= :approved (:headcount/result approve-data)))
+
+          ;; 4. Check capability advertisement after full approval
+          after-appr-actions (p.eql/process admin-env {:headcount/id req-id}
+                               [:headcount/available-actions])
+          admin-actions (:headcount/available-actions after-appr-actions)
+          _ (is (contains? (set admin-actions) :headcount/transition-hire))
+
+          ;; 5. Headcount Request Resolver with RBAC masking
+          req-res (p.eql/process admin-env {:headcount/id req-id}
+                    [:headcount/id :headcount/title :headcount/status :headcount/salary-band])
+          _ (is (= req-id (:headcount/id req-res)))
+          _ (is (= :approved (:headcount/status req-res)))
+
+          ;; 6. Headcount Timeline Resolver
+          timeline-res (p.eql/process admin-env {:headcount/id req-id}
+                         [{:headcount/timeline [:event :actor :timestamp]}])
+          timeline (:headcount/timeline timeline-res)
+          _ (is (>= (count timeline) 2))
+
+          ;; 7. Transition to hire
+          cand (register-user)
+          cand-id (:id cand)
+          hire-res (pathom/process admin-env
+                     [(list 'headcount/transition-hire
+                        {:headcount/org-id org-id
+                         :headcount/request-id req-id
+                         :headcount/hired-user-id cand-id
+                         :headcount/role "ENGINEER"})])
+          hire-data (first (vals hire-res))]
+      (is (= :filled (:headcount/status hire-data)))
+      (is (= cand-id (:headcount/hired-user-id hire-data))))))
+
+(deftest ^:integration policy-and-permissions-mutations-test
+  (testing "Approval rules and role permissions mutations & resolvers"
+    (let [admin (register-user)
+          [ok o] (org/create-org! *deps* {:name (str "policy-test-org-" (short-suffix)) :owner-user-id (:id admin)})
+          _ (is ok)
+          org-id (:id o)
+          env (build-env-with-org {:user-id (:id admin)})
+
+          ;; 1. Set approval rules
+          rules [{:rule-id "r1"
+                  :priority 10
+                  :name "High level rule"
+                  :conditions [:= :job-level "L6"]
+                  :chain [{:step 1 :role :director}]}]
+          rules-res (pathom/process env
+                      [(list 'policy/set-approval-rules
+                         {:org/id org-id
+                          :rules rules})])
+          _ (is (= 1 (:count (first (vals rules-res)))))
+
+          ;; Resolve approval rules
+          resolved-rules (p.eql/process env {:org/id org-id}
+                           [{:org/approval-rules [:rule-id :name :priority]}])
+          _ (is (= 1 (count (:org/approval-rules resolved-rules))))
+
+          ;; 2. Set role permissions
+          perms-res (pathom/process env
+                      [(list 'policy/set-role-permissions
+                         {:org/id org-id
+                          :role :dept-head
+                          :permissions {:view-headcount :view-tree
+                                        :view-comp true
+                                        :view-bonus false}})])
+          _ (is (= :dept-head (:role (first (vals perms-res)))))
+
+          ;; Resolve role permissions
+          resolved-perms (p.eql/process env {:org/id org-id}
+                           [:org/role-permissions])]
+      (is (= {:view-headcount :view-tree :view-comp true :view-bonus false}
+             (get-in resolved-perms [:org/role-permissions :dept-head]))))))

@@ -200,4 +200,6 @@
                                "--api-server" port "--debug"))}
   agent-sim    {:doc "Run headless multi-agent HR hiring cycle simulation."
                 :task (shell "escapement" "run" "com.ozimos.workforce.org.workflows.headcount/hiring-approval-chart"
-                             "--no-tui")}}}
+                             "--no-tui")}
+  sim-test     {:doc "Run the pure-Clojure 4 multi-agent simulation scenarios test suite."
+                :task (shell "clojure" "-M:dev:test:+rama:+default:poly" "test" ":only" "com.ozimos.workforce.org.simulation-test")}}}
