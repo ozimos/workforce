@@ -6,6 +6,7 @@
    [com.ozimos.omni-auth.mfa.interface :as mfa]
    [com.ozimos.omni-auth.user.interface :as user]
    [com.ozimos.workforce.web.test-system :as ts]
+   [com.rpl.rama.ops :as ops]
    [hato.client :as http]
    [jsonista.core :as json]))
 
@@ -38,7 +39,7 @@
   *base-url*)
 
 (defn- short-suffix []
-  (-> (random-uuid) str (.replace "-" "") (.substring 0 12)))
+  (subs (clojure.string/replace (str (ops/random-uuid7)) "-" "") 16 32))
 
 (defn- random-user []
   (let [suffix (short-suffix)]

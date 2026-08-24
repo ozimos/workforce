@@ -24,3 +24,6 @@ jar-manifest/
 bun.lock
 session.json
 /.vscode
+.seed/
+*.nippy
+*.zip

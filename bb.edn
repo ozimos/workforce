@@ -202,4 +202,13 @@
                 :task (shell "escapement" "run" "com.ozimos.workforce.org.workflows.headcount/hiring-approval-chart"
                              "--no-tui")}
   sim-test     {:doc "Run the pure-Clojure 4 multi-agent simulation scenarios test suite."
-                :task (shell "clojure" "-M:dev:test:+rama:+default:poly" "test" ":only" "com.ozimos.workforce.org.simulation-test")}}}
+                :task (shell "clojure" "-M:dev:test:+rama:+default:poly" "test" ":only" "com.ozimos.workforce.org.simulation-test")}
+  seed-gen     {:doc "Generate and serialize deterministic seed dataset to .seed/workforce-seed-data.nippy."
+                :task (shell "clojure" "-M:dev:test:+rama:+default" "-e"
+                             "((requiring-resolve 'com.ozimos.workforce.org.interface/write-seed-nippy!))")}
+  seed-load    {:doc "Ingest .seed/workforce-seed-data.nippy into running dev REPL."
+                :task (run-in-repl-or-fallback
+                       (fn [port _]
+                         (println (str "\n=== Loading seed data in Dev REPL (port " port ") ==="))
+                         (shell "clj-nrepl-eval" "-p" (str port) "((ns-resolve 'user 'seed!))"))
+                       *command-line-args*)}}}

@@ -4,6 +4,7 @@
    [com.ozimos.workforce.org.errors :as errors]
    [com.ozimos.workforce.org.extension]
    [com.ozimos.workforce.org.resolvers]
+   [com.ozimos.workforce.org.seed :as seed]
    [com.ozimos.workforce.org.tools.mcp :as mcp]))
 
 (defn create-org!
@@ -15,6 +16,16 @@
 
 (defn find-org-by-id
   "Look up an organization by id. Returns org map or nil."
+  [deps org-id]
+  (core/find-org-by-id deps org-id))
+
+(defn find-org-by-name
+  "Look up an organization by name. Returns org map or nil."
+  [deps name]
+  (core/find-org-by-name deps name))
+
+(defn get-org
+  "Look up an organization by id or name."
   [deps org-id]
   (core/find-org-by-id deps org-id))
 
@@ -164,3 +175,23 @@
 
 (defn handle-mcp-request [deps ctx request-body]
   (mcp/handle-mcp-request deps ctx request-body))
+
+;; --- Seed Data Generation & Ingestion ---
+
+(defn generate-seed-data []
+  (seed/generate-seed-data))
+
+(defn write-seed-nippy!
+  ([] (seed/write-seed-nippy!))
+  ([path] (seed/write-seed-nippy! path)))
+
+(defn read-seed-nippy
+  ([] (seed/read-seed-nippy))
+  ([path] (seed/read-seed-nippy path)))
+
+(defn load-seed-data! [deps dataset]
+  (seed/load-seed-data! deps dataset))
+
+(defn ensure-seeded!
+  ([deps] (seed/ensure-seeded! deps))
+  ([deps path] (seed/ensure-seeded! deps path)))

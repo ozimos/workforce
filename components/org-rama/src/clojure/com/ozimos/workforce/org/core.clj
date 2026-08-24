@@ -3,6 +3,7 @@
    [com.ozimos.omni-auth.rama.interface :as rama]
    [com.ozimos.workforce.org.records :as rec]
    [com.rpl.rama :as ramaapi]
+   [com.rpl.rama.ops :as ops]
    [com.rpl.rama.path :refer [ALL keypath]]))
 
 (defn- now-ms [] (System/currentTimeMillis))
@@ -28,11 +29,11 @@
     res))
 
 (defn create-org! [deps input]
-  (let [{:keys [name owner-user-id]} input
+  (let [{:keys [id name owner-user-id]} input
         cmgr (get-cmgr deps)
         mod-name (rama/module-name)
         org-create-depot (rama/depot cmgr mod-name "*org-create-depot")
-        uuid (str (random-uuid))
+        uuid (or id (str (ops/random-uuid7)))
         created-at (now-ms)
         ;; Check org name uniqueness
         org-name->id (rama/pstate cmgr mod-name "$$org-name->id")
@@ -53,9 +54,23 @@
   (let [cmgr (get-cmgr deps)
         mod-name (rama/module-name)
         orgs (rama/pstate cmgr mod-name "$$orgs")
-        org (safe-select-one (keypath org-id) orgs)]
+        id (if (string? org-id)
+             (try (parse-long org-id) (catch Exception _ nil))
+             org-id)
+        org (when id (safe-select-one (keypath id) orgs))]
     (when (:name org)
-      (assoc org :id org-id))))
+      (assoc org :id id))))
+
+(defn find-org-by-name [deps name]
+  (let [cmgr (get-cmgr deps)
+        mod-name (rama/module-name)
+        org-name->id (rama/pstate cmgr mod-name "$$org-name->id")
+        org-id (safe-select-one (keypath name) org-name->id)]
+    (when org-id
+      (find-org-by-id deps org-id))))
+
+(defn get-org [deps org-id]
+  (find-org-by-id deps org-id))
 
 (defn find-orgs-for-user [deps user-id]
   (let [cmgr (get-cmgr deps)
@@ -81,7 +96,7 @@
         cmgr (get-cmgr deps)
         mod-name (rama/module-name)
         invite-depot (rama/depot cmgr mod-name "*org-invite-depot")
-        invitation-id (str (random-uuid))
+        invitation-id (str (ops/random-uuid7))
         created-at (now-ms)
         expires-at (+ created-at (* 7 24 60 60 1000))]
     (ramaapi/foreign-append! invite-depot
@@ -185,7 +200,7 @@
 
 (defn create-org-unit! [deps input]
   (let [{:keys [org-id division-id dept-id name parent-id budget]} input
-        unit-id (or (:unit-id input) (str (random-uuid)))
+        unit-id (or (:unit-id input) (str (ops/random-uuid7)))
         cmgr (get-cmgr deps)
         mod-name (rama/module-name)
         depot (rama/depot cmgr mod-name "*org-unit-depot")
@@ -264,7 +279,7 @@
                 employee-type requester-id title justification
                 job-description salary-band bonus-target chain-snapshot
                 idempotency-key]} input
-        request-id (or (:request-id input) (str (random-uuid)))
+        request-id (or (:request-id input) (str (ops/random-uuid7)))
         cmgr (get-cmgr deps)
         mod-name (rama/module-name)
         depot (rama/depot cmgr mod-name "*headcount-depot")

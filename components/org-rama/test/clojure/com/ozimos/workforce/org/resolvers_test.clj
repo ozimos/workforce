@@ -6,6 +6,7 @@
    [com.ozimos.workforce.org.interface :as org]
    [com.ozimos.workforce.org.resolvers :as org-res]
    [com.ozimos.workforce.web.test-system :as ts]
+   [com.rpl.rama.ops :as ops]
    [com.wsscode.pathom3.interface.eql :as p.eql]))
 
 (def ^:dynamic *deps* nil)
@@ -20,7 +21,7 @@
 (use-fixtures :once system-fixture)
 
 (defn- short-suffix []
-  (-> (random-uuid) str (.replace "-" "") (.substring 0 12)))
+  (subs (clojure.string/replace (str (ops/random-uuid7)) "-" "") 16 32))
 
 (defn- register-user []
   (let [suffix (short-suffix)

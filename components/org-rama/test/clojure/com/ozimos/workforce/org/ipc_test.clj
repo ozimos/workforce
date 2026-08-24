@@ -3,7 +3,8 @@
    [clojure.test :refer [deftest is testing use-fixtures]]
    [com.ozimos.omni-auth.user.interface :as user]
    [com.ozimos.workforce.org.interface :as org]
-   [com.ozimos.workforce.web.test-system :as ts]))
+   [com.ozimos.workforce.web.test-system :as ts]
+   [com.rpl.rama.ops :as ops]))
 
 (def ^:dynamic *deps* nil)
 
@@ -16,7 +17,7 @@
 (use-fixtures :once system-fixture)
 
 (defn- short-id []
-  (subs (str (random-uuid)) 0 8))
+  (subs (clojure.string/replace (str (ops/random-uuid7)) "-" "") 16 32))
 
 (deftest org-lifecycle-ipc-test
   (testing "Organization complete lifecycle: create, invite, accept, switch, list members, update role, remove member"

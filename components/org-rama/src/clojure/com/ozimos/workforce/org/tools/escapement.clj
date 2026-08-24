@@ -4,7 +4,8 @@
    [com.ozimos.workforce.org.core :as org]
    [com.ozimos.workforce.org.errors :as errors]
    [com.ozimos.workforce.org.rbac :as rbac]
-   [com.ozimos.workforce.org.rule-engine :as re]))
+   [com.ozimos.workforce.org.rule-engine :as re]
+   [com.rpl.rama.ops :as ops]))
 
 ;; -----------------------------------------------------------------------------
 ;; Tool Definitions Registry
@@ -102,7 +103,7 @@
                      input (assoc params
                                   :requester-id (or (:requester-id params) (:user-id ctx))
                                   :chain-snapshot chain
-                                  :idempotency-key (or (:idempotency-key params) (str (random-uuid))))
+                                  :idempotency-key (or (:idempotency-key params) (str (ops/random-uuid7))))
                      [ok res] (org/create-headcount-request! deps input)]
                  (if ok
                    {:ok true :headcount res}
@@ -118,7 +119,7 @@
     :handler (fn [deps ctx params]
                (let [input (assoc params
                                   :approver-user-id (or (:approver-user-id params) (:user-id ctx))
-                                  :idempotency-key (or (:idempotency-key params) (str (random-uuid))))
+                                  :idempotency-key (or (:idempotency-key params) (str (ops/random-uuid7))))
                      [ok res] (org/approve-headcount-step! deps input)]
                  (if ok
                    {:ok true :approval res}
@@ -135,7 +136,7 @@
     :handler (fn [deps ctx params]
                (let [input (assoc params
                                   :rejecter-user-id (or (:rejecter-user-id params) (:user-id ctx))
-                                  :idempotency-key (or (:idempotency-key params) (str (random-uuid))))
+                                  :idempotency-key (or (:idempotency-key params) (str (ops/random-uuid7))))
                      [ok res] (org/reject-headcount-request! deps input)]
                  (if ok
                    {:ok true :rejection res}
@@ -154,7 +155,7 @@
                (let [input (assoc params
                                   :editor-user-id (or (:editor-user-id params) (:user-id ctx))
                                   :field-name (keyword (:field-name params))
-                                  :idempotency-key (or (:idempotency-key params) (str (random-uuid))))
+                                  :idempotency-key (or (:idempotency-key params) (str (ops/random-uuid7))))
                      [ok res] (org/edit-headcount-field! deps input)]
                  (if ok
                    {:ok true :edit res}
@@ -172,7 +173,7 @@
     :handler (fn [deps _ctx params]
                (let [input (assoc params
                                   :role (or (:role params) "MEMBER")
-                                  :idempotency-key (or (:idempotency-key params) (str (random-uuid))))
+                                  :idempotency-key (or (:idempotency-key params) (str (ops/random-uuid7))))
                      [ok res] (org/transition-headcount-to-hire! deps input)]
                  (if ok
                    {:ok true :hire res}

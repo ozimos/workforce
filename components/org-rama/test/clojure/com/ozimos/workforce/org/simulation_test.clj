@@ -8,6 +8,7 @@
    [com.ozimos.workforce.org.tools.escapement :as esc]
    [com.ozimos.workforce.org.tools.mcp :as mcp]
    [com.ozimos.workforce.web.test-system :as ts]
+   [com.rpl.rama.ops :as ops]
    [jsonista.core :as json]))
 
 (def ^:dynamic *deps* nil)
@@ -22,7 +23,7 @@
 (use-fixtures :once system-fixture)
 
 (defn- short-suffix []
-  (-> (random-uuid) str (.replace "-" "") (.substring 0 12)))
+  (subs (clojure.string/replace (str (ops/random-uuid7)) "-" "") 16 32))
 
 (defn- register-user []
   (let [suffix (short-suffix)

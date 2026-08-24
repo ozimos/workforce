@@ -3,7 +3,8 @@
   (:require
    [com.ozimos.workforce.org.core :as org]
    [com.ozimos.workforce.org.simulation.agents :as agents]
-   [com.ozimos.workforce.org.simulation.behavior-tree :as bt]))
+   [com.ozimos.workforce.org.simulation.behavior-tree :as bt]
+   [com.rpl.rama.ops :as ops]))
 
 ;; -----------------------------------------------------------------------------
 ;; Scenario 1: Complete End-to-End Headcount Approval & Hire Lifecycle
@@ -113,7 +114,7 @@
 (defn run-scenario-4-idempotency
   "Scenario 4: Duplicate submissions with identical idempotency key are safely deduplicated."
   [deps {:keys [org-id unit-id manager-id]}]
-  (let [idem-key (str "idem-sim-" (random-uuid))
+  (let [idem-key (str "idem-sim-" (ops/random-uuid7))
         input {:org-id org-id
                :unit-id unit-id
                :title "Cloud Architect"

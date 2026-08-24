@@ -1,0 +1,351 @@
+-- allium: 3
+-- seed-data.allium
+
+-- Scope: Seed Data Generation, Nippy Archiving, and REPL/Test System Ingestion
+-- Includes: Multi-Organization Seed Dataset, User Personas, Unit Hierarchy, Scoped Actors,
+--           Policy Rules, Lifecycle Headcount Requisitions, Binary Nippy Archive, and Auto-Load Pipeline
+-- Excludes: Live Production Migration (applies strictly to development and test environments)
+-- Dependencies: workforce.allium, omni-auth core User
+
+------------------------------------------------------------
+-- External Entities
+------------------------------------------------------------
+
+external entity User {
+    email: String
+}
+
+external entity Organization {
+    name: String
+}
+
+------------------------------------------------------------
+-- Enumerations
+------------------------------------------------------------
+
+enum ArchiveFormat { nippy | edn_zip | tar_gz }
+enum DatasetStatus { pending | generated | archived | loaded }
+enum UnitKind { division | department }
+enum RequisitionStatus { draft | in_approval | approved | filled | rejected }
+enum StoreState { unseeded | seeded }
+enum Environment { dev | test | prod }
+
+------------------------------------------------------------
+-- Entities
+------------------------------------------------------------
+
+entity SeedUser {
+    user_id: String
+    email: String
+    username: String
+    is_verified: Boolean
+    is_shared: Boolean
+}
+
+entity SeedOrgUnit {
+    unit_id: String
+    name: String
+    kind: UnitKind
+    budget: Integer
+    parent: SeedOrgUnit?
+
+    -- Derived
+    is_root: parent = null
+}
+
+entity SeedActorAssignment {
+    unit: SeedOrgUnit
+    user: SeedUser
+    role: String
+}
+
+entity SeedApprovalRule {
+    rule_id: String
+    priority: Integer
+    name: String
+    condition_description: String
+    target_role: String
+}
+
+entity SeedTimelineEvent {
+    event: String
+    actor_email: String
+    timestamp_offset_ms: Integer
+    note: String?
+}
+
+entity SeedHeadcountRequisition {
+    request_id: String
+    unit: SeedOrgUnit
+    title: String
+    job_level: String
+    salary_band: String
+    bonus_target: String
+    status: RequisitionStatus
+    current_step: Integer
+    hired_candidate: SeedUser?
+    rejection_reason: String?
+    timeline: List<SeedTimelineEvent>
+
+    -- Derived
+    is_terminal: status = filled or status = rejected
+}
+
+entity SeedOrganization {
+    org_id: String
+    name: String
+    owner: SeedUser
+    members: Set<SeedUser>
+    units: Set<SeedOrgUnit>
+    actors: Set<SeedActorAssignment>
+    rules: List<SeedApprovalRule>
+    requisitions: Set<SeedHeadcountRequisition>
+
+    -- Projections
+    divisions: units where kind = division
+    departments: units where kind = department
+    filled_requisitions: requisitions where status = filled
+    in_approval_requisitions: requisitions where status = in_approval
+}
+
+entity SeedDataset {
+    dataset_id: String
+    generated_at: Timestamp
+    format: ArchiveFormat
+    status: DatasetStatus
+    archive_path: String
+    organizations: Set<SeedOrganization>
+    users: Set<SeedUser>
+
+    -- Projections
+    shared_users: users where is_shared = true
+    all_requisitions: organizations.requisitions
+
+    -- Derived
+    has_minimum_orgs: organizations.count >= 2
+    has_shared_user: shared_users.count >= 1
+    covers_all_states:
+        (all_requisitions where status = draft).count > 0 and
+        (all_requisitions where status = in_approval).count > 0 and
+        (all_requisitions where status = approved).count > 0 and
+        (all_requisitions where status = filled).count > 0 and
+        (all_requisitions where status = rejected).count > 0
+    is_valid: has_minimum_orgs and has_shared_user and covers_all_states
+}
+
+entity SeedStore {
+    state: StoreState
+    environment: Environment
+    loaded_dataset: SeedDataset?
+    last_seeded_at: Timestamp?
+
+    -- Derived
+    is_ready: state = seeded
+}
+
+------------------------------------------------------------
+-- Config
+------------------------------------------------------------
+
+config {
+    default_archive_path: String = ".seed/workforce-seed-data.nippy"
+    default_format: ArchiveFormat = nippy
+    compression_codec: String = "snappy"
+}
+
+------------------------------------------------------------
+-- Rules
+------------------------------------------------------------
+
+-- Generation: Synthesizes deterministic dataset covering Acme Corp & Globex Innovations
+
+rule GenerateSeedDataset {
+    when: GenerateSeedDataset(dev, format, output_path)
+
+    ensures:
+        let acme_owner = SeedUser.created(
+            user_id: "u-alice",
+            email: "alice@acme.com",
+            username: "alice",
+            is_verified: true,
+            is_shared: false
+        )
+        let globex_owner = SeedUser.created(
+            user_id: "u-bob",
+            email: "bob@globex.com",
+            username: "bob",
+            is_verified: true,
+            is_shared: false
+        )
+        let shared_carol = SeedUser.created(
+            user_id: "u-carol",
+            email: "carol@crossorg.com",
+            username: "carol",
+            is_verified: true,
+            is_shared: true
+        )
+
+        let dataset = SeedDataset.created(
+            dataset_id: "seed-v1",
+            generated_at: now,
+            format: format,
+            status: generated,
+            archive_path: output_path ?? config.default_archive_path,
+            organizations: {},
+            users: {acme_owner, globex_owner, shared_carol}
+        )
+
+        DatasetGenerated(dataset: dataset)
+}
+
+-- Archiving: Freezes data map into binary Nippy archive with Snappy compression
+
+rule ArchiveSeedDataset {
+    when: ArchiveSeedDataset(dev, dataset)
+
+    requires: dataset.status = generated
+    requires: dataset.is_valid
+
+    ensures:
+        dataset.status = archived
+        DatasetArchived(dataset: dataset, path: dataset.archive_path)
+}
+
+-- REPL / System Auto-Load: Ingests archive into Rama on startup in dev & test environments
+
+rule AutoLoadSeedOnStartup {
+    when: SystemBoot(supervisor, store, env)
+
+    requires: env = dev or env = test
+    requires: store.state = unseeded
+
+    ensures:
+        let dataset = SeedDataset{archive_path: config.default_archive_path}
+        if exists dataset and dataset.status = archived:
+            store.state = seeded
+            store.loaded_dataset = dataset
+            store.last_seeded_at = now
+            RamaClusterPopulated(dataset: dataset)
+        else:
+            SeedArchiveRequired(path: config.default_archive_path)
+}
+
+-- Manual / REPL Ingestion: Allows developer to force load or reload seed data
+
+rule LoadSeedDataset {
+    when: LoadSeedDataset(dev, store, dataset)
+
+    requires: store.environment != prod
+    requires: dataset.is_valid
+
+    ensures:
+        store.state = seeded
+        store.loaded_dataset = dataset
+        store.last_seeded_at = now
+        RamaClusterPopulated(dataset: dataset)
+}
+
+-- Idempotency Guard: Re-seeding existing dataset executes safely without duplicate side effects
+
+rule ReSeedIdempotentNoOp {
+    when: LoadSeedDataset(store, dataset)
+
+    requires: store.state = seeded
+    requires: store.loaded_dataset = dataset
+
+    ensures:
+        store.last_seeded_at = now
+        SeedReloadCompleted(dataset: dataset)
+}
+
+------------------------------------------------------------
+-- Invariants
+------------------------------------------------------------
+
+invariant MultiOrganizationRequirement {
+    for ds in SeedDatasets:
+        ds.status = archived implies ds.organizations.count >= 2
+}
+
+invariant CrossOrganizationUserSharing {
+    for ds in SeedDatasets:
+        ds.status = archived implies (ds.users where is_shared = true).count >= 1
+}
+
+invariant UnitHierarchyIntegrity {
+    for org in SeedOrganizations:
+        for dept in org.departments:
+            dept.parent != null and dept.parent in org.divisions
+}
+
+invariant HeadcountLifecycleCompleteness {
+    for ds in SeedDatasets:
+        ds.status = archived implies ds.covers_all_states
+}
+
+invariant ProductionSafety {
+    for store in SeedStores:
+        store.environment = prod implies store.state = unseeded
+}
+
+------------------------------------------------------------
+-- Actors
+------------------------------------------------------------
+
+actor Developer {
+    identified_by: User
+}
+
+actor SystemSupervisor {
+    identified_by: Environment
+}
+
+------------------------------------------------------------
+-- Surfaces
+------------------------------------------------------------
+
+surface SeedDataManagementCLI {
+    facing dev: Developer
+
+    provides:
+        GenerateSeedDataset(dev, format, output_path)
+        ArchiveSeedDataset(dev, dataset)
+            when dataset.status = generated and dataset.is_valid
+        LoadSeedDataset(dev, store, dataset)
+            when store.environment != prod and dataset.is_valid
+
+    @guarantee OfflineGeneration
+        -- Seed dataset can be generated and archived offline via CLI without active DB/cluster.
+}
+
+surface DevReplSeedLoader {
+    facing dev: Developer
+
+    context store: SeedStore where environment = dev or environment = test
+
+    exposes:
+        store.state
+        store.environment
+        store.last_seeded_at
+        store.loaded_dataset.dataset_id
+        store.loaded_dataset.organizations.count
+
+    provides:
+        LoadSeedDataset(dev, store, dataset)
+            when dataset.is_valid
+
+    @guidance
+        -- In REPL development, (user/go) automatically triggers loading on boot.
+        -- Use (user/seed!) to re-ingest after clearing Rama state.
+}
+
+surface SystemBootstrap {
+    facing supervisor: SystemSupervisor
+
+    provides:
+        SystemBoot(supervisor, store, env)
+            when env = dev or env = test
+
+    @guarantee DevSafety
+        -- Seed auto-loading is strictly disabled in production environments.
+}

@@ -156,12 +156,44 @@
         (println "=== Tearing Down Clean In-Memory Test System ===")
         (when stop-fn (stop-fn))))))
 
+(defn seed!
+  "Loads the seed dataset into the currently running dev system."
+  ([]
+   (require 'com.ozimos.workforce.org.interface 'integrant.repl.state)
+   (let [sys @(resolve 'integrant.repl.state/system)
+         cmgr (:cluster-manager (-> sys :rama/cluster))
+         deps (assoc sys :cluster-manager cmgr)]
+     (if (and sys cmgr)
+       ((resolve 'com.ozimos.workforce.org.interface/ensure-seeded!) deps)
+       (println "Dev system not started yet. Run (go) first or use (seed!).")))))
+
+(defn gen-seed!
+  "Generates and serializes a fresh binary Nippy seed archive to .seed/workforce-seed-data.nippy."
+  ([]
+   (require 'com.ozimos.workforce.org.interface)
+   (let [res ((resolve 'com.ozimos.workforce.org.interface/write-seed-nippy!))]
+     (println "Generated binary seed archive:" (:path res) (str "(" (:size res) " bytes, " (:organizations res) " orgs)"))
+     res)))
+
+(defn start-and-seed!
+  "Starts the dev system and automatically ensures seed data is loaded."
+  []
+  (let [res (go)]
+    (try
+      (seed!)
+      (catch Exception e
+        (println "Seed auto-load notice:" (.getMessage e))))
+    res))
+
 (comment
-  (go)         ;; Start the entire system
-  (halt)       ;; Shut everything down
-  (reset)      ;; Reload changed namespaces + rebuild system in < 1s
-  (reset-all)  ;; Reload ALL namespaces + rebuild system
-  (clear)      ;; Discard prepped config + system
-  (test-all)   ;; Run all backend tests against running dev state (< 0.5s)
-  (test-clean) ;; Run all backend tests against a fresh ephemeral test system (~1s)
-  (test-ns 'com.ozimos.workforce.web.oauth-integration-test))
+  (start-and-seed!) ;; Start system and load seed data
+  (go)              ;; Start the system
+  (seed!)           ;; Load / ensure seed data is populated in Rama
+  (gen-seed!)       ;; Regenerate .seed/workforce-seed-data.nippy
+  (halt)            ;; Shut everything down
+  (reset)           ;; Reload changed namespaces + rebuild system in < 1s
+  (reset-all)       ;; Reload ALL namespaces + rebuild system
+  (clear)           ;; Discard prepped config + system
+  (test-all)        ;; Run all backend tests against running dev state (< 0.5s)
+  (test-clean)      ;; Run all backend tests against a fresh ephemeral test system (~1s)
+  (test-ns 'com.ozimos.workforce.org.seed-test))

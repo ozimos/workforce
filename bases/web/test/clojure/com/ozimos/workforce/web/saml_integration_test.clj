@@ -3,7 +3,8 @@
    [clojure.test :refer [deftest is testing use-fixtures]]
    [com.ozimos.omni-auth.saml.interface :as saml]
    [com.ozimos.omni-auth.user.interface :as user]
-   [com.ozimos.workforce.web.test-system :as ts]))
+   [com.ozimos.workforce.web.test-system :as ts]
+   [com.rpl.rama.ops :as ops]))
 
 (def ^:dynamic *sys* nil)
 
@@ -15,7 +16,7 @@
 (use-fixtures :once system-fixture)
 
 (defn- short-id []
-  (subs (str (random-uuid)) 0 8))
+  (subs (clojure.string/replace (str (ops/random-uuid7)) "-" "") 16 32))
 
 (deftest saml-integration-test
   (testing "SAML ACS endpoint processes assertion and returns tokens with auth-method claim"
