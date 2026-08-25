@@ -56,6 +56,24 @@
       (is (some? active) "active-org should not be nil")
       (is (= (:id o) (:org/id active)) "org-id should match"))))
 
+(deftest ^:integration active-org-resolver-fallback-test
+  (testing "active-org-resolver falls back to first organization when user active org is not explicitly set"
+    (let [owner (register-user)
+          member (register-user)
+          suffix (short-suffix)
+          [ok o] (org/create-org! *deps* {:name (str "fallback-org-" suffix) :owner-user-id (:id owner)})
+          _ (is ok)
+          org-id (:id o)
+          _ (org/invite-to-org! *deps* {:org-id org-id :email (:email member) :role "MEMBER" :invited-by (:id owner)})
+          inv-id (-> (org/list-invitations-for-user *deps* (:email member)) first :invitation/id)
+          _ (org/join-org! *deps* {:user-id (:id member) :invitation-id inv-id})
+          env (build-env-with-org {:user-id (:id member)})
+          result (pathom/process env [{:user/active-org [:org/id :org/name :org/role]}])
+          active (:user/active-org result)]
+      (is (some? active) "active-org should resolve via fallback")
+      (is (= org-id (:org/id active)) "org-id should match joined organization")
+      (is (= "MEMBER" (:org/role active)) "role should be MEMBER"))))
+
 (deftest ^:integration active-org-resolver-no-org-test
   (testing "active-org-resolver returns nil when user has no orgs"
     (let [user (register-user)
@@ -130,6 +148,37 @@
       (is (= (:id o) (:org/id result)) "org-id should match")
       (is (some? (:org/name result)) "org/name should be present")
       (is (= (:id user) (:org/owner-id result)) "owner-id should match"))))
+
+(deftest ^:integration org-chart-resolver-test
+  (testing "org-chart-resolver returns enriched units and hierarchy structure"
+    (let [user (register-user)
+          suffix (short-suffix)
+          [ok o] (org/create-org! *deps* {:name (str "org-chart-" suffix) :owner-user-id (:id user)})
+          _ (is ok)
+          org-id (:id o)
+          div-id (str "div-eng-" suffix)
+          dept-id (str "dept-fe-" suffix)
+          _ (org/create-org-unit! *deps* {:unit-id div-id :org-id org-id :name "Engineering" :parent-id nil :budget 20 :division-id "ENG"})
+          _ (org/create-org-unit! *deps* {:unit-id dept-id :org-id org-id :name "Frontend" :parent-id div-id :budget 8 :division-id "ENG" :dept-id "FE"})
+          _ (org/assign-org-actor! *deps* {:org-id org-id :unit-id dept-id :user-id (:id user) :role :hiring-manager})
+          env (build-env-with-org {:user-id (:id user)})
+          result (p.eql/process env {:org/id org-id}
+                   [{:org/chart [:org/id :org/hierarchy
+                                 {:org/units [:unit/id :unit/name :unit/parent-id :unit/budget :unit/actors :unit/children]}]}])
+          chart (:org/chart result)
+          units (:org/units chart)
+          hierarchy (:org/hierarchy chart)]
+      (is (= org-id (:org/id chart)))
+      (is (seq units) "should return units list")
+      (is (= 2 (count units)) "should have 2 units")
+      (is (= [div-id] (get hierarchy nil)) "division should be root unit")
+      (is (= [dept-id] (get hierarchy div-id)) "department should be child of division")
+      (let [fe-unit (some #(when (= dept-id (:unit/id %)) %) units)]
+        (is (some? fe-unit))
+        (is (= "Frontend" (:unit/name fe-unit)))
+        (is (= 8 (:unit/budget fe-unit)))
+        (is (= div-id (:unit/parent-id fe-unit)))
+        (is (= (:id user) (get-in fe-unit [:unit/actors :hiring-manager])))))))
 
 (deftest ^:integration join-org-mutation-test
   (testing "join-org mutation accepts invitation and joins org"

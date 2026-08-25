@@ -270,6 +270,42 @@
         stats (rama/pstate cmgr mod-name "$$unit-headcount-stats")]
     (safe-select-one (keypath unit-id) stats)))
 
+(defn get-unit-actors [deps unit-id]
+  (let [cmgr (get-cmgr deps)
+        mod-name (rama/module-name)
+        actors (rama/pstate cmgr mod-name "$$unit-actors")
+        raw (or (safe-select-one (keypath unit-id) actors) {})]
+    (reduce-kv (fn [acc k v]
+                 (let [k-str (str k)
+                       clean-k (if (clojure.string/starts-with? k-str ":")
+                                 (subs k-str 1)
+                                 k-str)]
+                   (assoc acc (keyword clean-k) v)))
+               {}
+               raw)))
+
+(defn list-org-units
+  "Returns all units belonging to an organization, enriched with budget, headcount stats, actors, and children."
+  [deps org-id]
+  (let [oid (if (string? org-id)
+              (try (parse-long org-id) (catch Exception _ nil))
+              org-id)
+        cmgr (get-cmgr deps)
+        mod-name (rama/module-name)
+        org->units-pstate (rama/pstate cmgr mod-name "$$org->units")
+        unit-ids (set (keys (or (safe-select-one (keypath oid) org->units-pstate) {})))]
+    (mapv (fn [uid]
+            (let [u (get-org-unit deps uid)
+                  stats (or (get-unit-headcount-stats deps uid)
+                            {:budget (:budget u 0) :filled 0 :open (:budget u 0) :pending 0})
+                  actors (get-unit-actors deps uid)
+                  children (vec (sort (get-org-children deps uid)))]
+              (merge (or u {:unit-id uid :name uid :org-id oid})
+                     stats
+                     {:actors actors
+                      :children children})))
+          (sort unit-ids))))
+
 ;; -----------------------------------------------------------------------------
 ;; Headcount Requisition Core APIs
 ;; -----------------------------------------------------------------------------
@@ -418,12 +454,6 @@
         mod-name (rama/module-name)
         perms (rama/pstate cmgr mod-name "$$role-permissions")]
     (or (safe-select-one (keypath org-id) perms) {})))
-
-(defn get-unit-actors [deps unit-id]
-  (let [cmgr (get-cmgr deps)
-        mod-name (rama/module-name)
-        actors (rama/pstate cmgr mod-name "$$unit-actors")]
-    (or (safe-select-one (keypath unit-id) actors) {})))
 
 (defn get-approval-sla-latencies [deps unit-id]
   (let [cmgr (get-cmgr deps)

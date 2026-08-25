@@ -112,6 +112,11 @@
 (defn get-unit-headcount-stats [deps unit-id]
   (core/get-unit-headcount-stats deps unit-id))
 
+(defn list-org-units
+  "Returns all units belonging to an organization, enriched with budget, headcount stats, actors, and children."
+  [deps org-id]
+  (core/list-org-units deps org-id))
+
 ;; --- Headcount Requisitions ---
 
 (defn create-headcount-request! [deps input]

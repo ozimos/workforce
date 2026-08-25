@@ -78,7 +78,9 @@
   {::pco/output [{:user/active-org [:org/id :org/name :org/role]}]}
   (let [user-id (require-auth env)
         store (get-store (:deps env))
-        active-org-id (org/get-active-org store user-id)]
+        user-orgs (org/find-orgs-for-user store user-id)
+        active-org-id (or (org/get-active-org store user-id)
+                          (:id (first user-orgs)))]
     (if active-org-id
       (let [o (org/find-org-by-id store active-org-id)
             membership (org/get-membership store user-id active-org-id)]
@@ -138,19 +140,43 @@
 ;; -----------------------------------------------------------------------------
 
 (pco/defresolver org-chart-resolver
-  "Resolve full organization chart hierarchy and department trees."
+  "Resolve full organization chart hierarchy, department trees, and enriched units."
   [{:keys [deps] :as env} params]
   {::pco/input [:org/id]
-   ::pco/output [{:org/chart [:org/id :org/hierarchy]}]}
+   ::pco/output [{:org/chart [:org/id
+                              :org/hierarchy
+                              {:org/units [:unit/id :unit/name :unit/division-id
+                                           :unit/dept-id :unit/parent-id :unit/budget
+                                           :unit/filled :unit/open :unit/pending
+                                           :unit/actors :unit/children]}]}]}
   (let [user-id (require-auth env)
         store (get-store deps)
         org-id (:org/id params)]
     (when (nil? (org/get-membership store user-id org-id))
       (throw (ex-info "Not a member of this org" {:type :forbidden})))
-    (let [hierarchy (org/get-org-hierarchy store)]
+    (let [units (org/list-org-units store org-id)
+          hierarchy (reduce (fn [acc u]
+                              (if-let [p (:parent-id u)]
+                                (update acc p (fnil conj []) (:unit-id u))
+                                (update acc nil (fnil conj []) (:unit-id u))))
+                            {}
+                            units)]
       {:org/chart
        {:org/id org-id
-        :org/hierarchy hierarchy}})))
+        :org/hierarchy hierarchy
+        :org/units (mapv (fn [u]
+                           {:unit/id (:unit-id u)
+                            :unit/name (:name u)
+                            :unit/division-id (:division-id u)
+                            :unit/dept-id (:dept-id u)
+                            :unit/parent-id (:parent-id u)
+                            :unit/budget (:budget u 0)
+                            :unit/filled (:filled u 0)
+                            :unit/open (:open u 0)
+                            :unit/pending (:pending u 0)
+                            :unit/actors (:actors u {})
+                            :unit/children (:children u [])})
+                         units)}})))
 
 (pco/defresolver dept-dashboard-resolver
   "Resolve department analytics dashboard: budget, filled, open, pending, avg SLA."

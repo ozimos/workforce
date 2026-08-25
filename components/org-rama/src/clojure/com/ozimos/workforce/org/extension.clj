@@ -15,7 +15,7 @@
   *org-unit-depot *headcount-depot *actor-depot *policy-depot
   $$orgs $$org-name->id $$org-create-ids $$memberships $$user-orgs $$org-users
   $$user-active-org $$invitations $$org-invitations $$email->invitations $$org-members
-  $$org-units $$org-hierarchy $$org-child-parent
+  $$org-units $$org->units $$org-hierarchy $$org-child-parent
   $$headcount-requests $$unit-requests $$user-pending-approvals
   $$request-timeline $$unit-headcount-stats $$approval-sla
   $$unit-actors $$approval-rules $$role-permissions
@@ -141,6 +141,8 @@
     ;; --- 2. Org Unit & Division Hierarchy PStates ---
     (declare-pstate s $$org-units
                     {String (map-schema Object Object)})
+    (declare-pstate s $$org->units
+                    {Long (map-schema String Object)})
     (declare-pstate s $$org-hierarchy
                     {String (map-schema String Object)})
     (declare-pstate s $$org-child-parent
@@ -306,6 +308,8 @@
                        (local-transform> [(keypath *u) (termval *unit-map)] $$org-units)
                        (default-stats *b-raw :> *init-stats)
                        (local-transform> [(keypath *u) (termval *init-stats)] $$unit-headcount-stats)
+                       (|hash *o)
+                       (local-transform> [(keypath *o *u) (termval true)] $$org->units)
                        (<<if (some? *p)
                              (|hash *p)
                              (local-transform> [(keypath *p *u) (termval true)] $$org-hierarchy)

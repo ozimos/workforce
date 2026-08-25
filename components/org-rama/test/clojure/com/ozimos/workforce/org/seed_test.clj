@@ -90,8 +90,8 @@
 
       ;; 4. Check Scoped Actors
       (let [backend-actors (org/get-unit-actors *deps* "dept-acme-backend")]
-        (is (some? (or (get backend-actors ":hiring-manager") (get backend-actors "hiring-manager"))))
-        (is (some? (or (get backend-actors ":dept-head") (get backend-actors "dept-head")))))
+        (is (some? (or (get backend-actors :hiring-manager) (get backend-actors ":hiring-manager"))))
+        (is (some? (or (get backend-actors :dept-head) (get backend-actors ":dept-head")))))
 
       ;; 5. Check Headcount Lifecycle states in Rama
       (let [req-filled (org/get-headcount-request *deps* "hc-acme-backend-1")

@@ -22,10 +22,13 @@
         (.then (fn [resp]
                  (-> (.text resp)
                      (.then (fn [text]
-                              {:status (.-status resp)
-                               :ok (.-ok resp)
-                               :body (try (read-str text)
-                                          (catch js/Error _ text))}))))))))
+                              (let [parsed (try (read-str text) (catch js/Error _ text))
+                                    data (if (and (map? parsed) (contains? parsed :data))
+                                           (:data parsed)
+                                           parsed)]
+                                {:status (.-status resp)
+                                 :ok (.-ok resp)
+                                 :body data})))))))))
 
 (defn fetch-transit
   "Fetches an EQL endpoint with application/transit+json format.
