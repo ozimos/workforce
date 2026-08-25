@@ -29,6 +29,17 @@
 11. **`+default` Profile Alias**:
     - All workspace and core component dependencies (`com.ozimos.omni-auth/*`, `poly/*`) and base test paths reside in `:+default`. Whenever invoking Clojure CLI or Launchpad, `+default` is required alongside `dev` (e.g. `bb bin/launchpad +default dev +rama test` or `clojure -M:+default:dev`).
 
+12. **Worktree REPL Isolation (CRITICAL)**:
+    - **Never connect to or reuse a REPL from another worktree (especially `main`)**.
+    - Each worktree is an independent filesystem. The REPL running in `main` has its classpath anchored to `/workforce/main/components/...`. If you evaluate code in `main`'s REPL while editing in another worktree, your file changes will NOT be loaded or will corrupt `main`'s state.
+    - Each worktree contains a `deps.local.edn` configured with port `0` sentinels (`:nrepl-port 0, :jetty/port {:dev 0}, :shadow-cljs {:http-port 0}`).
+    - When working in a branch worktree:
+      1. Run `bb repl` inside that worktree directory to boot an isolated JVM and embedded shadow-cljs.
+      2. It automatically writes its dynamic port to `.nrepl-port` in the worktree root.
+      3. Connect your editor/REPL client using the local `.nrepl-port`.
+      4. Run `(go)` or `(start-and-seed!)` in that worktree's REPL to initialize its independent in-memory Rama cluster.
+      5. `bb test-fast` will automatically discover and use that worktree's `.nrepl-port`.
+
 do not write code like this
 
 ```(or (get-in body [:data :user/update-username])

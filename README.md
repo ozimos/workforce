@@ -35,6 +35,15 @@ In your connected editor or REPL:
 (reset)  ;; Reload changed namespaces + restart system
 ```
 
+## Worktrees & Multi-Branch REPL Isolation
+
+When working in a Git worktree (e.g. `spike-replicant-renderer` or feature branches created with `bb wt-new <branch>`):
+
+- **Always boot a dedicated REPL within your worktree**: Run `bb repl` inside that worktree directory.
+- **Never connect to the REPL in `main`**: The REPL in `main` points to `main`'s files and classpath. Modifications in your worktree will not be recognized by `main`'s REPL, and evaluating code against `main` will corrupt its shared in-memory Rama state.
+- **Dynamic Port Assignment**: Worktrees automatically configure `:nrepl-port 0` and `:jetty/port {:dev 0}` in `deps.local.edn`. Launchpad assigns dynamic non-conflicting ports and writes the active port to `.nrepl-port` in the worktree root.
+- **CLI task discovery**: Commands like `bb test-fast` automatically read `.nrepl-port` from the current working directory.
+
 ## Verification
 
 ```bash
