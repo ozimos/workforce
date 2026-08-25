@@ -161,14 +161,14 @@
             (button {:onClick (fn [e]
                                 (.stopPropagation e)
                                 (toggle-node-collapsed! this unit-id))
-                     :className "flex h-7 w-7 items-center justify-center rounded-lg bg-gray-100 text-gray-600 hover:bg-indigo-100 hover:text-indigo-700 transition focus:outline-none"
+                     :className "flex h-5.5 w-5.5 items-center justify-center rounded-md bg-gray-100 text-gray-500 hover:bg-indigo-50 hover:text-indigo-600 transition focus:outline-none shrink-0"
                      :title (if collapsed? "Expand child units" "Collapse child units")}
               (dom/svg {:xmlns "http://www.w3.org/2000/svg"
-                        :className (str "h-4 w-4 transition-transform duration-200 " (if collapsed? "-rotate-90" "rotate-0"))
+                        :className (str "h-3 w-3 shrink-0 transition-transform duration-200 " (if collapsed? "-rotate-90" "rotate-0"))
                         :fill "none" :viewBox "0 0 24 24" :stroke "currentColor"}
-                (dom/path {:strokeLinecap "round" :strokeLinejoin "round" :strokeWidth "2" :d "M19 9l-7 7-7-7"})))
-            (div {:className "h-7 w-7 flex items-center justify-center"}
-              (div {:className (str "h-2 w-2 rounded-full " (if is-div? "bg-purple-500" "bg-indigo-500"))})))
+                (dom/path {:strokeLinecap "round" :strokeLinejoin "round" :strokeWidth "2.5" :d "M19 9l-7 7-7-7"})))
+            (div {:className "h-5.5 w-5.5 flex items-center justify-center shrink-0"}
+              (div {:className (str "h-1.5 w-1.5 rounded-full " (if is-div? "bg-purple-500" "bg-indigo-500"))})))
 
           (div nil
             (div {:className "flex items-center gap-2"}
@@ -270,7 +270,7 @@
               (str "Create a new division or department in " (or (:org/name active-org) "organization"))))
           (button {:onClick #(comp/set-state! this {:show-create-modal false})
                    :className "rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-500"}
-            (dom/svg {:xmlns "http://www.w3.org/2000/svg" :className "h-5 w-5" :fill "none" :viewBox "0 0 24 24" :stroke "currentColor"}
+            (dom/svg {:xmlns "http://www.w3.org/2000/svg" :className "h-4 w-4 shrink-0" :fill "none" :viewBox "0 0 24 24" :stroke "currentColor"}
               (dom/path {:strokeLinecap "round" :strokeLinejoin "round" :strokeWidth "2" :d "M6 18L18 6M6 6l12 12"}))))
 
         (when create-error
@@ -362,7 +362,7 @@
             (str "Set target headcount seats for " (or (:unit/name unit) (:unit/id unit)))))
         (button {:onClick #(comp/set-state! this {:show-budget-modal false})
                  :className "rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-500"}
-          (dom/svg {:xmlns "http://www.w3.org/2000/svg" :className "h-5 w-5" :fill "none" :viewBox "0 0 24 24" :stroke "currentColor"}
+          (dom/svg {:xmlns "http://www.w3.org/2000/svg" :className "h-4 w-4 shrink-0" :fill "none" :viewBox "0 0 24 24" :stroke "currentColor"}
             (dom/path {:strokeLinecap "round" :strokeLinejoin "round" :strokeWidth "2" :d "M6 18L18 6M6 6l12 12"}))))
 
       (when budget-error
@@ -397,12 +397,12 @@
            :collapsed-nodes :show-create-modal :create-form :create-loading
            :create-error :show-budget-modal :budget-unit :budget-val
            :budget-loading :budget-error]
-   :initial-state {:loading true :error nil :active-org nil :units {} :hierarchy {}
-                   :search-term "" :collapsed-nodes #{} :show-create-modal false
-                   :create-form {:id "" :name "" :division-id "" :dept-id "" :parent-id nil :budget 5}
-                   :create-loading false :create-error nil :show-budget-modal false
-                   :budget-unit nil :budget-val 0 :budget-loading false :budget-error nil}
-   :componentDidMount (fn [this] (fetch-chart-data! this))}
+  :initial-state {:loading true :error nil :active-org nil :units {} :hierarchy {}
+                  :search-term "" :collapsed-nodes #{} :show-create-modal false
+                  :create-form {:id "" :name "" :division-id "" :dept-id "" :parent-id nil :budget 5}
+                  :create-loading false :create-error nil :show-budget-modal false
+                  :budget-unit nil :budget-val 0 :budget-loading false :budget-error nil}
+  :componentDidMount (fn [this] (fetch-chart-data! this))}
   (let [{:keys [loading error active-org units hierarchy search-term
                 collapsed-nodes show-create-modal create-form create-loading
                 create-error show-budget-modal budget-unit budget-val
@@ -433,14 +433,14 @@
         ;; Header Actions
         (div {:className "flex items-center gap-3"}
           (button {:onClick #(fetch-chart-data! this)
-                   :className "inline-flex items-center gap-1.5 rounded-lg bg-white px-3.5 py-2 text-xs font-semibold text-gray-700 shadow-2xs ring-1 ring-inset ring-gray-300 hover:bg-gray-50 transition"}
-            (dom/svg {:xmlns "http://www.w3.org/2000/svg" :className "h-3.5 w-3.5 text-gray-500" :fill "none" :viewBox "0 0 24 24" :stroke "currentColor"}
-              (dom/path {:strokeLinecap "round" :strokeLinejoin "round" :strokeWidth "2" :d "M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"}))
+                   :className "inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 shadow-2xs ring-1 ring-inset ring-gray-300 hover:bg-gray-50 transition"}
+            (dom/svg {:xmlns "http://www.w3.org/2000/svg" :className "h-3 w-3 text-gray-500 shrink-0" :fill "none" :viewBox "0 0 24 24" :stroke "currentColor"}
+              (dom/path {:strokeLinecap "round" :strokeLinejoin "round" :strokeWidth "2.5" :d "M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"}))
             "Refresh")
           (button {:onClick #(comp/set-state! this {:show-create-modal true
                                                     :create-form {:id "" :name "" :division-id "" :dept-id "" :parent-id nil :budget 5}
                                                     :create-error nil})
-                   :className "inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-indigo-500 transition"}
+                   :className "inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-indigo-500 transition"}
             "+ Add Division / Dept")))
 
       ;; Summary KPI Metrics Banner
@@ -489,10 +489,10 @@
             (input {:type "text" :placeholder "Filter by unit name, code, division..."
                     :value (or search-term "")
                     :onChange #(comp/set-state! this {:search-term (.. % -target -value)})
-                    :className "w-full rounded-lg border border-gray-300 pl-9 pr-3 py-1.5 text-xs shadow-2xs focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"})
-            (div {:className "absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-400"}
-              (dom/svg {:xmlns "http://www.w3.org/2000/svg" :className "h-4 w-4" :fill "none" :viewBox "0 0 24 24" :stroke "currentColor"}
-                (dom/path {:strokeLinecap "round" :strokeLinejoin "round" :strokeWidth "2" :d "M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"}))))
+                    :className "w-full rounded-lg border border-gray-300 pl-8 pr-3 py-1.5 text-xs shadow-2xs focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"})
+            (div {:className "absolute inset-y-0 left-0 flex items-center pl-2.5 pointer-events-none text-gray-400"}
+              (dom/svg {:xmlns "http://www.w3.org/2000/svg" :className "h-3.5 w-3.5 shrink-0" :fill "none" :viewBox "0 0 24 24" :stroke "currentColor"}
+                (dom/path {:strokeLinecap "round" :strokeLinejoin "round" :strokeWidth "2.5" :d "M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"}))))
 
           (div {:className "flex items-center gap-2 w-full sm:w-auto justify-end"}
             (button {:onClick #(comp/set-state! this {:collapsed-nodes #{}})
