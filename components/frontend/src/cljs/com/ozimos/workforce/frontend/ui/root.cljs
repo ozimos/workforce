@@ -5,6 +5,7 @@
    [com.ozimos.workforce.frontend.ui.components.nav :as nav]
    [com.ozimos.workforce.frontend.ui.pages.create-org :as create-org]
    [com.ozimos.workforce.frontend.ui.pages.dept-dashboard :as dept-dashboard]
+   [com.ozimos.workforce.frontend.ui.pages.dept-dashboard-replicant-host :as dept-dashboard-replicant-host]
    [com.ozimos.workforce.frontend.ui.pages.forgot-password :as forgot-password]
    [com.ozimos.workforce.frontend.ui.pages.headcount :as headcount]
    [com.ozimos.workforce.frontend.ui.pages.headcount-replicant-host :as headcount-replicant-host]
@@ -31,6 +32,7 @@
       (= path "/org-chart") :route/org-chart
       (= path "/org-chart-replicant") :route/org-chart-replicant
       (= path "/dept-dashboard") :route/dept-dashboard
+      (= path "/dept-dashboard-replicant") :route/dept-dashboard-replicant
       (= path "/headcount") :route/headcount
       (= path "/headcount-replicant") :route/headcount-replicant
       (= path "/policies") :route/policies

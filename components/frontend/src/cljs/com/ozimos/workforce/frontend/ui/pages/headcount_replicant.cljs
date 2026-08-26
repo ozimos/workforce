@@ -134,8 +134,7 @@
                                   :on {:click [::approve (:headcount/id p-req)]}} "Approve"]
                         [:button {:class "rounded bg-rose-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm hover:bg-rose-500"
                                   :on {:click [::reject (:headcount/id p-req)]}} "Reject"]]])
-                 pending-approvals))]
-          )]
+                 pending-approvals))])]
 
      ;; Create Requisition Form
      [:div {:class "rounded-lg border border-gray-200 bg-white p-6 shadow-sm"}
