@@ -2,8 +2,8 @@
   (:require
    [cljs.test :refer [deftest is testing]]
    [com.fulcrologic.fulcro.components :as comp]
-   [com.ozimos.workforce.frontend.ui.pages.headcount :as headcount]
    [com.ozimos.workforce.frontend.ui.pages.dept-dashboard :as dept-dashboard]
+   [com.ozimos.workforce.frontend.ui.pages.headcount :as headcount]
    [com.ozimos.workforce.frontend.ui.pages.org-chart :as org-chart]
    [com.ozimos.workforce.frontend.ui.pages.policy-settings :as policy-settings]))
 

@@ -305,9 +305,9 @@
             user-rec (if existing
                        existing
                        (let [[ok created] (user/register! deps {:email (:email u)
-                                                               :username (:username u)
-                                                               :password (:password u)
-                                                               :roles (or (:roles u) ["MEMBER"])})]
+                                                                :username (:username u)
+                                                                :password (:password u)
+                                                                :roles (or (:roles u) ["MEMBER"])})]
                          (when ok
                            (user/verify! deps (:id created))
                            created)))]
@@ -320,7 +320,7 @@
             org-id (if existing-org
                      (:id existing-org)
                      (let [[ok created] (core/create-org! deps {:name (:name org)
-                                                               :owner-user-id owner-resolved-id})]
+                                                                :owner-user-id owner-resolved-id})]
                        (if ok (:id created) (:org-id org))))]
         (swap! org-map assoc (:org-id org) org-id)
 
@@ -385,10 +385,10 @@
             (when-let [rej (:rejection req)]
               (let [rejecter-resolved-id (get @user-map (:rejecter-user-id rej))]
                 (core/reject-headcount-request! deps {:org-id org-id
-                                                     :request-id req-id
-                                                     :rejecter-user-id rejecter-resolved-id
-                                                     :reason (:reason rej)
-                                                     :idempotency-key (str "seed-rej-" req-id)})))
+                                                      :request-id req-id
+                                                      :rejecter-user-id rejecter-resolved-id
+                                                      :reason (:reason rej)
+                                                      :idempotency-key (str "seed-rej-" req-id)})))
 
             ;; Sensitive field edits if applicable
             (doseq [ed (:field-edits req)]

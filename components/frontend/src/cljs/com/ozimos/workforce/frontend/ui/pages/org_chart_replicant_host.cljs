@@ -13,7 +13,7 @@
    [com.fulcrologic.fulcro.components :as comp :refer [defsc]]
    [com.fulcrologic.fulcro.dom :as dom]
    [com.ozimos.workforce.frontend.replicant-bridge :as bridge]
-   [com.ozimos.workforce.frontend.ui.pages.org-chart-replicant :as cr]
+   [com.ozimos.workforce.frontend.views.org-chart :as cr]
    [goog.dom :as gdom]))
 
 ;; Demo data seeded directly into the Fulcro DB atom so db->tree can read it.

@@ -1,13 +1,16 @@
 {:config-paths
-["imports/babashka/fs"
-   "imports/com.fulcrologic/fulcro"
-   "imports/com.fulcrologic/guardrails"
-   "imports/com.rpl/rama"
-   "imports/com.wsscode"
-   "imports/funcool"
-   "imports/metosin/malli"
-   "imports/rewrite-clj/rewrite-clj"
-   "imports/taoensso/encore"]
+ ["imports/babashka/fs"
+  "imports/com.fulcrologic/fulcro"
+  "imports/com.fulcrologic/guardrails"
+  "imports/com.rpl/rama"
+  "imports/com.wsscode"
+  "imports/funcool"
+  "imports/metosin/malli"
+  "imports/rewrite-clj/rewrite-clj"
+  "imports/taoensso/encore"]
+
+ :lint-as
+ {com.ozimos.workforce.frontend.defrc/defrc clojure.core/defn}
 
  :linters
  {:unused-namespace

@@ -3,7 +3,7 @@
              "rpl"     {:url "https://nexus.redplanetlabs.com/repository/maven-public-releases/"}}
 
  :aliases
- {:dev {:extra-paths ["components/frontend/src/clj" "components/frontend/src/cljs" "components/frontend/test/cljs"]
+ {:dev {:extra-paths ["components/frontend/src/clj" "components/frontend/src/cljs" "components/frontend/src/cljc" "components/frontend/src/cljd" "components/frontend/test/cljs" "components/frontend/test/cljc"]
         :extra-deps {org.clojure/clojure {:mvn/version "1.12.4"}
                      hato/hato {:mvn/version "1.0.0"}
                      metosin/jsonista {:mvn/version "0.3.14"}

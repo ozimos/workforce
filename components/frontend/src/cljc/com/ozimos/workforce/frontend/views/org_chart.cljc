@@ -1,4 +1,4 @@
-(ns com.ozimos.workforce.frontend.ui.pages.org-chart-replicant
+(ns com.ozimos.workforce.frontend.views.org-chart
   "Replicant rendering of the OrgChart page: pure `props -> hiccup` via `defrc`.
 
    Unlike `org-chart` (defsc + React DOM), this namespace produces plain Hiccup
@@ -8,11 +8,11 @@
 
    Cross-runtime (.cljc): compiles for the browser (Replicant DOM), the Node
    SSR harness, and the JVM (SSR rendering + headless tests)."
-  (:require-macros
-   [com.ozimos.workforce.frontend.defrc :refer [defrc]])
   (:require
    [clojure.string :as str]
-   [com.fulcrologic.fulcro.mutations :refer [defmutation]]))
+   [com.fulcrologic.fulcro.mutations :refer [defmutation]]
+   [com.ozimos.workforce.frontend.defrc :refer [defrc]]
+   [com.ozimos.workforce.frontend.util.math :as math]))
 
 ;; -----------------------------------------------------------------------------
 ;; Helpers (pure, no React)
@@ -229,7 +229,7 @@
         [:div {:class "rounded-xl bg-white p-4 shadow-2xs border border-gray-100"}
          [:p {:class "text-xs font-medium text-gray-500 truncate"} "Filled Seats"]
          [:p {:class "mt-1 text-2xl font-bold tracking-tight text-emerald-700"} (str total-filled)]
-         [:p {:class "text-xs text-emerald-500 mt-0.5"} (str (if (pos? total-budget) (js/Math.round (* 100 (/ total-filled total-budget))) 0) "% filled")]]
+         [:p {:class "text-xs text-emerald-500 mt-0.5"} (str (if (pos? total-budget) (math/round (* 100 (/ total-filled total-budget))) 0) "% filled")]]
         [:div {:class "rounded-xl bg-white p-4 shadow-2xs border border-gray-100"}
          [:p {:class "text-xs font-medium text-gray-500 truncate"} "Open Headcount"]
          [:p {:class "mt-1 text-2xl font-bold tracking-tight text-indigo-700"} (str total-open)]

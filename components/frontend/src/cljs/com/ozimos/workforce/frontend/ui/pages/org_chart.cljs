@@ -397,12 +397,12 @@
            :collapsed-nodes :show-create-modal :create-form :create-loading
            :create-error :show-budget-modal :budget-unit :budget-val
            :budget-loading :budget-error]
-  :initial-state {:loading true :error nil :active-org nil :units {} :hierarchy {}
-                  :search-term "" :collapsed-nodes #{} :show-create-modal false
-                  :create-form {:id "" :name "" :division-id "" :dept-id "" :parent-id nil :budget 5}
-                  :create-loading false :create-error nil :show-budget-modal false
-                  :budget-unit nil :budget-val 0 :budget-loading false :budget-error nil}
-  :componentDidMount (fn [this] (fetch-chart-data! this))}
+   :initial-state {:loading true :error nil :active-org nil :units {} :hierarchy {}
+                   :search-term "" :collapsed-nodes #{} :show-create-modal false
+                   :create-form {:id "" :name "" :division-id "" :dept-id "" :parent-id nil :budget 5}
+                   :create-loading false :create-error nil :show-budget-modal false
+                   :budget-unit nil :budget-val 0 :budget-loading false :budget-error nil}
+   :componentDidMount (fn [this] (fetch-chart-data! this))}
   (let [{:keys [loading error active-org units hierarchy search-term
                 collapsed-nodes show-create-modal create-form create-loading
                 create-error show-budget-modal budget-unit budget-val

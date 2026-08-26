@@ -182,8 +182,8 @@
 
           ;; 6. Manager Approves Step 1 -> Advances to Step 2 (Director)
           [_ step1-res] (org/approve-headcount-step! deps {:org-id org-id
-                                                          :request-id req-id
-                                                          :approver-user-id mgr-id})
+                                                           :request-id req-id
+                                                           :approver-user-id mgr-id})
           _ (is (= :step-advanced (:result step1-res)))
           _ (is (not (contains? (org/get-user-pending-approvals deps mgr-id) req-id)))
 
@@ -192,8 +192,8 @@
 
           ;; 7. Director Approves Step 2 -> Final Approval Reached (:approved)
           [_ step2-res] (org/approve-headcount-step! deps {:org-id org-id
-                                                          :request-id req-id
-                                                          :approver-user-id dir-id})
+                                                           :request-id req-id
+                                                           :approver-user-id dir-id})
           _ (is (= :approved (:result step2-res)))
           _ (is (not (contains? (org/get-user-pending-approvals deps dir-id) req-id)))
 
@@ -226,8 +226,8 @@
     (let [deps *deps*
           suffix (short-id)
           [ok? owner] (user/register! deps {:email (str "owner2-" suffix "@example.com")
-                                             :password "P@ssword123!"
-                                             :username (str "owner2_" suffix)})
+                                            :password "P@ssword123!"
+                                            :username (str "owner2_" suffix)})
           _ (is (true? ok?))
           owner-id (:id owner)
           [_ org-data] (org/create-org! deps {:name (str "RestructureCorp-" suffix) :owner-user-id owner-id})
@@ -285,8 +285,8 @@
 
           ;; Approve step 1 -> advances to step 2, status remains :in-approval
           [_ step1] (org/approve-headcount-step! deps {:org-id org-id
-                                                        :request-id req-id
-                                                        :approver-user-id mgr-id})
+                                                       :request-id req-id
+                                                       :approver-user-id mgr-id})
           _ (is (= :step-advanced (:result step1)))
 
           in-approval-req (org/get-headcount-request deps req-id)
@@ -294,10 +294,10 @@
 
           ;; Edit sensitive field -> triggers reset to :draft
           [edit-ok? _] (org/edit-headcount-field! deps {:org-id org-id
-                                                         :request-id req-id
-                                                         :editor-user-id owner-id
-                                                         :field-name :job-level
-                                                         :new-value "L5"})
+                                                        :request-id req-id
+                                                        :editor-user-id owner-id
+                                                        :field-name :job-level
+                                                        :new-value "L5"})
           _ (is (true? edit-ok?))
 
           ;; Verify reset to :draft, step 0, cleared approved-by

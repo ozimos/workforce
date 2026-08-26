@@ -204,22 +204,22 @@
           ;; 1. Create Division Unit via mutation
           div-id (str "div-" (short-suffix))
           div-res (pathom/process env [(list 'unit/create {:unit/id div-id
-                                                          :unit/org-id org-id
-                                                          :unit/name "Engineering Division"
-                                                          :unit/parent-id nil
-                                                          :unit/budget 20
-                                                          :unit/division-id "ENG"})])
+                                                           :unit/org-id org-id
+                                                           :unit/name "Engineering Division"
+                                                           :unit/parent-id nil
+                                                           :unit/budget 20
+                                                           :unit/division-id "ENG"})])
           _ (is (= div-id (:unit/id (first (vals div-res)))))
 
           ;; 2. Create Dept Unit via mutation
           dept-id (str "dept-" (short-suffix))
           dept-res (pathom/process env [(list 'unit/create {:unit/id dept-id
-                                                           :unit/org-id org-id
-                                                           :unit/name "Backend Dept"
-                                                           :unit/parent-id div-id
-                                                           :unit/budget 8
-                                                           :unit/division-id "ENG"
-                                                           :unit/dept-id "BACKEND"})])
+                                                            :unit/org-id org-id
+                                                            :unit/name "Backend Dept"
+                                                            :unit/parent-id div-id
+                                                            :unit/budget 8
+                                                            :unit/division-id "ENG"
+                                                            :unit/dept-id "BACKEND"})])
           _ (is (= dept-id (:unit/id (first (vals dept-res)))))
 
           ;; 3. Resolve Dept Dashboard

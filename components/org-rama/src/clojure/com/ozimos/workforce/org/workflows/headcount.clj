@@ -4,7 +4,7 @@
    the Escapement autonomous agent runner."
   (:require
    [com.fulcrologic.statecharts.chart :as chart]
-   [com.fulcrologic.statecharts.elements :refer [state transition on-entry]]))
+   [com.fulcrologic.statecharts.elements :refer [on-entry state transition]]))
 
 (def hiring-approval-chart
   "Statechart governing the full lifecycle of a workforce headcount requisition:

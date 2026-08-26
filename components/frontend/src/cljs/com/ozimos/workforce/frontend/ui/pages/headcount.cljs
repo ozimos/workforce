@@ -8,7 +8,7 @@
   (comp/set-state! this {:loading true :error nil})
   (-> (transit/fetch-transit "/api/query"
         [{:user/pending-approvals [:headcount/id :headcount/title :headcount/unit-id
-                                  :headcount/job-level :headcount/status :headcount/current-step]}
+                                   :headcount/job-level :headcount/status :headcount/current-step]}
          {:user/active-org [:org/id :org/name]}])
       (.then (fn [{:keys [body]}]
                (comp/set-state! this {:pending-approvals (:user/pending-approvals body [])

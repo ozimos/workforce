@@ -66,16 +66,14 @@
     (let [received-event (atom nil)
           received-args  (atom nil)
           adapter (bridge/dispatch!
-                   {::do-action
-                    (fn [ev-map & args]
-                      (reset! received-event ev-map)
-                      (reset! received-args args))})
+                    {::do-action
+                     (fn [ev-map & args]
+                       (reset! received-event ev-map)
+                       (reset! received-args args))})
           mock-event-map {:replicant/trigger :replicant.trigger/dom-event
                           :replicant/js-event #js {:target #js {:value "typed-query"}}}]
-      
       ;; Invoke dispatch with Replicant 2026.07.1 contract:
       (adapter mock-event-map [::do-action 100 "arg2"])
-      
       (is (= [100 "arg2"] @received-args)
           "Handler must receive the payload arguments after the event keyword")
       (is (= "typed-query" (.. (:replicant/js-event @received-event) -target -value))

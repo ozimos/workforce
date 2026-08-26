@@ -210,27 +210,59 @@
           query      (:query (meta sut/OrgChartReplicant))]
       ;; Initial state: expanded
       (swap! state-atom merge (base-props {:collapsed-nodes #{}}))
-      
       ;; 1. First render has children
       (let [hiccup-1 (sut/OrgChartReplicant (denorm/db->tree query @state-atom @state-atom))]
         (is (str/includes? (rs/render hiccup-1) "Platform")
             "Initial render must include child unit Platform")
-        
         ;; 2. Extract the toggle event from the rendered Hiccup:
         (let [toggle-event (find-event-in-hiccup hiccup-1 #(= (first %) :com.ozimos.workforce.frontend.ui.pages.org-chart-replicant/toggle-collapse))]
           (is (= [:com.ozimos.workforce.frontend.ui.pages.org-chart-replicant/toggle-collapse "eng"] toggle-event)
               "Parent card must emit toggle-collapse event for 'eng'")
-          
           ;; 3. Execute the mutation on the Fulcro app (simulating what the bridge dispatcher does):
           (comp/transact! app-inst [(sut/toggle-collapse {:id (second toggle-event)})])
-          
           ;; 4. Verify DB atom was mutated:
           (is (contains? (:collapsed-nodes @state-atom) "eng")
               "Fulcro DB atom :collapsed-nodes must now contain 'eng'")
-          
           ;; 5. Second render reflects the DB update:
           (let [hiccup-2 (sut/OrgChartReplicant (denorm/db->tree query @state-atom @state-atom))]
             (is (not (str/includes? (rs/render hiccup-2) "Platform"))
                 "After toggle mutation, child unit Platform must be absent from rendered output")
             (is (str/includes? (rs/render hiccup-2) "Engineering")
                 "Parent unit Engineering must remain visible")))))))
+
+(deftest pure-state-transitions-test
+  ;; ---------------------------------------------------------------------------
+  ;; WHY ADDED (per architecture: pure (fn [db params] -> db) in frontend-ui):
+  ;; A Mutation is just (fn [db params] -> updated-db). Fulcro's defmutation is a
+  ;; thin wrapper (action [{:keys [state]}] (swap! state pure-fn ...)).
+  ;; By keeping the pure transition in frontend-ui (.cljc), both Web (Fulcro)
+  ;; and Mobile (plain atom, no Fulcro) share 100% logic. Mobile's
+  ;; bases/mobile dispatches via plain swap! without macro overhead.
+  ;;
+  ;; WHAT IT PREVENTS:
+  ;; Prevents coupling frontend-ui to Fulcro runtime; ensures mobile plain atom
+  ;; and web Fulcro atom produce identical state transitions. Vendored
+  ;; denormalize is pure and shared; network EQL flows via transit+json.
+  ;; ---------------------------------------------------------------------------
+  (testing "Pure state fns are pure data transforms (no atom, no Fulcro)"
+    (let [db (base-props {})]
+      (is (= #{"eng"} (:collapsed-nodes (sut/toggle-collapse-state db "eng"))))
+      (is (= #{} (:collapsed-nodes (sut/toggle-collapse-state (assoc db :collapsed-nodes #{"eng"}) "eng")))
+          "Toggle is idempotent flip")
+      (is (= #{} (:collapsed-nodes (sut/expand-all-state (assoc db :collapsed-nodes #{"eng" "plat"})))))
+      (is (= #{"eng" "plat"} (:collapsed-nodes (sut/collapse-all-state db)))
+          "Collapse-all sets to all unit ids")
+      (is (= "hello" (:search-term (sut/set-search-term-state db "hello"))))))
+  (testing "Plain atom + pure fns (Mobile) produces same render as Fulcro transact! (Web)"
+    (let [plain-atom (atom (base-props {:collapsed-nodes #{}}))
+          query      (:query (meta sut/OrgChartReplicant))]
+      ;; Mobile dispatch simulation: plain swap! with pure fn
+      (swap! plain-atom sut/toggle-collapse-state "eng")
+      (is (contains? (:collapsed-nodes @plain-atom) "eng"))
+      (let [hiccup (sut/OrgChartReplicant (denorm/db->tree query @plain-atom @plain-atom))]
+        (is (not (str/includes? (rs/render hiccup) "Platform"))
+            "Plain atom toggle hides child same as Fulcro transact!"))
+      ;; Expand via pure fn
+      (swap! plain-atom sut/expand-all-state)
+      (is (= #{} (:collapsed-nodes @plain-atom)))
+      (is (str/includes? (rs/render (sut/OrgChartReplicant (denorm/db->tree query @plain-atom @plain-atom))) "Platform")))))

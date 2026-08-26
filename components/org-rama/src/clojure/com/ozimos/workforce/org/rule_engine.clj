@@ -15,15 +15,15 @@
 (def condition-node-schema
   "Recursive Malli schema for DSL condition nodes."
   (m/schema
-   [:schema {:registry {"condition" [:multi {:dispatch :op}
-                                     [:and [:map [:op [:= :and]] [:conditions [:vector [:ref "condition"]]]]]
-                                     [:or  [:map [:op [:= :or]]  [:conditions [:vector [:ref "condition"]]]]]
-                                     [:not [:map [:op [:= :not]] [:conditions [:tuple [:ref "condition"]]]]]
-                                     [:=   [:map [:op [:= :=]]   [:field :keyword] [:value :any]]]
-                                     [:!=  [:map [:op [:= :!=]]  [:field :keyword] [:value :any]]]
-                                     [:<   [:map [:op [:= :<]]   [:field :keyword] [:value :any]]]
-                                     [:>   [:map [:op [:= :>]]   [:field :keyword] [:value :any]]]
-                                     [:in  [:map [:op [:= :in]]  [:field :keyword] [:value [:set :any]]]]]}} "condition"]))
+    [:schema {:registry {"condition" [:multi {:dispatch :op}
+                                      [:and [:map [:op [:= :and]] [:conditions [:vector [:ref "condition"]]]]]
+                                      [:or  [:map [:op [:= :or]]  [:conditions [:vector [:ref "condition"]]]]]
+                                      [:not [:map [:op [:= :not]] [:conditions [:tuple [:ref "condition"]]]]]
+                                      [:=   [:map [:op [:= :=]]   [:field :keyword] [:value :any]]]
+                                      [:!=  [:map [:op [:= :!=]]  [:field :keyword] [:value :any]]]
+                                      [:<   [:map [:op [:= :<]]   [:field :keyword] [:value :any]]]
+                                      [:>   [:map [:op [:= :>]]   [:field :keyword] [:value :any]]]
+                                      [:in  [:map [:op [:= :in]]  [:field :keyword] [:value [:set :any]]]]]}} "condition"]))
 
 (defn valid-condition?
   "Returns true if `c` conforms to the DSL condition schema."
@@ -193,5 +193,5 @@
    step of `chain`, indicating their approval should be auto-recorded."
   [chain submitter-id unit-actors]
   (boolean
-   (when (seq chain)
-     (contains? (resolve-step-actors (first chain) unit-actors) submitter-id))))
+    (when (seq chain)
+      (contains? (resolve-step-actors (first chain) unit-actors) submitter-id))))

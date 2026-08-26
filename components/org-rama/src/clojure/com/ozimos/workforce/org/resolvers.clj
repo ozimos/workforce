@@ -208,7 +208,7 @@
   "Resolve all headcount requests awaiting approval by current user."
   [env _params]
   {::pco/output [{:user/pending-approvals [:headcount/id :headcount/title :headcount/unit-id
-                                          :headcount/job-level :headcount/status :headcount/current-step]}]}
+                                           :headcount/job-level :headcount/status :headcount/current-step]}]}
   (let [user-id (require-auth env)
         store (get-store (:deps env))
         req-ids (org/get-user-pending-approvals store user-id)

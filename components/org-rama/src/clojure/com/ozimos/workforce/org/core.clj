@@ -322,9 +322,9 @@
         created-at (now-ms)]
     (let [res (unwrap-ack (ramaapi/foreign-append! depot
                             (rec/->HeadcountCreate request-id org-id unit-id division-id dept-id location
-                                                  job-level employee-type requester-id title justification
-                                                  job-description salary-band bonus-target :in-approval
-                                                  1 (or chain-snapshot []) created-at idempotency-key)
+                              job-level employee-type requester-id title justification
+                              job-description salary-band bonus-target :in-approval
+                              1 (or chain-snapshot []) created-at idempotency-key)
                             :ack))]
       (if (and (string? res) (not= res request-id))
         [true {:request-id res :status :in-approval :current-step 1 :duplicate true}]
