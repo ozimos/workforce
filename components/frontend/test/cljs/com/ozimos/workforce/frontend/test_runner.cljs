@@ -12,6 +12,7 @@
    [com.ozimos.workforce.frontend.ui.pages.org-chart-replicant-test]
    [com.ozimos.workforce.frontend.ui.pages.org-chart-test]
    [com.ozimos.workforce.frontend.ui.pages.org-dashboard-replicant-test]
+   [com.ozimos.workforce.frontend.ui.pages.policy-settings-replicant-test]
    [com.ozimos.workforce.frontend.ui.pages.profile-test]))
 
 (defn main []
@@ -26,5 +27,6 @@
     'com.ozimos.workforce.frontend.ui.pages.login-test
     'com.ozimos.workforce.frontend.ui.pages.org-chart-replicant-test
     'com.ozimos.workforce.frontend.ui.pages.org-dashboard-replicant-test
+    'com.ozimos.workforce.frontend.ui.pages.policy-settings-replicant-test
     'com.ozimos.workforce.frontend.ui.pages.org-chart-test
     'com.ozimos.workforce.frontend.ui.pages.profile-test))

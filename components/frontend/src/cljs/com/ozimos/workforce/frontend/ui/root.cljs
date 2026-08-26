@@ -17,6 +17,7 @@
    [com.ozimos.workforce.frontend.ui.pages.org-dashboard :as org-dashboard]
    [com.ozimos.workforce.frontend.ui.pages.org-dashboard-replicant-host :as org-dashboard-replicant-host]
    [com.ozimos.workforce.frontend.ui.pages.policy-settings :as policy-settings]
+   [com.ozimos.workforce.frontend.ui.pages.policy-settings-replicant-host :as policy-settings-replicant-host]
    [com.ozimos.workforce.frontend.ui.pages.profile :as profile]
    [com.ozimos.workforce.frontend.ui.pages.register :as register]
    [com.ozimos.workforce.frontend.ui.pages.reset-password :as reset-password]
@@ -38,6 +39,7 @@
       (= path "/headcount") :route/headcount
       (= path "/headcount-replicant") :route/headcount-replicant
       (= path "/policies") :route/policies
+      (= path "/policies-replicant") :route/policies-replicant
       (= path "/profile") :route/profile
       (= path "/forgot-password") :route/forgot-password
       (.startsWith path "/reset-password") :route/reset-password
@@ -65,6 +67,7 @@
     :route/headcount "/headcount"
     :route/headcount-replicant "/headcount-replicant"
     :route/policies "/policies"
+    :route/policies-replicant "/policies-replicant"
     :route/profile "/profile"
     :route/forgot-password "/forgot-password"
     :route/reset-password "/reset-password"
