@@ -11,6 +11,7 @@
    [com.ozimos.workforce.frontend.ui.pages.join-org :as join-org]
    [com.ozimos.workforce.frontend.ui.pages.login :as login]
    [com.ozimos.workforce.frontend.ui.pages.org-chart :as org-chart]
+   [com.ozimos.workforce.frontend.ui.pages.org-chart-replicant-host :as org-chart-replicant-host]
    [com.ozimos.workforce.frontend.ui.pages.org-dashboard :as org-dashboard]
    [com.ozimos.workforce.frontend.ui.pages.policy-settings :as policy-settings]
    [com.ozimos.workforce.frontend.ui.pages.profile :as profile]
@@ -27,6 +28,7 @@
       (= path "/join-org") :route/join-org
       (= path "/org-dashboard") :route/org-dashboard
       (= path "/org-chart") :route/org-chart
+      (= path "/org-chart-replicant") :route/org-chart-replicant
       (= path "/dept-dashboard") :route/dept-dashboard
       (= path "/headcount") :route/headcount
       (= path "/policies") :route/policies
@@ -51,6 +53,7 @@
     :route/join-org "/join-org"
     :route/org-dashboard "/org-dashboard"
     :route/org-chart "/org-chart"
+    :route/org-chart-replicant "/org-chart-replicant"
     :route/dept-dashboard "/dept-dashboard"
     :route/headcount "/headcount"
     :route/policies "/policies"
@@ -68,6 +71,7 @@
 (def join-org-factory        (delay (comp/factory join-org/JoinOrg)))
 (def org-dashboard-factory  (delay (comp/factory org-dashboard/OrgDashboard)))
 (def org-chart-factory      (delay (comp/factory org-chart/OrgChart)))
+(def org-chart-replicant-host-factory (delay (comp/factory org-chart-replicant-host/OrgChartReplicantHost)))
 (def dept-dashboard-factory (delay (comp/factory dept-dashboard/DeptDashboard)))
 (def headcount-factory      (delay (comp/factory headcount/HeadcountPage)))
 (def policy-settings-factory (delay (comp/factory policy-settings/PolicySettings)))
@@ -103,6 +107,7 @@
                            :route/join-org (@join-org-factory)
                            :route/org-dashboard (@org-dashboard-factory)
                            :route/org-chart (@org-chart-factory)
+                           :route/org-chart-replicant (@org-chart-replicant-host-factory)
                            :route/dept-dashboard (@dept-dashboard-factory)
                            :route/headcount (@headcount-factory)
                            :route/policies (@policy-settings-factory)
