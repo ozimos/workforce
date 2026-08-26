@@ -15,6 +15,7 @@
    [com.ozimos.workforce.frontend.ui.pages.org-chart :as org-chart]
    [com.ozimos.workforce.frontend.ui.pages.org-chart-replicant-host :as org-chart-replicant-host]
    [com.ozimos.workforce.frontend.ui.pages.org-dashboard :as org-dashboard]
+   [com.ozimos.workforce.frontend.ui.pages.org-dashboard-replicant-host :as org-dashboard-replicant-host]
    [com.ozimos.workforce.frontend.ui.pages.policy-settings :as policy-settings]
    [com.ozimos.workforce.frontend.ui.pages.profile :as profile]
    [com.ozimos.workforce.frontend.ui.pages.register :as register]
@@ -29,6 +30,7 @@
       (= path "/create-org") :route/create-org
       (= path "/join-org") :route/join-org
       (= path "/org-dashboard") :route/org-dashboard
+      (= path "/org-dashboard-replicant") :route/org-dashboard-replicant
       (= path "/org-chart") :route/org-chart
       (= path "/org-chart-replicant") :route/org-chart-replicant
       (= path "/dept-dashboard") :route/dept-dashboard
@@ -56,6 +58,7 @@
     :route/create-org "/create-org"
     :route/join-org "/join-org"
     :route/org-dashboard "/org-dashboard"
+    :route/org-dashboard-replicant "/org-dashboard-replicant"
     :route/org-chart "/org-chart"
     :route/org-chart-replicant "/org-chart-replicant"
     :route/dept-dashboard "/dept-dashboard"
