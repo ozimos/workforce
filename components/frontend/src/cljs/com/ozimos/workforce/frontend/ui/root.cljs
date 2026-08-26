@@ -7,6 +7,7 @@
    [com.ozimos.workforce.frontend.ui.pages.dept-dashboard :as dept-dashboard]
    [com.ozimos.workforce.frontend.ui.pages.forgot-password :as forgot-password]
    [com.ozimos.workforce.frontend.ui.pages.headcount :as headcount]
+   [com.ozimos.workforce.frontend.ui.pages.headcount-replicant-host :as headcount-replicant-host]
    [com.ozimos.workforce.frontend.ui.pages.home :as home]
    [com.ozimos.workforce.frontend.ui.pages.join-org :as join-org]
    [com.ozimos.workforce.frontend.ui.pages.login :as login]
@@ -31,6 +32,7 @@
       (= path "/org-chart-replicant") :route/org-chart-replicant
       (= path "/dept-dashboard") :route/dept-dashboard
       (= path "/headcount") :route/headcount
+      (= path "/headcount-replicant") :route/headcount-replicant
       (= path "/policies") :route/policies
       (= path "/profile") :route/profile
       (= path "/forgot-password") :route/forgot-password
@@ -56,6 +58,7 @@
     :route/org-chart-replicant "/org-chart-replicant"
     :route/dept-dashboard "/dept-dashboard"
     :route/headcount "/headcount"
+    :route/headcount-replicant "/headcount-replicant"
     :route/policies "/policies"
     :route/profile "/profile"
     :route/forgot-password "/forgot-password"
@@ -74,6 +77,7 @@
 (def org-chart-replicant-host-factory (delay (comp/factory org-chart-replicant-host/OrgChartReplicantHost)))
 (def dept-dashboard-factory (delay (comp/factory dept-dashboard/DeptDashboard)))
 (def headcount-factory      (delay (comp/factory headcount/HeadcountPage)))
+(def headcount-replicant-host-factory (delay (comp/factory headcount-replicant-host/HeadcountReplicantHost)))
 (def policy-settings-factory (delay (comp/factory policy-settings/PolicySettings)))
 (def forgot-pw-factory      (delay (comp/factory forgot-password/ForgotPassword)))
 (def reset-pw-factory        (delay (comp/factory reset-password/ResetPassword)))
@@ -110,6 +114,7 @@
                            :route/org-chart-replicant (@org-chart-replicant-host-factory)
                            :route/dept-dashboard (@dept-dashboard-factory)
                            :route/headcount (@headcount-factory)
+                           :route/headcount-replicant (@headcount-replicant-host-factory)
                            :route/policies (@policy-settings-factory)
                            :route/forgot-password (@forgot-pw-factory)
                            :route/reset-password (@reset-pw-factory)
