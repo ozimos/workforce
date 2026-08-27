@@ -3,6 +3,7 @@
    [cljs.test :refer [run-tests]]
    [com.ozimos.workforce.frontend.replicant-bridge-test]
    [com.ozimos.workforce.frontend.transit-test]
+   [com.ozimos.workforce.frontend.ui.components.nav-replicant-test]
    [com.ozimos.workforce.frontend.ui.components.nav-test]
    [com.ozimos.workforce.frontend.ui.pages.dept-dashboard-replicant-test]
    [com.ozimos.workforce.frontend.ui.pages.dept-dashboard-test]
@@ -21,6 +22,7 @@
     'com.ozimos.workforce.frontend.transit-test
     'com.ozimos.workforce.frontend.replicant-bridge-test
     'com.ozimos.workforce.frontend.ui.pages.headcount-replicant-test
+    'com.ozimos.workforce.frontend.ui.components.nav-replicant-test
     'com.ozimos.workforce.frontend.ui.components.nav-test
     'com.ozimos.workforce.frontend.ui.pages.dept-dashboard-replicant-test
     'com.ozimos.workforce.frontend.ui.pages.dept-dashboard-test

@@ -1,4 +1,4 @@
-{:source-paths ["components/frontend/src/clj" "components/frontend/src/cljs" "components/frontend/test/cljs"]
+{:source-paths ["components/frontend/src/clj" "components/frontend/src/cljs" "components/frontend/src/cljc" "components/frontend/test/cljs" "components/frontend/test/cljc"]
  :dependencies [[com.fulcrologic/fulcro "3.9.5"]
                 [no.cjohansen/replicant "2026.07.1"]]
  :builds {:app {:target :browser
