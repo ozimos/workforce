@@ -154,10 +154,47 @@ function setupMiddleware() {
   });
 }
 
+let httpServer = null;
+
+function cleanupAndExit(code = 0) {
+  console.log("[SSR Server] Shutting down cleanly...");
+  if (httpServer) {
+    httpServer.close(() => {
+      console.log("[SSR Server] HTTP server closed.");
+      process.exit(code);
+    });
+    // Force close after 1s if sockets hang
+    setTimeout(() => {
+      process.exit(code);
+    }, 1000).unref();
+  } else {
+    process.exit(code);
+  }
+}
+
+// Handle termination signals
+process.on("SIGINT", () => cleanupAndExit(0));
+process.on("SIGTERM", () => cleanupAndExit(0));
+process.on("SIGHUP", () => cleanupAndExit(0));
+
+// Watchdog: If parent process exits abruptly, self-terminate
+if (process.ppid && process.ppid > 1) {
+  const ppid = process.ppid;
+  setInterval(() => {
+    try {
+      // Sending signal 0 checks if parent PID is still alive
+      process.kill(ppid, 0);
+    } catch (err) {
+      console.log(`[SSR Server] Parent PID ${ppid} terminated. Self-exiting...`);
+      cleanupAndExit(0);
+    }
+  }, 2000).unref();
+}
+
 function startServer() {
   loadSsrModule();
 
-  app.listen(PORT, () => {
+  httpServer = app.listen(PORT, () => {
     console.log(`SSR server listening on http://localhost:${PORT}`);
     console.log(`Proxying /api/* to ${API_TARGET}`);
     console.log(`Serving static files from ${PUBLIC_DIR}`);

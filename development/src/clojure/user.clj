@@ -218,7 +218,10 @@
       (catch Throwable _ nil))
     ;; 3. Terminate any remaining processes on our ports (e.g. Node SSR server, orphaned watchers)
     (doseq [p (distinct all-ports)]
-      (kill-port! p))))
+      (kill-port! p))
+    ;; 4. Remove stale port files from disk
+    (doseq [path [".nrepl-port" ".shadow-cljs/nrepl.port" ".shadow-cljs/http.port"]]
+      (try (let [f (java.io.File. path)] (when (.exists f) (.delete f))) (catch Throwable _ nil)))))
 
 ;; Register JVM shutdown hook to execute port & process cleanup if REPL JVM terminates or crashes
 (defonce ^:private __register-repl-shutdown-hook!

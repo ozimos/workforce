@@ -52,8 +52,21 @@
   "Halt the current integrant system and clear the stored reference."
   []
   (when-let [sys (or irs/system @sys-atom)]
-    (ig/halt! sys)
+    (try
+      (ig/halt! sys)
+      (catch Throwable _ nil))
     (reset! sys-atom nil)))
+
+;; Register JVM shutdown hook so CI / aborts cleanly stop any test cluster / Jetty instance
+(defonce ^:private __register-test-shutdown-hook!
+  (do
+    (.addShutdownHook
+      (Runtime/getRuntime)
+      (Thread.
+        (fn []
+          (try (stop-clean-test-sys!) (catch Throwable _ nil))
+          (try (stop-system) (catch Throwable _ nil)))))
+    true))
 
 (defn setup
   [_project-name]
