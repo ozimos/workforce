@@ -1,6 +1,8 @@
 (ns com.ozimos.workforce.org.rbac
   "Granular Role-Based Access Control (RBAC) and field-level visibility engine
-   for headcount requisitions and organizational tree attributes.")
+   for headcount requisitions and organizational tree attributes."
+  (:require
+   [clojure.string :as str]))
 
 (defn descendant-unit?
   "Checks if target-unit-id is equal to root-unit-id or a descendant of root-unit-id
@@ -33,10 +35,10 @@
         current-approver-id (:current-approver-id target-req)
         assigned-actors (set (:assigned-actor-ids target-req))]
     (boolean
-      (or (= viewer-id requester-id)
-          (= viewer-id current-approver-id)
-          (contains? approved-by viewer-id)
-          (contains? assigned-actors viewer-id)))))
+     (or (= viewer-id requester-id)
+         (= viewer-id current-approver-id)
+         (contains? approved-by viewer-id)
+         (contains? assigned-actors viewer-id)))))
 
 (defn can-view-headcount?
   "Determines whether the viewer has permission to view the given headcount request
@@ -108,7 +110,7 @@
    Returns the masked request map if visible, or nil if access is denied."
   [viewer target-req org-hierarchy role-permissions]
   (let [role-raw (or (:role viewer) :employee)
-        role (keyword (clojure.string/lower-case (name role-raw)))
+        role (keyword (str/lower-case (name role-raw)))
         effective-permissions (merge (get default-role-permissions role (get default-role-permissions :employee))
                                      (get role-permissions role)
                                      (get role-permissions role-raw))]

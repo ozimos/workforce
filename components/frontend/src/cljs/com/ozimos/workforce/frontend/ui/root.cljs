@@ -3,7 +3,6 @@
    [com.fulcrologic.fulcro.components :as comp :refer [defsc]]
    [com.fulcrologic.fulcro.dom :as dom :refer [div p]]
    [com.ozimos.workforce.frontend.ui.components.nav :as nav]
-   [com.ozimos.workforce.frontend.ui.components.nav-replicant-host :as nav-replicant-host]
    [com.ozimos.workforce.frontend.ui.pages.create-org :as create-org]
    [com.ozimos.workforce.frontend.ui.pages.create-org-replicant-host :as create-org-replicant-host]
    [com.ozimos.workforce.frontend.ui.pages.dept-dashboard :as dept-dashboard]

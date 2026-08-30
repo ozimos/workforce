@@ -90,7 +90,7 @@
 
 (deftest defrc-metadata
   (testing "query and ident"
-    (is (= [:loading :error :active-org :pending-approvals :submitting :msg :form-unit-id :form-title :form-level :form-salary :form-bonus :form-justification]
+    (is (= [:loading :error :active-org :pending-approvals :submitting :msg :form-unit-id :form-title :form-level :form-salary :form-justification]
            (:query (meta sut/HeadcountReplicant))))
     (is (= :headcount-replicant/root (:ident (meta sut/HeadcountReplicant))))))
 

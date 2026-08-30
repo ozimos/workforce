@@ -58,7 +58,7 @@
                          [(set-field-errors {:field-errors field-errs})
                           (set-error-msg {:msg (when (empty? field-errs) "Registration failed")})])))))))))
 
-(defsc RegisterReplicantHost [this _props]
+(defsc RegisterReplicantHost [_this _props]
   {:query [:email :password :confirm-password :error-msg :field-errors :success :created-username]
    :initial-state {:email "" :password "" :confirm-password "" :error-msg nil :field-errors {} :success false :created-username nil}
    :componentDidMount

@@ -1,5 +1,6 @@
 (ns com.ozimos.workforce.org.resolvers
   (:require
+   [clojure.string :as str]
    [com.ozimos.omni-auth.user.interface :as user]
    [com.ozimos.workforce.org.core :as org]
    [com.ozimos.workforce.org.errors :as errors]
@@ -47,7 +48,7 @@
   (let [user-id (authenticated-user-id env)
         membership (when (and user-id org-id) (org/get-membership store user-id org-id))
         raw-role (or (:role membership) "employee")
-        role-kw (keyword (clojure.string/lower-case (str raw-role)))]
+        role-kw (keyword (str/lower-case (str raw-role)))]
     {:user-id user-id
      :role role-kw
      :org-id org-id
@@ -235,7 +236,7 @@
                  :headcount/bonus-target :headcount/status :headcount/current-step
                  :headcount/current-approver-id :headcount/chain-snapshot :headcount/approved-by
                  :headcount/created-at]}
-  (let [user-id (require-auth env)
+  (let [_ (require-auth env)
         store (get-store deps)
         req-id (:headcount/id params)
         raw-req (org/get-headcount-request store req-id)]
@@ -334,7 +335,7 @@
   [{:keys [deps] :as env} params]
   {::pco/input [:headcount/id]
    ::pco/output [:headcount/available-actions]}
-  (let [user-id (require-auth env)
+  (let [_ (require-auth env)
         store (get-store deps)
         req-id (:headcount/id params)
         raw-req (org/get-headcount-request store req-id)]
@@ -663,7 +664,7 @@
    ::pco/params [:headcount/org-id :headcount/request-id :headcount/hired-user-id
                  :headcount/role :headcount/idempotency-key]
    ::pco/output [:headcount/request-id :headcount/hired-user-id :headcount/status :error]}
-  (let [user-id (require-auth env)
+  (let [_ (require-auth env)
         store (get-store (:deps env))
         input {:org-id (:headcount/org-id params)
                :request-id (:headcount/request-id params)

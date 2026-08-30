@@ -4,7 +4,6 @@
    [clojure.string :as str]
    [com.fulcrologic.fulcro.algorithms.denormalize :as denorm]
    [com.fulcrologic.fulcro.application :as app]
-   [com.fulcrologic.fulcro.components :as comp]
    [com.ozimos.workforce.frontend.ui.pages.create-org-replicant :as sut]
    [replicant.string :as rs]))
 

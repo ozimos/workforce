@@ -24,7 +24,7 @@
     (-> (json/fetch-json "/api/auth/forgot-password" "POST" {:email email})
         (.then (fn [_] (comp/transact! app-inst [(set-sent {:sent true})]))))))
 
-(defsc ForgotPasswordReplicantHost [this _props]
+(defsc ForgotPasswordReplicantHost [_this _props]
   {:query [:email :sent]
    :initial-state {:email "" :sent false}
    :componentDidMount

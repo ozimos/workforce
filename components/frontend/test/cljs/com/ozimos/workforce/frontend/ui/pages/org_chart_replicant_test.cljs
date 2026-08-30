@@ -1,6 +1,4 @@
 (ns com.ozimos.workforce.frontend.ui.pages.org-chart-replicant-test
-  (:require-macros
-   [com.ozimos.workforce.frontend.defrc :refer [defrc]])
   (:require
    [cljs.test :refer [deftest is testing]]
    [clojure.string :as str]

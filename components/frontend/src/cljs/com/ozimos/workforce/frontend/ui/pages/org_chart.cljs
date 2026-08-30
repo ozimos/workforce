@@ -2,7 +2,7 @@
   (:require
    [clojure.string :as str]
    [com.fulcrologic.fulcro.components :as comp :refer [defsc]]
-   [com.fulcrologic.fulcro.dom :as dom :refer [a button div h1 h2 h3 input label option p select span table tbody td th thead tr]]
+   [com.fulcrologic.fulcro.dom :as dom :refer [a button div h1 h2 h3 input label option p select span]]
    [com.ozimos.workforce.frontend.transit :as transit]))
 
 ;; -----------------------------------------------------------------------------
@@ -144,7 +144,7 @@
         is-div? (or is-root? (nil? (:unit/parent-id unit)))
         actors (:unit/actors unit {})
         has-children? (pos? children-count)]
-    (div {:onClick (fn [e]
+    (div {:onClick (fn [_]
                      (if has-children?
                        (toggle-node-collapsed! this unit-id)
                        (set! js/window.location.href (str "/dept-dashboard?unit-id=" unit-id))))

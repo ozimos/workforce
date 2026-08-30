@@ -48,7 +48,7 @@
                          (comp/transact! app-inst [(set-error-msg {:msg (or (-> body :errors :token first)
                                                                            "Invalid or expired token")})]))))))))))
 
-(defsc ResetPasswordReplicantHost [this _props]
+(defsc ResetPasswordReplicantHost [_this _props]
   {:query [:password :confirm-password :error-msg :success]
    :initial-state {:password "" :confirm-password "" :error-msg nil :success false}
    :componentDidMount

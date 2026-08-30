@@ -34,7 +34,7 @@
       (if (empty? nodes)
         {:status :success :context ctx}
         (let [node (first nodes)
-              {:keys [status context] :as res} (tick node ctx)]
+              {:keys [status context]} (tick node ctx)]
           (case status
             :success (recur (rest nodes) context)
             :failure {:status :failure :context context}
@@ -49,7 +49,7 @@
       (if (empty? nodes)
         {:status :failure :context ctx}
         (let [node (first nodes)
-              {:keys [status context] :as res} (tick node ctx)]
+              {:keys [status context]} (tick node ctx)]
           (case status
             :success {:status :success :context context}
             :running {:status :running :context context}

@@ -1,11 +1,11 @@
 (ns com.ozimos.workforce.org.simulation-test
   (:require
+   [clojure.string :as str]
    [clojure.test :refer [deftest is testing use-fixtures]]
    [com.ozimos.omni-auth.user.interface :as user]
    [com.ozimos.workforce.org.interface :as org]
    [com.ozimos.workforce.org.simulation.behavior-tree :as bt]
    [com.ozimos.workforce.org.simulation.runner :as runner]
-   [com.ozimos.workforce.org.tools.escapement :as esc]
    [com.ozimos.workforce.org.tools.mcp :as mcp]
    [com.ozimos.workforce.web.test-system :as ts]
    [com.rpl.rama.ops :as ops]
@@ -23,7 +23,7 @@
 (use-fixtures :once system-fixture)
 
 (defn- short-suffix []
-  (subs (clojure.string/replace (str (ops/random-uuid7)) "-" "") 16 32))
+  (subs (str/replace (str (ops/random-uuid7)) "-" "") 16 32))
 
 (defn- register-user []
   (let [suffix (short-suffix)

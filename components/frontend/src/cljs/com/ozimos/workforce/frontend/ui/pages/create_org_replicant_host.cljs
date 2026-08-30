@@ -44,7 +44,7 @@
           (.catch (fn [_]
                     (comp/transact! app-inst [(set-error-msg {:msg "Network error"})])))))))
 
-(defsc CreateOrgReplicantHost [this _props]
+(defsc CreateOrgReplicantHost [_this _props]
   {:query [:name :error-msg :loading :success :org-name]
    :initial-state {:name "" :error-msg nil :loading false :success false :org-name nil}
    :componentDidMount

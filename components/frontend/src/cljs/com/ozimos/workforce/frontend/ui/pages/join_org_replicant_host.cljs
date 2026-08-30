@@ -1,7 +1,6 @@
 (ns com.ozimos.workforce.frontend.ui.pages.join-org-replicant-host
   "Fulcro host for JoinOrg Replicant page."
   (:require
-   [com.fulcrologic.fulcro.application :as app]
    [com.fulcrologic.fulcro.components :as comp :refer [defsc]]
    [com.fulcrologic.fulcro.dom :as dom]
    [com.ozimos.workforce.frontend.replicant-bridge :as bridge]
@@ -38,7 +37,7 @@
         (.catch (fn [_]
                   (comp/transact! app-inst [(jor/set-error-msg {:msg "Network error"})]))))))
 
-(defsc JoinOrgReplicantHost [this _props]
+(defsc JoinOrgReplicantHost [_this _props]
   {:query [:invitations :loading :error-msg :accepting :accepted]
    :initial-state {:invitations [] :loading true :error-msg nil :accepting nil :accepted false}
    :componentDidMount

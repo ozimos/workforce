@@ -30,7 +30,7 @@
    :loading false
    :active-org {:org/name "Demo Co"}})
 
-(defsc OrgChartReplicantHost [this _props]
+(defsc OrgChartReplicantHost [_this _props]
   {:query         [:loading :error :active-org :units :hierarchy :search-term :collapsed-nodes]
    :initial-state {:loading false :error nil :active-org nil :units {} :hierarchy {}
                    :search-term "" :collapsed-nodes #{}}

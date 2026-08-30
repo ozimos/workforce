@@ -1,7 +1,6 @@
 (ns com.ozimos.workforce.frontend.ui.pages.verify-replicant-host
   "Fulcro host for Verify Replicant page."
   (:require
-   [com.fulcrologic.fulcro.application :as app]
    [com.fulcrologic.fulcro.components :as comp :refer [defsc]]
    [com.fulcrologic.fulcro.dom :as dom]
    [com.fulcrologic.fulcro.mutations :refer [defmutation]]
@@ -32,7 +31,7 @@
                      (comp/transact! app-inst [(set-status {:status :error :message "Verification failed"})])))))
       (comp/transact! app-inst [(set-status {:status :error :message "Missing verification token"})]))))
 
-(defsc VerifyReplicantHost [this _props]
+(defsc VerifyReplicantHost [_this _props]
   {:query [:status :message]
    :initial-state {:status :loading :message nil}
    :componentDidMount

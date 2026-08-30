@@ -1,14 +1,13 @@
 (ns com.ozimos.workforce.frontend.ui.pages.home-replicant-host
   "Fulcro host mounting the pure Replicant Home view."
   (:require
-   [com.fulcrologic.fulcro.application :as app]
    [com.fulcrologic.fulcro.components :as comp :refer [defsc]]
    [com.fulcrologic.fulcro.dom :as dom]
    [com.ozimos.workforce.frontend.replicant-bridge :as bridge]
    [com.ozimos.workforce.frontend.ui.pages.home-replicant :as hr]
    [goog.dom :as gdom]))
 
-(defsc HomeReplicantHost [this _props]
+(defsc HomeReplicantHost [_this _props]
   {:query [:active-org]
    :initial-state {:active-org nil}
    :componentDidMount

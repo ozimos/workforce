@@ -1,7 +1,7 @@
 (ns com.ozimos.workforce.frontend.ui.pages.headcount
   (:require
    [com.fulcrologic.fulcro.components :as comp :refer [defsc]]
-   [com.fulcrologic.fulcro.dom :as dom :refer [button div form h1 h2 h3 input label p select span table tbody td textarea th thead tr]]
+   [com.fulcrologic.fulcro.dom :as dom :refer [button div h1 h3 input label p select span table tbody td textarea th thead tr]]
    [com.ozimos.workforce.frontend.transit :as transit]))
 
 (defn- fetch-inbox-and-reqs! [this]
@@ -15,10 +15,40 @@
                                       :active-org (:user/active-org body)
                                       :loading false})))
       (.catch (fn [err]
-                (comp/set-state! this {:loading false :error (str "Failed to load requisitions: " err)})))))
+                (comp/set-state! this {:error (str "Failed to load headcount inbox: " err)
+                                       :loading false})))))
+
+(defn- approve-step! [this request-id]
+  (-> (transit/fetch-transit "/api/mutation"
+        [`(com.ozimos.workforce.org.resolvers/approve-headcount-step
+           {:headcount/request-id ~request-id})])
+      (.then (fn [{:keys [body]}]
+               (let [res (get body `com.ozimos.workforce.org.resolvers/approve-headcount-step)]
+                 (if (:error res)
+                   (comp/set-state! this {:msg (str "Error: " (get-in res [:error :message]))})
+                   (do
+                     (comp/set-state! this {:msg "Step approved successfully!"})
+                     (fetch-inbox-and-reqs! this))))))
+      (.catch (fn [err]
+                (comp/set-state! this {:msg (str "Error: " err)})))))
+
+(defn- reject-request! [this request-id]
+  (-> (transit/fetch-transit "/api/mutation"
+        [`(com.ozimos.workforce.org.resolvers/reject-headcount-request
+           {:headcount/request-id ~request-id
+            :headcount/reason "Rejected by manager via UI"})])
+      (.then (fn [{:keys [body]}]
+               (let [res (get body `com.ozimos.workforce.org.resolvers/reject-headcount-request)]
+                 (if (:error res)
+                   (comp/set-state! this {:msg (str "Error: " (get-in res [:error :message]))})
+                   (do
+                     (comp/set-state! this {:msg "Request rejected."})
+                     (fetch-inbox-and-reqs! this))))))
+      (.catch (fn [err]
+                (comp/set-state! this {:msg (str "Error: " err)})))))
 
 (defn- create-headcount! [this]
-  (let [{:keys [active-org form-unit-id form-title form-level form-salary form-bonus form-justification]} (comp/get-state this)]
+  (let [{:keys [active-org form-unit-id form-title form-level form-salary form-justification]} (comp/get-state this)]
     (when (and active-org (seq form-title))
       (let [mut (list 'headcount/create
                   {:headcount/org-id (:org/id active-org)
@@ -26,7 +56,6 @@
                    :headcount/title form-title
                    :headcount/job-level (or form-level "L4")
                    :headcount/salary-band form-salary
-                   :headcount/bonus-target form-bonus
                    :headcount/justification form-justification})]
         (comp/set-state! this {:submitting true :msg nil})
         (-> (transit/fetch-transit "/api/query" [{mut [:headcount/id :headcount/status :error]}])
@@ -41,34 +70,15 @@
             (.catch (fn [err]
                       (comp/set-state! this {:msg (str "Failed to create requisition: " err) :submitting false}))))))))
 
-(defn- approve-request! [this req-id]
-  (let [{:keys [active-org]} (comp/get-state this)]
-    (when active-org
-      (let [mut (list 'headcount/approve-step
-                  {:headcount/org-id (:org/id active-org)
-                   :headcount/request-id req-id})]
-        (-> (transit/fetch-transit "/api/query" [{mut [:headcount/request-id :headcount/result :error]}])
-            (.then (fn [_] (fetch-inbox-and-reqs! this))))))))
-
-(defn- reject-request! [this req-id]
-  (let [{:keys [active-org]} (comp/get-state this)]
-    (when active-org
-      (let [mut (list 'headcount/reject
-                  {:headcount/org-id (:org/id active-org)
-                   :headcount/request-id req-id
-                   :headcount/reason "Rejected from approver dashboard"})]
-        (-> (transit/fetch-transit "/api/query" [{mut [:headcount/request-id :headcount/status :error]}])
-            (.then (fn [_] (fetch-inbox-and-reqs! this))))))))
-
 (defsc HeadcountPage [this _props]
   {:query [:loading :error :active-org :pending-approvals :submitting :msg
-           :form-unit-id :form-title :form-level :form-salary :form-bonus :form-justification]
+           :form-unit-id :form-title :form-level :form-salary :form-justification]
    :initial-state {:loading true :error nil :active-org nil :pending-approvals []
                    :submitting false :msg nil :form-unit-id "" :form-title ""
-                   :form-level "L4" :form-salary "$140,000 - $170,000" :form-bonus "15%" :form-justification ""}
+                   :form-level "L4" :form-salary "$140,000 - $170,000" :form-justification ""}
    :componentDidMount (fn [this] (fetch-inbox-and-reqs! this))}
-  (let [{:keys [loading error active-org pending-approvals submitting msg
-                form-unit-id form-title form-level form-salary form-bonus form-justification]} (comp/get-state this)]
+  (let [{:keys [loading active-org pending-approvals submitting msg
+                form-unit-id form-title form-level form-salary form-justification]} (comp/get-state this)]
     (div {:className "mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 space-y-8"}
       (div {:className "border-b border-gray-200 pb-5 flex justify-between items-center"}
         (div nil
@@ -108,7 +118,7 @@
                         (td {:className "px-3 py-2 text-sm text-gray-600"} (:headcount/job-level p-req))
                         (td {:className "px-3 py-2 text-sm text-gray-600"} (str "Step " (:headcount/current-step p-req)))
                         (td {:className "px-3 py-2 text-right space-x-2"}
-                          (button {:onClick #(approve-request! this (:headcount/id p-req))
+                          (button {:onClick #(approve-step! this (:headcount/id p-req))
                                    :className "rounded bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm hover:bg-emerald-500"}
                             "Approve")
                           (button {:onClick #(reject-request! this (:headcount/id p-req))

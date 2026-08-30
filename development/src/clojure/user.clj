@@ -1,5 +1,7 @@
 (ns user
   (:require
+   [clojure.java.shell :as shell]
+   [clojure.string :as str]
    [integrant.repl :refer [clear go halt reset reset-all set-prep!]])
   (:gen-class))
 

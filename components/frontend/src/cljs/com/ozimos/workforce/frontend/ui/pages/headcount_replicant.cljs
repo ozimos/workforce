@@ -86,10 +86,10 @@
 
 (defrc HeadcountReplicant
   {:query [:loading :error :active-org :pending-approvals :submitting :msg
-           :form-unit-id :form-title :form-level :form-salary :form-bonus :form-justification]
+           :form-unit-id :form-title :form-level :form-salary :form-justification]
    :ident :headcount-replicant/root}
   [{:keys [loading error active-org pending-approvals submitting msg
-           form-unit-id form-title form-level form-salary form-bonus form-justification]}]
+           form-unit-id form-title form-level form-salary form-justification]}]
   (let [pending-approvals (or pending-approvals [])]
     [:div {:class "mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 space-y-8"}
      [:div {:class "border-b border-gray-200 pb-5 flex justify-between items-center"}
@@ -99,6 +99,10 @@
       (when active-org
         [:span {:class "inline-flex items-center rounded-md bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700 ring-1 ring-inset ring-indigo-700/10"}
          (:org/name active-org)])]
+
+     (when error
+       [:div {:class "rounded-md bg-red-50 p-4"}
+        [:p {:class "text-sm text-red-700"} error]])
 
      ;; Approver Inbox
      [:div {:class "rounded-lg border border-gray-200 bg-white p-6 shadow-sm"}

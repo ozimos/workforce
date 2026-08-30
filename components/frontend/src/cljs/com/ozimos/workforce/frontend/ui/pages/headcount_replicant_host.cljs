@@ -7,7 +7,7 @@
    [com.ozimos.workforce.frontend.ui.pages.headcount-replicant :as cr]
    [goog.dom :as gdom]))
 
-(defsc HeadcountReplicantHost [this _props]
+(defsc HeadcountReplicantHost [_this _props]
   {:query [:loading :error :active-org :pending-approvals :submitting :msg
            :form-unit-id :form-title :form-level :form-salary :form-bonus :form-justification]
    :initial-state {:loading false :error nil :active-org {:org/name "Demo Co"} :pending-approvals [{:headcount/id "req-1" :headcount/title "Senior Engineer" :headcount/unit-id "eng-dept" :headcount/job-level "L4" :headcount/current-step 1}]

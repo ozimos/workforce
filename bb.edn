@@ -69,7 +69,7 @@
             shadow-nrepl-p (get-in local [:shadow-cljs :nrepl-port])
             ssr-p (resolve-ssr-port)
             jetty-p (get-in local [:jetty/port :dev] 8100)]
-        (filter #(and (integer? %) (pos? %))
+        (filter (fn [p] (and (integer? p) (pos? p)))
                 [nrepl-p shadow-p (inc shadow-p) shadow-nrepl-p ssr-p jetty-p])))
 
     (defn kill-port-pids! [port]
@@ -107,7 +107,7 @@
           (do (println "\n=== REPL not detected, falling back to standalone JVM test runner ===")
               (run-jvm-tests args))))))
 
-  lint         (shell {:continue true} "clj-kondo" "--lint" "bases" "components" "projects" "development/src/clojure" "bin/launchpad")
+  lint         (shell {:continue true} "clj-kondo" "--lint" "bases" "components" "projects" "development/src/clojure" "../../omni-auth/main/components/security")
   kondo-copy-configs (let [cp (str/trim (:out (p/shell {:out :string} "clojure" "-Spath" "-A:+default:dev")))]
                        (shell {:continue true} "clj-kondo" "--copy-configs" "--lint" cp "--skip-warnings"))
   fmt-check    (shell {:continue true} "standard-clj" "check" "bases" "components" "projects" "development/src/clojure")

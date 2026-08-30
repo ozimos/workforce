@@ -19,9 +19,9 @@
 (defmutation set-totp-code [{:keys [value]}] (action [{:keys [state]}] (swap! state set-totp-code-state value)))
 
 (defrc ProfileReplicant
-  {:query [:new-username :error-msg :success-msg :loading :mfa-stage :mfa-secret :mfa-qr-url :mfa-backup-codes :totp-code]
+  {:query [:new-username :error-msg :success-msg :loading :mfa-stage :mfa-secret :mfa-backup-codes :totp-code]
    :ident :profile-replicant/root}
-  [{:keys [new-username error-msg success-msg loading mfa-stage mfa-secret mfa-qr-url mfa-backup-codes totp-code]}]
+  [{:keys [new-username error-msg success-msg loading mfa-stage mfa-secret mfa-backup-codes totp-code]}]
   [:div {:class "flex min-h-full flex-col justify-center px-6 py-12 lg:px-8"}
    [:div {:class "sm:mx-auto sm:w-full sm:max-w-md"}
     [:h2 {:class "mt-6 text-center text-2xl font-bold leading-9 tracking-tight text-gray-900"} "Profile & Security"]]

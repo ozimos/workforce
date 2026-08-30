@@ -3,7 +3,6 @@
    [com.ozimos.omni-auth.rama.extension :as ext]
    [com.ozimos.workforce.org.records]
    [com.rpl.rama :refer :all]
-   [com.rpl.rama.ops :as ops]
    [com.rpl.rama.path :refer :all]
    [integrant.core :as ig])
   (:import

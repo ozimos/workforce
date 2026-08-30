@@ -45,10 +45,12 @@
 (deftest standard-login-render
   (testing "renders identifier and password fields"
     (let [hiccup (sut/LoginReplicant (base-props {}))
-          html (rs/render hiccup)]
+          html (rs/render hiccup)
+          input-ev (find-event-in-hiccup hiccup #(= (first %) :com.ozimos.workforce.frontend.ui.pages.login-replicant/set-identifier))]
       (is (str/includes? html "Sign in to your account"))
       (is (str/includes? html "Email or username"))
       (is (str/includes? html "Password"))
+      (is (= [:com.ozimos.workforce.frontend.ui.pages.login-replicant/set-identifier] input-ev))
       (is (true? (valid-hiccup? hiccup)))
       (is (not (str/includes? html "[:div"))))))
 

@@ -68,7 +68,7 @@
                      [(set-error-msg {:msg (or (-> body :errors :credentials first)
                                                "Invalid email/username or password")})])))))))
 
-(defsc LoginReplicantHost [this _props]
+(defsc LoginReplicantHost [_this _props]
   {:query [:identifier :password :error-msg :mfa-required :mfa-token :mfa-code]
    :initial-state {:identifier "" :password "" :error-msg nil :mfa-required false :mfa-token nil :mfa-code ""}
    :componentDidMount

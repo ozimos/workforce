@@ -2,7 +2,7 @@
   (:require
    [clojure.string :as str]
    [com.fulcrologic.fulcro.components :as comp :refer [defsc]]
-   [com.fulcrologic.fulcro.dom :as dom :refer [a button div h1 h2 h3 input option p select span table tbody td th thead tr]]
+   [com.fulcrologic.fulcro.dom :as dom :refer [a button div h1 h3 input option p select span table tbody td th thead tr]]
    [com.ozimos.workforce.frontend.transit :as transit]))
 
 (defn- get-url-param [k]

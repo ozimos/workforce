@@ -1,7 +1,7 @@
 (ns com.ozimos.workforce.frontend.ui.pages.policy-settings
   (:require
    [com.fulcrologic.fulcro.components :as comp :refer [defsc]]
-   [com.fulcrologic.fulcro.dom :as dom :refer [button div h1 h2 h3 input label p select span table tbody td th thead tr]]
+   [com.fulcrologic.fulcro.dom :as dom :refer [div h1 h3 p table tbody td th thead tr]]
    [com.ozimos.workforce.frontend.transit :as transit]))
 
 (defn- fetch-policies! [this]

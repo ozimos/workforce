@@ -16,9 +16,9 @@
 (defmutation set-orgs [{:keys [orgs]}] (action [{:keys [state]}] (swap! state set-orgs-state orgs)))
 
 (defrc NavBarReplicant
-  {:query [:fetched :active-org :orgs :dropdown-open]
+  {:query [:active-org :orgs :dropdown-open]
    :ident :nav-replicant/root}
-  [{:keys [fetched active-org orgs dropdown-open]}]
+  [{:keys [active-org orgs dropdown-open]}]
   (let [orgs (or orgs []) dropdown-open (boolean dropdown-open)]
     [:div
      [:nav {:class "bg-white shadow-sm border-b border-gray-200"}

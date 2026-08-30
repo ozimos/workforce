@@ -1,5 +1,6 @@
 (ns com.ozimos.workforce.org.ipc-test
   (:require
+   [clojure.string :as str]
    [clojure.test :refer [deftest is testing use-fixtures]]
    [com.ozimos.omni-auth.user.interface :as user]
    [com.ozimos.workforce.org.interface :as org]
@@ -17,7 +18,7 @@
 (use-fixtures :once system-fixture)
 
 (defn- short-id []
-  (subs (clojure.string/replace (str (ops/random-uuid7)) "-" "") 16 32))
+  (subs (str/replace (str (ops/random-uuid7)) "-" "") 16 32))
 
 (deftest org-lifecycle-ipc-test
   (testing "Organization complete lifecycle: create, invite, accept, switch, list members, update role, remove member"

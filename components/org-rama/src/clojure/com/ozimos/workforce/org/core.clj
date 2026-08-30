@@ -1,10 +1,11 @@
 (ns com.ozimos.workforce.org.core
   (:require
+   [clojure.string :as str]
    [com.ozimos.omni-auth.rama.interface :as rama]
    [com.ozimos.workforce.org.records :as rec]
    [com.rpl.rama :as ramaapi]
    [com.rpl.rama.ops :as ops]
-   [com.rpl.rama.path :refer [ALL keypath]]))
+   [com.rpl.rama.path :refer [keypath]]))
 
 (defn- now-ms [] (System/currentTimeMillis))
 
@@ -17,11 +18,6 @@
 (defn- safe-select-one [path pstate-obj]
   (when pstate-obj
     (ramaapi/foreign-select-one path pstate-obj)))
-
-(defn- safe-select [path pstate-obj]
-  (if pstate-obj
-    (ramaapi/foreign-select path pstate-obj)
-    []))
 
 (defn- unwrap-ack [res]
   (if (map? res)
@@ -277,7 +273,7 @@
         raw (or (safe-select-one (keypath unit-id) actors) {})]
     (reduce-kv (fn [acc k v]
                  (let [k-str (str k)
-                       clean-k (if (clojure.string/starts-with? k-str ":")
+                       clean-k (if (str/starts-with? k-str ":")
                                  (subs k-str 1)
                                  k-str)]
                    (assoc acc (keyword clean-k) v)))
@@ -319,27 +315,27 @@
         cmgr (get-cmgr deps)
         mod-name (rama/module-name)
         depot (rama/depot cmgr mod-name "*headcount-depot")
-        created-at (now-ms)]
-    (let [res (unwrap-ack (ramaapi/foreign-append! depot
-                            (rec/->HeadcountCreate request-id org-id unit-id division-id dept-id location
-                              job-level employee-type requester-id title justification
-                              job-description salary-band bonus-target :in-approval
-                              1 (or chain-snapshot []) created-at idempotency-key)
-                            :ack))]
-      (if (and (string? res) (not= res request-id))
-        [true {:request-id res :status :in-approval :current-step 1 :duplicate true}]
-        [true {:request-id request-id :status :in-approval :current-step 1}]))))
+        created-at (now-ms)
+        res (unwrap-ack (ramaapi/foreign-append! depot
+                          (rec/->HeadcountCreate request-id org-id unit-id division-id dept-id location
+                            job-level employee-type requester-id title justification
+                            job-description salary-band bonus-target :in-approval
+                            1 (or chain-snapshot []) created-at idempotency-key)
+                          :ack))]
+    (if (and (string? res) (not= res request-id))
+      [true {:request-id res :status :in-approval :current-step 1 :duplicate true}]
+      [true {:request-id request-id :status :in-approval :current-step 1}])))
 
 (defn approve-headcount-step! [deps input]
   (let [{:keys [org-id request-id approver-user-id idempotency-key]} input
         cmgr (get-cmgr deps)
         mod-name (rama/module-name)
         depot (rama/depot cmgr mod-name "*headcount-depot")
-        approved-at (now-ms)]
-    (let [res (ramaapi/foreign-append! depot
-                (rec/->HeadcountApproveStep request-id org-id approver-user-id approved-at idempotency-key)
-                :ack)]
-      [true {:result (unwrap-ack res) :request-id request-id}])))
+        approved-at (now-ms)
+        res (ramaapi/foreign-append! depot
+              (rec/->HeadcountApproveStep request-id org-id approver-user-id approved-at idempotency-key)
+              :ack)]
+    [true {:result (unwrap-ack res) :request-id request-id}]))
 
 (defn reject-headcount-request! [deps input]
   (let [{:keys [org-id request-id rejecter-user-id reason idempotency-key]} input

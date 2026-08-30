@@ -1,5 +1,6 @@
 (ns com.ozimos.workforce.org.resolvers-test
   (:require
+   [clojure.string :as str]
    [clojure.test :refer [deftest is testing use-fixtures]]
    [com.ozimos.omni-auth.pathom.core :as pathom]
    [com.ozimos.omni-auth.user.interface :as user]
@@ -21,7 +22,7 @@
 (use-fixtures :once system-fixture)
 
 (defn- short-suffix []
-  (subs (clojure.string/replace (str (ops/random-uuid7)) "-" "") 16 32))
+  (subs (str/replace (str (ops/random-uuid7)) "-" "") 16 32))
 
 (defn- register-user []
   (let [suffix (short-suffix)

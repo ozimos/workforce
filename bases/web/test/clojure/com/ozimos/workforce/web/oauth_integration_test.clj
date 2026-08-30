@@ -1,5 +1,6 @@
 (ns com.ozimos.workforce.web.oauth-integration-test
   (:require
+   [clojure.string :as str]
    [clojure.test :refer [deftest is testing use-fixtures]]
    [com.ozimos.omni-auth.oauth.interface :as oauth]
    [com.ozimos.omni-auth.user.interface :as user]
@@ -16,7 +17,7 @@
 (use-fixtures :once system-fixture)
 
 (defn- short-id []
-  (subs (clojure.string/replace (str (ops/random-uuid7)) "-" "") 16 32))
+  (subs (str/replace (str (ops/random-uuid7)) "-" "") 16 32))
 
 (deftest oauth-integration-test
   (testing "OAuth callback provisions new user, links account, and returns JWT tokens"
