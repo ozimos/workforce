@@ -34,11 +34,10 @@
         approved-by (set (:approved-by target-req))
         current-approver-id (:current-approver-id target-req)
         assigned-actors (set (:assigned-actor-ids target-req))]
-    (boolean
-     (or (= viewer-id requester-id)
-         (= viewer-id current-approver-id)
-         (contains? approved-by viewer-id)
-         (contains? assigned-actors viewer-id)))))
+    (or (= viewer-id requester-id)
+        (= viewer-id current-approver-id)
+        (contains? approved-by viewer-id)
+        (contains? assigned-actors viewer-id))))
 
 (defn can-view-headcount?
   "Determines whether the viewer has permission to view the given headcount request

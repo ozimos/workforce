@@ -27,3 +27,4 @@ session.json
 .seed/
 *.nippy
 *.zip
+*.sb

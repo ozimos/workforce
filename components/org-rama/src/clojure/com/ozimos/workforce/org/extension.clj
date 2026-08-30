@@ -177,7 +177,7 @@
                     {Long (map-schema String Object)}))
 
   (build-topology [_ s]
-    #_{:clj-kondo/ignore [:unused-binding]}
+    #_{:clj-kondo/ignore [:unused-binding :rama-unverifiable-pobject]}
     (<<sources s
                ;; -------------------------------------------------------------
                ;; Organization Creation
