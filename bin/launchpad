@@ -253,13 +253,17 @@
 
 (defn auto-start-system
   "If deps.local.edn has :system/auto-start true (or defaults to true),
-   add eval forms to automatically run (user/go) on JVM startup."
+   add eval forms to automatically run (user/go) or (user/start-and-seed!) on JVM startup."
   [ctx]
   (let [local (read-deps-local)
-        enabled? (get local :system/auto-start true)]
-    (if enabled?
-      (do (log/info "Configuring automatic system startup (user/go)...")
-          (update ctx :eval-forms conj '(do (in-ns 'user) (go))))
+        auto-start? (get local :system/auto-start true)
+        auto-seed?  (get local :system/auto-seed false)]
+    (if auto-start?
+      (if auto-seed?
+        (do (log/info "Configuring automatic system startup & seeding (user/start-and-seed!)...")
+            (update ctx :eval-forms conj '(do (in-ns 'user) (start-and-seed!))))
+        (do (log/info "Configuring automatic system startup (user/go)...")
+            (update ctx :eval-forms conj '(do (in-ns 'user) (go)))))
       ctx)))
 
 (lp/main
