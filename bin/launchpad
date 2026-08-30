@@ -64,39 +64,49 @@
                 profiles))
       ctx)))
 
-(defn shadow-cljs-http-port
-  "Resolve the shadow-cljs HTTP server port.
-
-   Looked up in deps.local.edn:
-     (:launchpad/options :shadow-cljs-http-port)
-     (:shadow-cljs :http-port)
-
-   When 0 or nil, allocates a free port for worktree isolation.
-   When absent entirely, defaults to 9630."
-  []
+(defn resolve-shadow-ports
+  "Resolve shadow-cljs HTTP and nREPL ports once and store in ctx."
+  [ctx]
   (let [local (read-deps-local)
-        p (or (get-in local [:launchpad/options :shadow-cljs-http-port])
-              (get-in local [:shadow-cljs :http-port]))]
-    (if (or (nil? p) (not (and (integer? p) (pos? p))))
-      (if (contains? (or local {}) :shadow-cljs)
-        (lp/free-port)
-        9630)
-      p)))
+        configured-http  (or (get-in local [:launchpad/options :shadow-cljs-http-port])
+                             (get-in local [:shadow-cljs :http-port]))
+        http-p (if (or (nil? configured-http) (not (and (integer? configured-http) (pos? configured-http))))
+                 (if (contains? (or local {}) :shadow-cljs)
+                   (lp/free-port)
+                   9630)
+                 configured-http)
+        configured-nrepl (get-in local [:shadow-cljs :nrepl-port])
+        nrepl-p (if (and (integer? configured-nrepl) (pos? configured-nrepl))
+                  configured-nrepl
+                  (lp/free-port))]
+    (assoc ctx
+           :shadow-cljs-http-port http-p
+           :shadow-cljs-nrepl-port nrepl-p)))
+
+(defn shadow-cljs-http-port
+  "Resolve the shadow-cljs HTTP server port."
+  ([] (shadow-cljs-http-port {}))
+  ([ctx]
+   (or (:shadow-cljs-http-port ctx)
+       (let [local (read-deps-local)
+             p (or (get-in local [:launchpad/options :shadow-cljs-http-port])
+                   (get-in local [:shadow-cljs :http-port]))]
+         (if (or (nil? p) (not (and (integer? p) (pos? p))))
+           (if (contains? (or local {}) :shadow-cljs)
+             (lp/free-port)
+             9630)
+           p)))))
 
 (defn shadow-cljs-nrepl-port
-  "Resolve the shadow-cljs nREPL server port.
-
-   Looked up in deps.local.edn:
-     (:shadow-cljs :nrepl-port)
-
-   When 0 or nil and :shadow-cljs is present, allocates a free port.
-   When absent entirely, defaults to 0 (shadow picks random)."
-  []
-  (let [local (read-deps-local)
-        p (get-in local [:shadow-cljs :nrepl-port])]
-    (if (and (integer? p) (pos? p))
-      p
-      (lp/free-port))))
+  "Resolve the shadow-cljs nREPL server port."
+  ([] (shadow-cljs-nrepl-port {}))
+  ([ctx]
+   (or (:shadow-cljs-nrepl-port ctx)
+       (let [local (read-deps-local)
+             p (get-in local [:shadow-cljs :nrepl-port])]
+         (if (and (integer? p) (pos? p))
+           p
+           (lp/free-port))))))
 
 (defn start-frontend-watcher
   "If deps.local.edn has :frontend/watcher :enabled, add eval forms
@@ -105,8 +115,8 @@
   (let [local-file (io/file "deps.local.edn")]
     (if (and (.exists local-file)
              (get-in (read-string (slurp local-file)) [:frontend/watcher :enabled]))
-      (let [http-p  (shadow-cljs-http-port)
-            nrepl-p (shadow-cljs-nrepl-port)]
+      (let [http-p  (shadow-cljs-http-port ctx)
+            nrepl-p (shadow-cljs-nrepl-port ctx)]
         (log/info (str "Starting shadow-cljs frontend watcher (HTTP port: " http-p ", nREPL port: " nrepl-p ")..."))
         (-> ctx
             (update :eval-forms into
@@ -236,11 +246,9 @@
    start-clojure-process and waits for nREPL). By the time nREPL is up,
    shadow-cljs's HTTP server has also started — this step re-confirms
    that the port is listening so the SSR server's relay client doesn't
-   race the JVM at boot.
-
-   Port is resolved by shadow-cljs-http-port above."
+   race the JVM at boot."
   [ctx]
-  (let [port    (shadow-cljs-http-port)
+  (let [port    (shadow-cljs-http-port ctx)
         timeout 300000]
     (log/info "Waiting for shadow-cljs HTTP server on port" port "...")
     (if-let [{:keys [took]} (wait/wait-for-port "localhost" port {:timeout timeout :pause 1000})]
@@ -271,6 +279,7 @@
   (into [(partial ensure-java-min-version 21)
          cleanup-stale-dev-ports
          resolve-nrepl-port
+         resolve-shadow-ports
          register-shutdown-cleanup!
          start-frontend-watcher
          auto-start-system
