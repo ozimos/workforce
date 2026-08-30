@@ -64,36 +64,63 @@
                 profiles))
       ctx)))
 
+(defn shadow-cljs-http-port
+  "Resolve the shadow-cljs HTTP server port.
+
+   Looked up in deps.local.edn:
+     (:launchpad/options :shadow-cljs-http-port)
+     (:shadow-cljs :http-port)
+
+   When 0 or nil, allocates a free port for worktree isolation.
+   When absent entirely, defaults to 9630."
+  []
+  (let [local (read-deps-local)
+        p (or (get-in local [:launchpad/options :shadow-cljs-http-port])
+              (get-in local [:shadow-cljs :http-port]))]
+    (if (or (nil? p) (not (and (integer? p) (pos? p))))
+      (if (contains? (or local {}) :shadow-cljs)
+        (lp/free-port)
+        9630)
+      p)))
+
+(defn shadow-cljs-nrepl-port
+  "Resolve the shadow-cljs nREPL server port.
+
+   Looked up in deps.local.edn:
+     (:shadow-cljs :nrepl-port)
+
+   When 0 or nil and :shadow-cljs is present, allocates a free port.
+   When absent entirely, defaults to 0 (shadow picks random)."
+  []
+  (let [local (read-deps-local)
+        p (get-in local [:shadow-cljs :nrepl-port])]
+    (if (and (integer? p) (pos? p))
+      p
+      (lp/free-port))))
+
 (defn start-frontend-watcher
   "If deps.local.edn has :frontend/watcher :enabled, add eval forms
-   to start shadow-cljs watch inside the JVM at startup."
+   to start shadow-cljs watch inside the JVM at startup with isolated ports."
   [ctx]
   (let [local-file (io/file "deps.local.edn")]
     (if (and (.exists local-file)
              (get-in (read-string (slurp local-file)) [:frontend/watcher :enabled]))
-      (do (log/info "Starting shadow-cljs frontend watcher...")
-          (-> ctx
-              (update :eval-forms into
-                      ['(do (require 'shadow.cljs.devtools.server)
-                            (require 'shadow.cljs.devtools.api))
-                       '(shadow.cljs.devtools.server/start!)
-                       '(shadow.cljs.devtools.api/watch :app)
-                       '(shadow.cljs.devtools.api/watch :ssr)])))
+      (let [http-p  (shadow-cljs-http-port)
+            nrepl-p (shadow-cljs-nrepl-port)]
+        (log/info (str "Starting shadow-cljs frontend watcher (HTTP port: " http-p ", nREPL port: " nrepl-p ")..."))
+        (-> ctx
+            (update :eval-forms into
+                    [`(do (require 'shadow.cljs.devtools.server)
+                          (require 'shadow.cljs.devtools.api)
+                          (require 'shadow.cljs.devtools.config)
+                          (let [base-cfg# (shadow.cljs.devtools.config/load-cljs-edn)
+                                cfg# (assoc base-cfg#
+                                       :http {:port ~http-p}
+                                       :nrepl {:port ~nrepl-p})]
+                            (shadow.cljs.devtools.server/start! cfg#)))
+                     '(shadow.cljs.devtools.api/watch :app)
+                     '(shadow.cljs.devtools.api/watch :ssr)])))
       ctx)))
-
-(defn shadow-cljs-http-port
-  "Resolve the shadow-cljs HTTP server port to wait for.
-
-   Looked up, in order, in deps.local.edn:
-     (:launchpad/options :shadow-cljs-http-port)
-     (:shadow-cljs :http-port)
-
-   Falls back to 9630 (shadow-cljs's own default) when nothing is configured."
-  []
-  (let [local (read-deps-local)]
-    (or (get-in local [:launchpad/options :shadow-cljs-http-port])
-        (get-in local [:shadow-cljs :http-port])
-        9630)))
 
 (defn resolve-ssr-port
   "Resolve SSR server port. Checked in order:

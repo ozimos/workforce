@@ -66,9 +66,11 @@
             shadow-p (or (get-in local [:launchpad/options :shadow-cljs-http-port])
                          (get-in local [:shadow-cljs :http-port])
                          9630)
+            shadow-nrepl-p (get-in local [:shadow-cljs :nrepl-port])
             ssr-p (resolve-ssr-port)
             jetty-p (get-in local [:jetty/port :dev] 8100)]
-        [nrepl-p shadow-p (inc shadow-p) ssr-p jetty-p]))
+        (filter #(and (integer? %) (pos? %))
+                [nrepl-p shadow-p (inc shadow-p) shadow-nrepl-p ssr-p jetty-p])))
 
     (defn kill-port-pids! [port]
       (when (and (integer? port) (pos? port))
@@ -188,7 +190,7 @@
   ssr-dev      (do (shell "pnpm" "exec" "shadow-cljs" "watch" "ssr")
                    (shell "node" "ssr-server/server.js"))
   ssr-start    (shell "node" "ssr-server/server.js")
-  build        (do (css)
+  build        (do (shell "pnpm" "exec" "tailwindcss" "-i" "components/frontend/src/css/tailwind.css" "-o" "bases/web/resources/public/css/app.css")
                    (shell "pnpm" "exec" "shadow-cljs" "compile" "app")
                    (shell "pnpm" "exec" "shadow-cljs" "compile" "ssr"))
   agent        {:doc "Run an Escapement autonomous workflow chart."
