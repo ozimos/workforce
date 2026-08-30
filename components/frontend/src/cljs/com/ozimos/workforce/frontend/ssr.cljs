@@ -33,9 +33,13 @@
 (defn- page-title [path]
   (cond
     (= path "/login")            "Sign In"
+    (= path "/login-replicant")  "Sign In (Replicant)"
     (= path "/register")         "Create Account"
+    (= path "/register-replicant") "Create Account (Replicant)"
     (= path "/create-org")       "Create Organization"
+    (= path "/create-org-replicant") "Create Organization (Replicant)"
     (= path "/join-org")         "Join Organization"
+    (= path "/join-org-replicant") "Join Organization (Replicant)"
     (= path "/org-dashboard")    "Organization Dashboard"
     (= path "/org-dashboard-replicant") "Organization Dashboard (Replicant)"
     (= path "/policies")        "Policies"
@@ -49,17 +53,25 @@
     (= path "/profile")          "Profile"
     (= path "/profile-replicant") "Profile (Replicant)"
     (= path "/forgot-password")  "Forgot Password"
+    (= path "/forgot-password-replicant") "Forgot Password (Replicant)"
     (= path "/reset-password")   "Reset Password"
+    (= path "/reset-password-replicant") "Reset Password (Replicant)"
     (= path "/verify")           "Verify Account"
+    (= path "/verify-replicant") "Verify Account (Replicant)"
+    (= path "/home-replicant")   "Dashboard (Replicant)"
     (= path "/")                 "Dashboard"
     :else                        "Best Auth"))
 
 (defn- page-description [path]
   (cond
     (= path "/login")            "Sign in to your account"
+    (= path "/login-replicant")  "Replicant sign in (pure hiccup)"
     (= path "/register")         "Create a new account"
+    (= path "/register-replicant") "Replicant registration (pure hiccup)"
     (= path "/create-org")       "Create a new organization"
+    (= path "/create-org-replicant") "Replicant create org (pure hiccup)"
     (= path "/join-org")         "Join an existing organization"
+    (= path "/join-org-replicant") "Replicant join org (pure hiccup)"
     (= path "/org-dashboard")    "Manage your organization"
     (= path "/org-dashboard-replicant") "Replicant org dashboard (pure hiccup)"
     (= path "/policies")        "Policies and approval routing"
@@ -73,8 +85,12 @@
     (= path "/profile")          "Update your profile"
     (= path "/profile-replicant") "Replicant profile (pure hiccup)"
     (= path "/forgot-password")  "Reset your password"
+    (= path "/forgot-password-replicant") "Replicant forgot password (pure hiccup)"
     (= path "/reset-password")   "Set a new password"
+    (= path "/reset-password-replicant") "Replicant reset password (pure hiccup)"
     (= path "/verify")           "Verify your email address"
+    (= path "/verify-replicant") "Replicant verify account (pure hiccup)"
+    (= path "/home-replicant")   "Replicant home dashboard (pure hiccup)"
     (= path "/")                 "Dashboard - Best Auth"
     :else                        "Best Auth - Authentication Template"))
 
