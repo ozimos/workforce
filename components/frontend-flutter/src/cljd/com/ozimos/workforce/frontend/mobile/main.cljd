@@ -1,0 +1,31 @@
+(ns com.ozimos.workforce.frontend.mobile.main
+  "ClojureDart Mobile application entry point using shared frontend-ui state & EQL models."
+  (:require
+   ["package:flutter/material.dart" :as m]
+   [cljd.flutter :as f]))
+
+(defonce mobile-state
+  (atom {:active-org {:org/name "Demo Co" :org/role "ADMIN"}
+         :units []
+         :loading false}))
+
+(defn main []
+  (m/runApp
+   #_{:clj-kondo/ignore [:unresolved-symbol]}
+   (f/widget
+    :watch [state mobile-state]
+    (m/MaterialApp
+     .title "Workforce Mobile"
+     .theme (m/ThemeData .primarySwatch m.Colors/indigo)
+     .home
+     (m/Scaffold
+      .appBar (m/AppBar .title (m/Text "Workforce Mobile"))
+      .body
+      (m/Center
+       .child (m/Column
+               .mainAxisAlignment m.MainAxisAlignment/center
+               .children
+               [(m/Text (str "Active Org: " (get-in state [:active-org :org/name] "None"))
+                        .style (m/TextStyle .fontSize 18.0 .fontWeight m.FontWeight/bold))
+                (m/SizedBox .height 16.0)
+                (m/Text "Powered by ClojureDart & shared frontend-ui state models.")])))))))

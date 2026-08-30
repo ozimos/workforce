@@ -1,0 +1,2 @@
+{:paths ["src/cljd" "resources"]
+ :deps {poly/frontend-ui {:local/root "components/frontend-ui"}}}

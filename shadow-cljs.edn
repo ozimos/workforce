@@ -1,19 +1,20 @@
-{:source-paths ["components/frontend/src/clj" "components/frontend/src/cljs" "components/frontend/src/cljc" "components/frontend/test/cljs" "components/frontend/test/cljc"]
- :dependencies [[com.fulcrologic/fulcro "3.9.5"]
-                [no.cjohansen/replicant "2026.07.1"]]
+{:source-paths ["components/frontend-ui/src/cljc"
+                "components/frontend-ui/test/cljc"
+                "components/frontend-web/src/cljs"
+                "components/frontend-web/test/cljs"]
+ :dependencies [[no.cjohansen/replicant "2026.07.1"]]
  :builds {:app {:target :browser
                 :output-dir "bases/web/resources/public/js"
-                :compiler {:preloads [shadow.cljs.devtools.client.browser
-                                      com.fulcrologic.fulcro.inspect.preload]}
-                :devtools {:after-load com.ozimos.workforce.frontend.core/refresh}
-                :init-fn com.ozimos.workforce.frontend.core/init
-                :modules {:main {:entries [com.ozimos.workforce.frontend.core]}}}
+                :compiler {:preloads [shadow.cljs.devtools.client.browser]}
+                :devtools {:after-load com.ozimos.workforce.frontend.web.core/refresh}
+                :init-fn com.ozimos.workforce.frontend.web.core/init
+                :modules {:main {:entries [com.ozimos.workforce.frontend.web.core]}}}
           :ssr {:target :node-library
                 :output-to "ssr-output/ssr.js"
-                :exports {:render-page-html com.ozimos.workforce.frontend.ssr/render-page-html}
+                :exports {:render-page-html com.ozimos.workforce.frontend.web.ssr/render-page-html}
                 :compiler {:external-json-modules? true}
-                :modules {:ssr {:entries [com.ozimos.workforce.frontend.ssr]}}}
+                :modules {:ssr {:entries [com.ozimos.workforce.frontend.web.ssr]}}}
           :test {:target :node-test
                  :output-to "target/frontend-test.js"
-                 :main com.ozimos.workforce.frontend.test-runner/main
+                 :main com.ozimos.workforce.frontend.web.test-runner/main
                  :autorun true}}}

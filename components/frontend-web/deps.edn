@@ -1,0 +1,3 @@
+{:paths ["src/cljs" "resources"]
+ :deps {poly/frontend-ui {:local/root "components/frontend-ui"}}
+ :aliases {:test {:extra-paths ["test/cljs"]}}}

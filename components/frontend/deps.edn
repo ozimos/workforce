@@ -1,3 +1,0 @@
-{:paths ["src/clj" "src/cljs" "src/cljc" "resources"]
- :deps {}
- :aliases {:test {:extra-paths ["test/cljs"]}}}
