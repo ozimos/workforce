@@ -167,6 +167,70 @@
        ((resolve 'com.ozimos.workforce.org.interface/ensure-seeded!) deps)
        (println "Dev system not started yet. Run (go) first or use (seed!).")))))
 
+(defn kill-port!
+  "Kill any OS process listening on the given TCP port."
+  [port]
+  (when (and (integer? port) (pos? port))
+    (try
+      (let [res (clojure.java.shell/sh "lsof" "-ti" (str "tcp:" port) "-sTCP:LISTEN")]
+        (when (zero? (:exit res))
+          (let [pids (->> (clojure.string/split-lines (:out res))
+                          (map clojure.string/trim)
+                          (filter seq))]
+            (when (seq pids)
+              (doseq [pid pids]
+                (try (clojure.java.shell/sh "kill" "-15" pid) (catch Throwable _ nil)))
+              (Thread/sleep 200)
+              (let [res2 (clojure.java.shell/sh "lsof" "-ti" (str "tcp:" port) "-sTCP:LISTEN")
+                    rem (->> (clojure.string/split-lines (:out res2))
+                             (map clojure.string/trim)
+                             (filter seq))]
+                (doseq [pid rem]
+                  (try (clojure.java.shell/sh "kill" "-9" pid) (catch Throwable _ nil))))))))
+      (catch Throwable _ nil))))
+
+(defn cleanup-dev-ports!
+  "Clean up and terminate all port-consuming processes spawned for this REPL session."
+  []
+  (let [local (try (read-string (slurp "deps.local.edn")) (catch Throwable _ nil))
+        nrepl-p (try (parse-long (clojure.string/trim (slurp ".nrepl-port"))) (catch Throwable _ nil))
+        shadow-nrepl-p (try (parse-long (clojure.string/trim (slurp ".shadow-cljs/nrepl.port"))) (catch Throwable _ nil))
+        shadow-http-p (try (parse-long (clojure.string/trim (slurp ".shadow-cljs/http.port"))) (catch Throwable _ nil))
+        ssr-p (or (when-let [p (System/getenv "SSR_PORT")] (try (parse-long p) (catch Throwable _ nil)))
+                  (get-in local [:ssr-server :port])
+                  (get local :ssr/port)
+                  (get local :ssr-port)
+                  3000)
+        jetty-p (or (when-let [p (System/getenv "JETTY_DEV_PORT")] (try (parse-long p) (catch Throwable _ nil)))
+                    (get-in local [:jetty/port :dev]))
+        all-ports (filter #(and (integer? %) (pos? %))
+                          [nrepl-p shadow-nrepl-p shadow-http-p (when shadow-http-p (inc shadow-http-p)) ssr-p jetty-p])]
+    ;; 1. Halt Integrant system if running
+    (try
+      (when-let [sys (some-> (resolve 'integrant.repl.state/system) deref)]
+        (require 'integrant.core)
+        ((resolve 'integrant.core/halt!) sys))
+      (catch Throwable _ nil))
+    ;; 2. Stop Shadow-CLJS server if running
+    (try
+      (when-let [stop-fn (resolve 'shadow.cljs.devtools.server/stop!)]
+        (stop-fn))
+      (catch Throwable _ nil))
+    ;; 3. Terminate any remaining processes on our ports (e.g. Node SSR server, orphaned watchers)
+    (doseq [p (distinct all-ports)]
+      (kill-port! p))))
+
+;; Register JVM shutdown hook to execute port & process cleanup if REPL JVM terminates or crashes
+(defonce ^:private __register-repl-shutdown-hook!
+  (do
+    (.addShutdownHook
+      (Runtime/getRuntime)
+      (Thread.
+        (fn []
+          (println "\n[REPL JVM] Shutdown hook triggered: cleaning up system, shadow-cljs, SSR server, and dev ports...")
+          (cleanup-dev-ports!))))
+    true))
+
 (defn gen-seed!
   "Generates and serializes a fresh binary Nippy seed archive to .seed/workforce-seed-data.nippy."
   ([]
