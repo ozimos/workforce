@@ -268,8 +268,21 @@
           :dept-head {:can-create-requisition true :can-approve true :view-scope :view-tree :visible-fields #{:salary-band :bonus-target}}
           :hiring-manager {:can-create-requisition true :can-approve true :view-scope :view-own :visible-fields #{:salary-band}}
           :employee {:can-create-requisition false :can-approve false :view-scope :view-own :visible-fields #{}}}
-         :requisitions (into canonical-reqs-acme (or (:headcounts acme-10k) []))}
-        acme-10k)
+         :custom-attributes
+         [{:attribute-id :health-benefit :label "Health Benefit" :data-type :currency :cost-modifier? true :cost-cadence :annual :default-value 5000.0}
+          {:attribute-id :signing-bonus :label "Signing Bonus" :data-type :currency :cost-modifier? true :cost-cadence :one-time :default-value 0.0}
+          {:attribute-id :performance-rating :label "Performance Rating" :data-type :string :cost-modifier? false :default-value "Meets Expectations"}]
+         :load-factor-rules
+         [{:rule-id "acme-uk-eng" :priority 100 :name "UK Engineering Burden" :conditions {:location ["GB"] :job-category [:engineering]} :multiplier 1.20}
+          {:rule-id "acme-us-ca-platform" :priority 90 :name "US-CA Platform Burden" :conditions {:location ["US-CA"]} :multiplier 1.15}]
+         :requisitions canonical-reqs-acme
+         :employees (into [{:employee-id "emp-acme-ian" :first-name "Ian" :last-name "Engineer" :personal-email "ian.eng@acme.com" :hire-date "2026-01-15"}
+                           {:employee-id "emp-acme-jane" :first-name "Jane" :last-name "Engineer" :personal-email "jane.eng@acme.com" :hire-date "2026-01-15"}]
+                          (or (:employees acme-10k) []))
+         :employments (into [{:employment-id "empmt-acme-ian" :employee-id "emp-acme-ian" :unit-id "dept-acme-backend" :job-title "Senior Systems Engineer" :job-category :engineering :job-level "L5" :employee-type :full-time :location "US-CA" :base-salary 165000.0 :currency "USD" :bonus-target 0.15 :custom-attributes {:health-benefit 6000.0 :signing-bonus 10000.0}}
+                             {:employment-id "empmt-acme-jane" :employee-id "emp-acme-jane" :unit-id "dept-acme-frontend" :job-title "Frontend Engineer" :job-category :engineering :job-level "L4" :employee-type :full-time :location "US-CA" :base-salary 145000.0 :currency "USD" :bonus-target 0.12 :custom-attributes {:health-benefit 5000.0 :signing-bonus 0.0}}]
+                            (or (:employments acme-10k) []))}
+        (dissoc acme-10k :requisitions :employees :employments))
 
        (merge
         {:org-id "org-globex"
@@ -292,8 +305,14 @@
           :dept-head {:can-create-requisition true :can-approve true :view-scope :view-tree :visible-fields #{:salary-band :bonus-target}}
           :hiring-manager {:can-create-requisition true :can-approve true :view-scope :view-own :visible-fields #{:salary-band}}
           :employee {:can-create-requisition false :can-approve false :view-scope :view-own :visible-fields #{}}}
-         :requisitions (into canonical-reqs-globex (or (:headcounts globex-10k) []))}
-        globex-10k)]})))
+         :custom-attributes
+         [{:attribute-id :health-benefit :label "Health Benefit" :data-type :currency :cost-modifier? true :cost-cadence :annual :default-value 5000.0}
+          {:attribute-id :signing-bonus :label "Signing Bonus" :data-type :currency :cost-modifier? true :cost-cadence :one-time :default-value 0.0}
+          {:attribute-id :performance-rating :label "Performance Rating" :data-type :string :cost-modifier? false :default-value "Meets Expectations"}]
+         :requisitions canonical-reqs-globex
+         :employees (or (:employees globex-10k) [])
+         :employments (or (:employments globex-10k) [])}
+        (dissoc globex-10k :requisitions :employees :employments))]})))
 
 (defn write-seed-nippy!
   "Generates the seed dataset and serializes it to a binary Nippy archive with Snappy compression."

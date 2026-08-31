@@ -1,6 +1,7 @@
 (ns com.ozimos.workforce.org.interface
   (:require
    [com.ozimos.workforce.org.core :as core]
+   [com.ozimos.workforce.org.csv :as csv]
    [com.ozimos.workforce.org.errors :as errors]
    [com.ozimos.workforce.org.extension]
    [com.ozimos.workforce.org.resolvers]
@@ -266,3 +267,18 @@
 
 (defn get-unit-cost-stats [deps unit-id]
   (core/get-unit-cost-stats deps unit-id))
+
+(defn generate-csv-template
+  "Generates CSV text template with headers and a sample row based on tenant configuration."
+  [deps org-id]
+  (csv/generate-csv-template deps org-id))
+
+(defn validate-csv
+  "Performs pre-flight validation on CSV string for a tenant. Returns a dry-run validation report."
+  [deps org-id csv-str]
+  (csv/validate-csv deps org-id csv-str))
+
+(defn ingest-csv!
+  "Validates and batch-ingests CSV workforce records into Rama depots."
+  [deps org-id csv-str & [opts]]
+  (csv/ingest-csv! deps org-id csv-str opts))

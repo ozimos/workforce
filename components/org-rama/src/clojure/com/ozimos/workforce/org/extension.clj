@@ -623,7 +623,8 @@
                                            (local-transform> [(keypath *rid) AFTER-ELEM (termval *hired-event)] $$request-timeline)
                                            ;; Update unit stats: increment filled
                                            (|hash *uid)
-                                           (local-select> (keypath *uid) $$unit-headcount-stats :> *curr-stats)
+                                           (local-select> (keypath *uid) $$unit-headcount-stats :> *curr-stats-raw)
+                                           (default-val *curr-stats-raw (default-stats 0) :> *curr-stats)
                                            (update-stats-filled *curr-stats 1 :> *next-stats)
                                            (local-transform> [(keypath *uid) (termval *next-stats)] $$unit-headcount-stats)
                                            ;; Add new member to org

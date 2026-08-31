@@ -404,6 +404,7 @@
             (swap! employments conj empmt)))))
 
     {:tree tree
+     :units org-units
      :org-units org-units
      :employees @employees
      :employments @employments
