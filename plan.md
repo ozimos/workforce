@@ -618,15 +618,17 @@ To support enterprise-grade headcount cost tracking, organizational changes, and
 - `*employee-terminate-depot`: Updates employee status to `:terminated`, ends active employment, updates unit headcount metrics, and triggers security token/session revocations via `omni-auth`.
 
 #### 15.3 Tenant-Defined Custom Attribute Schemas & Financial Modifiers
-Each organization can extend the standard schema with custom operational metadata and financial cost modifiers:
+Each organization can extend the standard schema with custom operational metadata and financial values:
 - **`TenantAttributeDefine` Record**:
   ```clojure
   (defrecord TenantAttributeDefine
     [org-id attribute-id target-entity label data-type cost-modifier? cost-cadence currency options required? default-value updated-at])
   ```
-- **Cost Modifiers in `$$unit-cost-stats`**:
-  Custom financial attributes (e.g. Health Benefit Tiers, Signing Bonuses, Relocation, Hardware Stipends) are automatically factored into the total annualized cost calculation and rolled up across the hierarchy tree:
-  $$\text{Total Unit Cost} = \text{Base Payroll} + \text{Bonus Pool} + \sum \text{Custom Financial Modifiers}$$
+- **Cost Modifiers vs. Display-Only Financial Attributes**:
+  - `data-type = :currency` or `:number` can be configured as **display-only** (e.g. *Historical Equity Grant Value*, *Previous Salary*, *Reference Market Rate*) or marked explicitly with `cost-modifier? = true` (e.g. *Annual Health Benefit*, *Signing Bonus*, *Hardware Stipend*).
+  - **Only attributes with `cost-modifier? = true` are factored into the total annualized cost calculation and rolled up across the hierarchy tree**:
+    $$\text{Total Unit Cost} = \text{Base Payroll} + \text{Bonus Pool} + \sum_{\substack{a \in \text{Attrs} \\ a.\text{cost-modifier?} = \text{true}}} \text{NormalizedAnnual}(a.\text{value}, a.\text{cadence})$$
+  - Display-only attributes are rendered in UI forms, candidate offer profiles, and employee views without affecting department budget rollups or runway simulations.
 
 #### 15.4 Cost Aggregations & Rollups
 - **`$$unit-cost-stats`**: Pre-materialized financial and headcount metrics per Org Unit and recursively rolled up along the `$$org-hierarchy` tree:
@@ -635,7 +637,7 @@ Each organization can extend the standard schema with custom operational metadat
    :total-planned-payroll 1800000  ;; includes open approved requisitions
    :active-headcount 8
    :open-requisitions 2
-   :custom-cost-modifiers {:health-tier 126000 :signing-bonus 50000}
+   :custom-cost-modifiers {:health-tier 126000 :signing-bonus 50000} ;; only attributes with cost-modifier? = true
    :avg-tenure-months 18.4}
   ```
 - **Realized vs. Planned Budget Variance**: Enables real-time variance analysis without heavy relational SQL `JOIN` operations.
