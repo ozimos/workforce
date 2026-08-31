@@ -628,7 +628,46 @@ To support enterprise-grade headcount cost tracking, organizational changes, and
   ```
 - **Realized vs. Planned Budget Variance**: Enables real-time variance analysis without heavy relational SQL `JOIN` operations.
 
-#### 15.4 Replicant UI Pages & EQL Resolvers
-- **Employee Directory & Profile Page**: Replicant-rendered profile displaying current position and historical career timeline (promotions, department moves, title changes).
-- **Internal Transfer & Reorganization Modal**: UI flow allowing managers and HR to initiate internal transfers, select target requisitions, and adjust compensation.
-- **Offboarding / Termination Flow**: Guided termination with severance/reason capture and automatic access de-provisioning.
+### Phase 16: Disparate Data Ingestion & Strategic Headcount Decision Support
+
+`workforce` functions as an **Aggregation & Decision Engine** above systems of record (HRIS, ATS, and Financial Models), uniting siloed data to guide hiring, budget, and offer decisions.
+
+```
+  ┌───────────────────────────┐      ┌───────────────────────────┐      ┌───────────────────────────┐
+  │   HRIS (System of Record) │      │   ATS (Recruiting Pipeline)│     │  Finance & Compensation   │
+  │   - Workday / BambooHR    │      │   - Greenhouse / Ashby    │      │  - Market Salary Bands    │
+  │   - Active Employees      │      │   - Candidate Stages      │      │  - Budget Allocations     │
+  │   - Historical Placements │      │   - Offers Out / Status   │      │  - Financial Runway       │
+  └─────────────┬─────────────┘      └─────────────┬─────────────┘      └─────────────┬─────────────┘
+                │                                  │                                  │
+                │ Ingestion Depots / Webhooks      │ Ingestion Depots / Webhooks      │ Ingestion Depots
+                ▼                                  ▼                                  ▼
+ ┌──────────────────────────────────────────────────────────────────────────────────────────────────┐
+ │                                   workforce (Decision Engine)                                    │
+ │                                                                                                  │
+ │   1. Stream Unification (Rama Depots): Ingests worker status, candidate offers, and budgets      │
+ │   2. Unified Headcount Graph: Bridges Requisitions ◄──► Candidate Pipelines ◄──► Org Realities  │
+ │   3. Dynamic Decision Simulation:                                                                │
+ │      - "If we make this L6 offer at $185k, what happens to department runway?"                   │
+ │      - "Which open requisitions are blocking Q4 delivery milestones?"                            │
+ │      - "What is our team's compensation equity/compression across internal vs. external hires?"  │
+ │   4. Materialized Insights (PStates): Instant org rollups, runway forecasts, and approval rules   │
+ └──────────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### 16.1 Ingestion Depots & Normalized PStates
+- `*hris-roster-sync-depot`: Ingests worker status and current placement from Workday/BambooHR webhooks.
+  - Materializes `$$hris-roster {Long {:employee-id ... :job-level ... :comp ... :dept-id ...}}`.
+- `*ats-pipeline-sync-depot`: Ingests open job requisitions, candidate interview stages, and active offers from Greenhouse/Ashby.
+  - Materializes `$$ats-candidates {String {:candidate-id ... :stage ... :target-req-id ... :offer-details ...}}`.
+- `*comp-benchmark-sync-depot`: Ingests market salary bands (P25, P50, P75) by role, level, and geography.
+  - Materializes `$$comp-benchmarks {String {:role ... :level ... :p50-salary ... :p75-salary ...}}`.
+
+#### 16.2 Strategic Decision Simulation Engine
+- **Offer Impact & Runway Simulator**: Simulates proposed offer packages against remaining department budget and total company runway before the offer is extended in the ATS.
+- **Internal Equity & Compression Detector**: Automatically flags when an incoming candidate offer exceeds the compensation of existing high-performing team members in the same job level/department.
+- **Requisition Prioritization & Bottleneck Radar**: Calculates hiring velocity, time-in-stage delays across the interview funnel, and approval SLA adherence.
+
+#### 16.3 Bi-Directional Orchestration
+- Approved requisitions in `workforce` trigger automated job openings in the target ATS via outbound webhooks.
+- Accepted candidate offers in the ATS trigger requisition closure and pre-onboarding in the HRIS.

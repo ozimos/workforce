@@ -1,11 +1,41 @@
 # workforce
 
-A multi-tenant workforce, organization, and headcount management system built with Clojure, Red Planet Labs Rama, Polylith, Pathom 3, Replicant, Fulcro normalized state graph, Buddy, and the `omni-auth` security engine.
+A strategic **Headcount Intelligence & Hiring Decision Engine** built with Clojure, Red Planet Labs Rama, Polylith, Pathom 3, Replicant, Fulcro normalized state graph, Buddy, and the `omni-auth` security engine.
+
+## Strategic Positioning
+
+**`workforce` does not seek to replace existing HRIS (Workday, BambooHR, Rippling) or ATS (Greenhouse, Ashby, Lever) solutions.** 
+
+Instead, `workforce` unifies data from these disparate systems of record into a **real-time decision-support layer** to empower leadership, hiring managers, and finance teams to make faster, higher-conviction hiring and headcount allocation decisions:
+
+```
+  ┌───────────────────────────┐      ┌───────────────────────────┐      ┌───────────────────────────┐
+  │   HRIS (System of Record) │      │   ATS (Recruiting Pipeline)│     │  Finance & Compensation   │
+  │   - Workday / BambooHR    │      │   - Greenhouse / Ashby    │      │  - Market Salary Bands    │
+  │   - Active Employees      │      │   - Candidate Stages      │      │  - Budget Allocations     │
+  │   - Historical Placements │      │   - Offers Out / Status   │      │  - Financial Runway       │
+  └─────────────┬─────────────┘      └─────────────┬─────────────┘      └─────────────┬─────────────┘
+                │                                  │                                  │
+                │ Ingestion Depots / Webhooks      │ Ingestion Depots / Webhooks      │ Ingestion Depots
+                ▼                                  ▼                                  ▼
+ ┌──────────────────────────────────────────────────────────────────────────────────────────────────┐
+ │                                   workforce (Decision Engine)                                    │
+ │                                                                                                  │
+ │   1. Stream Unification (Rama Depots): Ingests worker status, candidate offers, and budgets      │
+ │   2. Unified Headcount Graph: Bridges Requisitions ◄──► Candidate Pipelines ◄──► Org Realities  │
+ │   3. Dynamic Decision Simulation:                                                                │
+ │      - "If we make this L6 offer at $185k, what happens to department runway?"                   │
+ │      - "Which open requisitions are blocking Q4 delivery milestones?"                            │
+ │      - "What is our team's compensation equity/compression across internal vs. external hires?"  │
+ │   4. Materialized Insights (PStates): Instant org rollups, runway forecasts, and approval rules   │
+ └──────────────────────────────────────────────────────────────────────────────────────────────────┘
+```
 
 ## Key Capabilities
 
-- **Event-Sourced Hierarchy & RBAC**: Rama module topologies managing multi-tenant Organizations, Recursive Org Units (Divisions, Departments, Teams), Scoped Actors, and Dynamic Approval Rules.
-- **Headcount Requisition & Approval Engine**: Multi-step approval workflows with budget checks, SLA tracking, and audit timelines.
+- **Headcount Decision Engine & Requisitions**: Multi-step requisition workflows with dynamic approval routing, budget validation, and real-time SLA metrics.
+- **Pipeline-to-Budget Synchronization**: Reconciles open ATS interview pipelines and pending offers against department budget allocations in real time.
+- **Event-Sourced Hierarchy & Scoped RBAC**: Rama module topologies managing multi-tenant Organizations, Recursive Org Units (Divisions, Departments, Teams), Scoped Actors, and Dynamic Approval Rules.
 - **Zero-React DOM Rendering**: Replicant-driven UI rendering with seamless Fulcro normalized graph state management and zero React runtime overhead.
 - **Transactional Email System**: MJML responsive email templates (verification, password reset, org invitations) delivered via HTTP Send APIs with provider presets (`:mailpit`, `:resend`, `:postmark`, `:sendgrid`).
 - **Hybrid Stateless Auth**: JWT access tokens validated via RSA public keys with instant Rama PState revocation checks (`$$revoked-tokens`).
