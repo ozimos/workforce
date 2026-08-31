@@ -205,8 +205,14 @@
                   3000)
         jetty-p (or (when-let [p (System/getenv "JETTY_DEV_PORT")] (try (parse-long p) (catch Throwable _ nil)))
                     (get-in local [:jetty/port :dev]))
+        mailpit-smtp (or (when-let [p (System/getenv "MAILPIT_SMTP_PORT")] (try (parse-long p) (catch Throwable _ nil)))
+                         (get-in local [:mailpit :smtp-port])
+                         1025)
+        mailpit-http (or (when-let [p (System/getenv "MAILPIT_HTTP_PORT")] (try (parse-long p) (catch Throwable _ nil)))
+                         (get-in local [:mailpit :http-port])
+                         8025)
         all-ports (filter #(and (integer? %) (pos? %))
-                          [nrepl-p shadow-nrepl-p shadow-http-p (when shadow-http-p (inc shadow-http-p)) ssr-p jetty-p])]
+                          [nrepl-p shadow-nrepl-p shadow-http-p (when shadow-http-p (inc shadow-http-p)) ssr-p jetty-p mailpit-smtp mailpit-http])]
     ;; 1. Halt Integrant system if running
     (try
       (when-let [sys (some-> (resolve 'integrant.repl.state/system) deref)]

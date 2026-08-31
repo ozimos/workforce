@@ -175,28 +175,44 @@
              (catch Exception _ nil)))
       (Thread/sleep 200))))
 
+(defn resolve-mailpit-ports
+  "Resolve Mailpit SMTP and HTTP UI ports from deps.local.edn or environment."
+  ([] (resolve-mailpit-ports (read-deps-local)))
+  ([local]
+   (let [smtp-p (or (when-let [p (System/getenv "MAILPIT_SMTP_PORT")] (try (parse-long p) (catch Exception _ nil)))
+                    (get-in local [:mailpit :smtp-port])
+                    1025)
+         http-p (or (when-let [p (System/getenv "MAILPIT_HTTP_PORT")] (try (parse-long p) (catch Exception _ nil)))
+                    (get-in local [:mailpit :http-port])
+                    8025)]
+     {:smtp-port smtp-p :http-port http-p})))
+
 (defn register-shutdown-cleanup!
-  "Add JVM/Babashka shutdown hook to terminate any process listening on SSR and shadow ports when launchpad exits."
+  "Add JVM/Babashka shutdown hook to terminate any process listening on SSR, shadow, and Mailpit ports when launchpad exits."
   [ctx]
   (let [local (read-deps-local)
         ssr-port (resolve-ssr-port local)
-        shadow-port (shadow-cljs-http-port)]
+        shadow-port (shadow-cljs-http-port)
+        {:keys [smtp-port http-port]} (resolve-mailpit-ports local)]
     (.addShutdownHook
       (Runtime/getRuntime)
       (Thread.
         (fn []
           (when ssr-port (kill-port! ssr-port))
-          (when shadow-port (kill-port! shadow-port))))))
+          (when shadow-port (kill-port! shadow-port))
+          (when smtp-port (kill-port! smtp-port))
+          (when http-port (kill-port! http-port))))))
   ctx)
 
 (defn cleanup-stale-dev-ports
-  "Clean up stale listeners on configured dev ports (nREPL, shadow-cljs, SSR, Jetty) before boot."
+  "Clean up stale listeners on configured dev ports (nREPL, shadow-cljs, SSR, Jetty, Mailpit) before boot."
   [ctx]
   (let [local (read-deps-local)
         nrepl-p (get-in local [:launchpad/options :nrepl-port])
         shadow-p (shadow-cljs-http-port)
         ssr-p (resolve-ssr-port local)
-        jetty-dev-p (get-in local [:jetty/port :dev])]
+        jetty-dev-p (get-in local [:jetty/port :dev])
+        {:keys [smtp-port http-port]} (resolve-mailpit-ports local)]
     (when (and (integer? nrepl-p) (pos? nrepl-p))
       (kill-port! nrepl-p))
     (when (and (integer? shadow-p) (pos? shadow-p))
@@ -206,7 +222,29 @@
       (kill-port! ssr-p))
     (when (and (integer? jetty-dev-p) (pos? jetty-dev-p))
       (kill-port! jetty-dev-p))
+    (when (and (integer? smtp-port) (pos? smtp-port))
+      (kill-port! smtp-port))
+    (when (and (integer? http-port) (pos? http-port))
+      (kill-port! http-port))
     ctx))
+
+(defn start-mailpit
+  "If mailpit binary is available on PATH, start Mailpit in the background as a launchpad-managed process."
+  [ctx]
+  (let [local (read-deps-local)
+        enabled? (get-in local [:mailpit :enabled] true)]
+    (if (and enabled? (zero? (:exit (shell/sh "which" "mailpit"))))
+      (let [{:keys [smtp-port http-port]} (resolve-mailpit-ports local)]
+        ;; Ensure no stale process is holding the ports
+        (kill-port! smtp-port)
+        (kill-port! http-port)
+        (log/info (str "Starting Mailpit (SMTP :" smtp-port ", HTTP UI :" http-port ")..."))
+        ((lambdaisland.launchpad/run-process
+          {:cmd         ["mailpit" "--smtp" (str "[::]:" smtp-port) "--listen" (str "[::]:" http-port)]
+           :background? true
+           :prefix      "mailpit"})
+         ctx))
+      ctx)))
 
 (defn start-ssr-server
   "If deps.local.edn has :ssr-server :enabled, spawn the Node SSR server
@@ -281,6 +319,7 @@
          resolve-nrepl-port
          resolve-shadow-ports
          register-shutdown-cleanup!
+         start-mailpit
          start-frontend-watcher
          auto-start-system
          resolve-jetty-ports]
