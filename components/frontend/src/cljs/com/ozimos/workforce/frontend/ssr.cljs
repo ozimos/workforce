@@ -1,16 +1,9 @@
 (ns com.ozimos.workforce.frontend.ssr
   (:require
+   [com.fulcrologic.fulcro.algorithms.denormalize :as denorm]
    [com.fulcrologic.fulcro.application :as app]
-   [com.fulcrologic.fulcro.components :as comp]
-   [com.ozimos.workforce.frontend.ui.root :as root]))
-
-(def React (js/require "react"))
-(def ReactDOMServer (js/require "react-dom/server"))
-
-;; Shim useLayoutEffect to useEffect in Node SSR environment to eliminate
-;; React DOM Server's "useLayoutEffect does nothing on the server" warning.
-(when React
-  (set! (.-useLayoutEffect React) (.-useEffect React)))
+   [com.ozimos.workforce.frontend.ui.root-replicant :as root-rc]
+   [replicant.string :as rstr]))
 
 (defn- escape-html [s]
   (-> s
@@ -24,85 +17,102 @@
   (= js/process.env.SSR_AUTHENTICATED "true"))
 
 (defn- setup-ssr-globals [path search]
-  ;; window and localStorage are provided by ssr-server/shim.js at module-load
-  ;; time (before this bundle is required), so they always exist. Here we only
-  ;; patch the per-request path on the existing objects.
   (set! (.-pathname (.-location js/window)) path)
   (set! (.-search (.-location js/window)) (if (seq search) (str "?" search) "")))
 
 (defn- page-title [path]
   (cond
     (= path "/login")            "Sign In"
-    (= path "/login-replicant")  "Sign In (Replicant)"
+    (= path "/login-replicant")  "Sign In"
     (= path "/register")         "Create Account"
-    (= path "/register-replicant") "Create Account (Replicant)"
+    (= path "/register-replicant") "Create Account"
     (= path "/create-org")       "Create Organization"
-    (= path "/create-org-replicant") "Create Organization (Replicant)"
+    (= path "/create-org-replicant") "Create Organization"
     (= path "/join-org")         "Join Organization"
-    (= path "/join-org-replicant") "Join Organization (Replicant)"
+    (= path "/join-org-replicant") "Join Organization"
     (= path "/org-dashboard")    "Organization Dashboard"
-    (= path "/org-dashboard-replicant") "Organization Dashboard (Replicant)"
+    (= path "/org-dashboard-replicant") "Organization Dashboard"
     (= path "/policies")        "Policies"
-    (= path "/policies-replicant") "Policies (Replicant)"
+    (= path "/policies-replicant") "Policies"
     (= path "/org-chart")        "Organization Chart"
-    (= path "/org-chart-replicant") "Organization Chart (Replicant)"
+    (= path "/org-chart-replicant") "Organization Chart"
     (= path "/headcount")        "Headcount"
-    (= path "/headcount-replicant") "Headcount (Replicant)"
+    (= path "/headcount-replicant") "Headcount"
     (= path "/dept-dashboard")   "Department Dashboard"
-    (= path "/dept-dashboard-replicant") "Department Dashboard (Replicant)"
+    (= path "/dept-dashboard-replicant") "Department Dashboard"
     (= path "/profile")          "Profile"
-    (= path "/profile-replicant") "Profile (Replicant)"
+    (= path "/profile-replicant") "Profile"
     (= path "/forgot-password")  "Forgot Password"
-    (= path "/forgot-password-replicant") "Forgot Password (Replicant)"
+    (= path "/forgot-password-replicant") "Forgot Password"
     (= path "/reset-password")   "Reset Password"
-    (= path "/reset-password-replicant") "Reset Password (Replicant)"
+    (= path "/reset-password-replicant") "Reset Password"
     (= path "/verify")           "Verify Account"
-    (= path "/verify-replicant") "Verify Account (Replicant)"
-    (= path "/home-replicant")   "Dashboard (Replicant)"
+    (= path "/verify-replicant") "Verify Account"
+    (= path "/home-replicant")   "Dashboard"
     (= path "/")                 "Dashboard"
     :else                        "Best Auth"))
 
 (defn- page-description [path]
   (cond
     (= path "/login")            "Sign in to your account"
-    (= path "/login-replicant")  "Replicant sign in (pure hiccup)"
+    (= path "/login-replicant")  "Sign in to your account"
     (= path "/register")         "Create a new account"
-    (= path "/register-replicant") "Replicant registration (pure hiccup)"
+    (= path "/register-replicant") "Create a new account"
     (= path "/create-org")       "Create a new organization"
-    (= path "/create-org-replicant") "Replicant create org (pure hiccup)"
+    (= path "/create-org-replicant") "Create a new organization"
     (= path "/join-org")         "Join an existing organization"
-    (= path "/join-org-replicant") "Replicant join org (pure hiccup)"
+    (= path "/join-org-replicant") "Join an existing organization"
     (= path "/org-dashboard")    "Manage your organization"
-    (= path "/org-dashboard-replicant") "Replicant org dashboard (pure hiccup)"
+    (= path "/org-dashboard-replicant") "Manage your organization"
     (= path "/policies")        "Policies and approval routing"
-    (= path "/policies-replicant") "Replicant policies (pure hiccup)"
+    (= path "/policies-replicant") "Policies and approval routing"
     (= path "/org-chart")        "Interactive organizational hierarchy"
-    (= path "/org-chart-replicant") "Replicant rendering of organizational hierarchy (pure hiccup)"
+    (= path "/org-chart-replicant") "Interactive organizational hierarchy"
     (= path "/headcount")        "Headcount requisitions and approvals"
-    (= path "/headcount-replicant") "Replicant headcount (pure hiccup)"
+    (= path "/headcount-replicant") "Headcount requisitions and approvals"
     (= path "/dept-dashboard")   "Department headcount dashboard"
-    (= path "/dept-dashboard-replicant") "Replicant dept dashboard (pure hiccup)"
+    (= path "/dept-dashboard-replicant") "Department headcount dashboard"
     (= path "/profile")          "Update your profile"
-    (= path "/profile-replicant") "Replicant profile (pure hiccup)"
+    (= path "/profile-replicant") "Update your profile"
     (= path "/forgot-password")  "Reset your password"
-    (= path "/forgot-password-replicant") "Replicant forgot password (pure hiccup)"
+    (= path "/forgot-password-replicant") "Reset your password"
     (= path "/reset-password")   "Set a new password"
-    (= path "/reset-password-replicant") "Replicant reset password (pure hiccup)"
+    (= path "/reset-password-replicant") "Set a new password"
     (= path "/verify")           "Verify your email address"
-    (= path "/verify-replicant") "Replicant verify account (pure hiccup)"
-    (= path "/home-replicant")   "Replicant home dashboard (pure hiccup)"
+    (= path "/verify-replicant") "Verify your email address"
+    (= path "/home-replicant")   "Home dashboard"
     (= path "/")                 "Dashboard - Best Auth"
     :else                        "Best Auth - Authentication Template"))
 
-(defn- ssr-render [factory app-inst]
-  (binding [comp/*app* app-inst]
-    (.renderToString ReactDOMServer (factory nil))))
-
-(def ssr-artifact-errors
-  #{"No matching clause: "})
-
-(defn- is-ssr-artifact? [e]
-  (some #(.startsWith (.-message e) %) ssr-artifact-errors))
+(defn- current-path-route [path]
+  (cond
+    (= path "/register") :route/register
+    (= path "/register-replicant") :route/register-replicant
+    (= path "/create-org") :route/create-org
+    (= path "/create-org-replicant") :route/create-org-replicant
+    (= path "/join-org") :route/join-org
+    (= path "/join-org-replicant") :route/join-org-replicant
+    (= path "/org-dashboard") :route/org-dashboard
+    (= path "/org-dashboard-replicant") :route/org-dashboard-replicant
+    (= path "/org-chart") :route/org-chart
+    (= path "/org-chart-replicant") :route/org-chart-replicant
+    (= path "/dept-dashboard") :route/dept-dashboard
+    (= path "/dept-dashboard-replicant") :route/dept-dashboard-replicant
+    (= path "/headcount") :route/headcount
+    (= path "/headcount-replicant") :route/headcount-replicant
+    (= path "/policies") :route/policies
+    (= path "/policies-replicant") :route/policies-replicant
+    (= path "/profile") :route/profile
+    (= path "/profile-replicant") :route/profile-replicant
+    (= path "/forgot-password") :route/forgot-password
+    (= path "/forgot-password-replicant") :route/forgot-password-replicant
+    (.startsWith path "/reset-password") :route/reset-password
+    (.startsWith path "/verify") :route/verify
+    (= path "/login") :route/login
+    (= path "/login-replicant") :route/login-replicant
+    (= path "/home-replicant") :route/home-replicant
+    (= path "/") :route/home
+    :else :route/login))
 
 (defn ^:export render-page-html
   ([path] (render-page-html path "" "" ""))
@@ -115,16 +125,19 @@
          {:keys [status html error-message]}
          (try
            (let [app-inst (app/fulcro-app {})
-                 factory (comp/factory root/Root)
-                 rendered (ssr-render factory app-inst)]
-             {:status :ok :html rendered})
+                 state-atom (::app/state-atom app-inst)
+                 route (current-path-route path)
+                 logged-in? (authenticated?)]
+             (swap! state-atom assoc :route route :logged-in? logged-in?)
+             (let [db @state-atom
+                   query (:query (meta root-rc/RootReplicant))
+                   denormalized-tree (denorm/db->tree query db db)
+                   hiccup (root-rc/RootReplicant denormalized-tree)
+                   rendered (rstr/render hiccup)]
+               {:status :ok :html rendered}))
            (catch js/Error e
-             (if (is-ssr-artifact? e)
-               {:status :limited
-                :error-message (str "SSR_LIMITED (page renders in browser but not in SSR): "
-                                    (.-message e))}
-               {:status :error
-                :error-message (str (.-message e) "\n" (.-stack e))})))]
+             {:status :error
+              :error-message (str (.-message e) "\n" (.-stack e))}))]
      (str "<!DOCTYPE html>"
           "<html lang=\"en\" class=\"h-full\">"
           "<head>"
