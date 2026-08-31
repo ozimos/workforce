@@ -215,6 +215,25 @@
            :status :draft
            :final-status :draft}]
 
+         canonical-units-globex
+         [{:unit-id "div-globex-eng" :name "Engineering Division" :budget 25 :parent-id nil}
+          {:unit-id "dept-globex-platform" :name "Platform Infrastructure Dept" :budget 12 :parent-id "div-globex-eng"}
+          {:unit-id "dept-globex-sre" :name "Site Reliability Dept" :budget 6 :parent-id "div-globex-eng"}
+          {:unit-id "dept-globex-sec" :name "Security Engineering Dept" :budget 7 :parent-id "div-globex-eng"}
+          {:unit-id "div-globex-biz" :name "Commercial & Growth Division" :budget 15 :parent-id nil}
+          {:unit-id "dept-globex-sales" :name "Enterprise Sales Dept" :budget 10 :parent-id "div-globex-biz"}
+          {:unit-id "dept-globex-mktg" :name "Product Marketing Dept" :budget 5 :parent-id "div-globex-biz"}]
+
+         canonical-actors-globex
+         [{:unit-id "dept-globex-platform" :user-id "u-leo-mgr" :role :hiring-manager}
+          {:unit-id "dept-globex-platform" :user-id "u-karen-vp" :role :vp}
+          {:unit-id "dept-globex-sre" :user-id "u-leo-mgr" :role :hiring-manager}
+          {:unit-id "dept-globex-sre" :user-id "u-karen-vp" :role :vp}
+          {:unit-id "dept-globex-sec" :user-id "u-leo-mgr" :role :hiring-manager}
+          {:unit-id "dept-globex-sec" :user-id "u-karen-vp" :role :vp}
+          {:unit-id "dept-globex-sales" :user-id "u-leo-mgr" :role :hiring-manager}
+          {:unit-id "dept-globex-sales" :user-id "u-karen-vp" :role :vp}]
+
          acme-10k (if generate-10k?
                     (generate-enterprise-org-dataset {:org-id "org-acme" :org-name "Acme Corp" :owner-user-id "u-alice" :seed 42 :total-nodes 10000})
                     nil)
@@ -262,14 +281,18 @@
           {:email "leo.mgr@globex.com" :user-id "u-leo-mgr" :role "MEMBER"}
           {:email "mia.recruiter@globex.com" :user-id "u-mia-recruiter" :role "MEMBER"}
           {:email "noah.eng@globex.com" :user-id "u-noah-eng" :role "MEMBER"}]
-         :actors
-         [{:unit-id "org-globex-dept-eng-platform" :user-id "u-leo-mgr" :role :hiring-manager}
-          {:unit-id "org-globex-dept-eng-platform" :user-id "u-karen-vp" :role :vp}]
+         :units (into canonical-units-globex (or (:units globex-10k) []))
+         :actors canonical-actors-globex
          :approval-rules
-         [{:rule-id "r-globex-exec" :priority 100 :name "Executive L6 Rule" :conditions [:= :job-level "L6"] :chain [{:step 1 :role :hiring-manager} {:step 2 :role :vp}]}]
+         [{:rule-id "r-globex-exec" :priority 100 :name "Executive L6 Rule" :conditions [:= :job-level "L6"] :chain [{:step 1 :role :hiring-manager} {:step 2 :role :vp}]}
+          {:rule-id "r-globex-standard" :priority 50 :name "Standard Rule" :conditions [:= :job-level "L5"] :chain [{:step 1 :role :hiring-manager}]}]
          :role-permissions
-         {:admin {:can-create-requisition true :can-approve true :view-scope :view-all :visible-fields #{:salary-band :bonus-target :rsu-grant}}}
-         :requisitions canonical-reqs-globex}
+         {:admin {:can-create-requisition true :can-approve true :view-scope :view-all :visible-fields #{:salary-band :bonus-target :rsu-grant}}
+          :hr {:can-create-requisition true :can-approve false :view-scope :view-all :visible-fields #{:salary-band :bonus-target :rsu-grant}}
+          :dept-head {:can-create-requisition true :can-approve true :view-scope :view-tree :visible-fields #{:salary-band :bonus-target}}
+          :hiring-manager {:can-create-requisition true :can-approve true :view-scope :view-own :visible-fields #{:salary-band}}
+          :employee {:can-create-requisition false :can-approve false :view-scope :view-own :visible-fields #{}}}
+         :requisitions (into canonical-reqs-globex (or (:headcounts globex-10k) []))}
         globex-10k)]})))
 
 (defn write-seed-nippy!
