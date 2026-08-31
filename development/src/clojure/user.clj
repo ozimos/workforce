@@ -271,4 +271,40 @@
   (clear)           ;; Discard prepped config + system
   (test-all)        ;; Run all backend tests against running dev state (< 0.5s)
   (test-clean)      ;; Run all backend tests against a fresh ephemeral test system (~1s)
-  (test-ns 'com.ozimos.workforce.org.seed-test))
+  (test-ns 'com.ozimos.workforce.org.seed-test)
+
+  ;; ===========================================================================
+  ;; Mailpit / Notification REPL Previews (View in Mailpit UI at http://localhost:8025)
+  ;; ===========================================================================
+  (require '[com.ozimos.omni-auth.notification.interface :as notify])
+
+  ;; 1. Send Account Verification Email to Mailpit
+  (notify/send-verification-email!
+   {:notification/service {:provider :smtp :smtp {:host "localhost" :port 1025}}}
+   {:to "alice@acme.com"
+    :user-name "Alice Smith"
+    :verify-url "http://localhost:8100/verify?token=sample-verification-jwt-token"})
+
+  ;; 2. Send Password Reset Email to Mailpit
+  (notify/send-password-reset-email!
+   {:notification/service {:provider :smtp :smtp {:host "localhost" :port 1025}}}
+   {:to "bob@acme.com"
+    :user-name "Bob Jones"
+    :reset-url "http://localhost:8100/reset-password?token=sample-password-reset-jwt-token"})
+
+  ;; 3. Send Organization Invitation Email to Mailpit
+  (notify/send-org-invitation-email!
+   {:notification/service {:provider :smtp :smtp {:host "localhost" :port 1025}}}
+   {:to "carol@acme.com"
+    :inviter-name "Alice Smith"
+    :org-name "Acme Engineering"
+    :role "Lead Architect"
+    :join-url "http://localhost:8100/join-org?token=sample-org-invitation-token"})
+
+  ;; 4. Send via running Integrant system
+  (when-let [sys (some-> (resolve 'integrant.repl.state/system) deref)]
+    (notify/send-verification-email!
+     sys
+     {:to "dev@example.com"
+      :user-name "Dev User"
+      :verify-url "http://localhost:8100/verify?token=dev-jwt-token"})))
