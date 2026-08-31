@@ -617,13 +617,25 @@ To support enterprise-grade headcount cost tracking, organizational changes, and
 - `*employment-comp-revision-depot`: Records compensation/raise adjustments with effective dates.
 - `*employee-terminate-depot`: Updates employee status to `:terminated`, ends active employment, updates unit headcount metrics, and triggers security token/session revocations via `omni-auth`.
 
-#### 15.3 Cost Aggregations & Rollups
+#### 15.3 Tenant-Defined Custom Attribute Schemas & Financial Modifiers
+Each organization can extend the standard schema with custom operational metadata and financial cost modifiers:
+- **`TenantAttributeDefine` Record**:
+  ```clojure
+  (defrecord TenantAttributeDefine
+    [org-id attribute-id target-entity label data-type cost-modifier? cost-cadence currency options required? default-value updated-at])
+  ```
+- **Cost Modifiers in `$$unit-cost-stats`**:
+  Custom financial attributes (e.g. Health Benefit Tiers, Signing Bonuses, Relocation, Hardware Stipends) are automatically factored into the total annualized cost calculation and rolled up across the hierarchy tree:
+  $$\text{Total Unit Cost} = \text{Base Payroll} + \text{Bonus Pool} + \sum \text{Custom Financial Modifiers}$$
+
+#### 15.4 Cost Aggregations & Rollups
 - **`$$unit-cost-stats`**: Pre-materialized financial and headcount metrics per Org Unit and recursively rolled up along the `$$org-hierarchy` tree:
   ```clojure
   {:total-base-payroll 1450000
    :total-planned-payroll 1800000  ;; includes open approved requisitions
    :active-headcount 8
    :open-requisitions 2
+   :custom-cost-modifiers {:health-tier 126000 :signing-bonus 50000}
    :avg-tenure-months 18.4}
   ```
 - **Realized vs. Planned Budget Variance**: Enables real-time variance analysis without heavy relational SQL `JOIN` operations.
@@ -671,3 +683,36 @@ To support enterprise-grade headcount cost tracking, organizational changes, and
 #### 16.3 Bi-Directional Orchestration
 - Approved requisitions in `workforce` trigger automated job openings in the target ATS via outbound webhooks.
 - Accepted candidate offers in the ATS trigger requisition closure and pre-onboarding in the HRIS.
+
+### Phase 17: Schema-Driven Dynamic CSV Ingestion & Pre-Flight Validation Engine
+
+To enable fast tenant onboarding and historical data migration for pre-existing Headcounts, Employees, and Employments:
+
+```
+  Tenant Custom Schema (Rama) ──► Dynamic CSV Template Gen ──► Client/Server Pre-Flight Validator ──► Atomic Ingestion Depot
+```
+
+#### 17.1 Dynamic CSV Template Generation
+- Auto-generates downloadable CSV templates reflecting the tenant's current schema:
+  - Standard headers: `first_name`, `last_name`, `email`, `hire_date`, `unit_name`, `job_title`, `job_level`, `base_salary`, `currency`.
+  - Dynamic headers: auto-appends tenant-defined custom attributes (e.g. `attr_cost_center`, `attr_health_tier`, `attr_signing_bonus`).
+- Endpoint: `GET /api/org/:org-id/import/template.csv?type=:employees|:headcounts`.
+
+#### 17.2 Multi-Stage Pre-Flight Validation
+- **Structural Header Verification**: Confirms mandatory columns and flags unrecognized headers with fuzzy-match suggestions.
+- **Row-Level Semantic Validation**:
+  - Currency & number parsing (handles symbols `$`, `€`, `,`).
+  - Org unit reference check: verifies whether department/unit exists or needs automatic hierarchy creation.
+  - Date format parsing (`YYYY-MM-DD`).
+- **Pre-Flight Validation Response**: Returns detailed row-and-column error breakdowns before committing changes.
+
+#### 17.3 Atomic Bulk Ingestion Depot
+- Ingestion record: `(defrecord OrgBulkImport [import-id org-id imported-by entity-type rows timestamp])`.
+- Stream topology creates `Employee`, `Employment`, and `HeadcountRequisition` records in bulk and immediately recalculates all hierarchy cost statistics (`$$unit-cost-stats`).
+
+### Phase 18: Unified Integration Layer (Merge.dev / Finch / Kombo)
+
+Following the spreadsheet import engine, `workforce` connects directly to customer information systems via unified API integrations:
+- **HRIS Sync**: Continuous synchronization with Workday, BambooHR, Rippling, and Hibob for active rosters, promotions, and transfers.
+- **ATS Sync**: Continuous synchronization with Greenhouse, Ashby, and Lever for active job requisitions and candidate offer stages.
+- **Custom Field Mapping**: Maps remote HRIS/ATS custom fields directly into `$$tenant-attribute-definitions` without code changes.

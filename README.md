@@ -34,6 +34,8 @@ Instead, `workforce` unifies data from these disparate systems of record into a 
 ## Key Capabilities
 
 - **Headcount Decision Engine & Requisitions**: Multi-step requisition workflows with dynamic approval routing, budget validation, and real-time SLA metrics.
+- **Tenant-Defined Custom Attributes**: Extensible attribute schemas for Employees and Headcounts supporting financial cost modifiers (bonuses, health plans, overhead) rolled up dynamically into payroll totals.
+- **Schema-Driven Dynamic CSV Ingestion**: Auto-generated import templates reflecting each tenant's custom schema with client/server pre-flight validation.
 - **Pipeline-to-Budget Synchronization**: Reconciles open ATS interview pipelines and pending offers against department budget allocations in real time.
 - **Event-Sourced Hierarchy & Scoped RBAC**: Rama module topologies managing multi-tenant Organizations, Recursive Org Units (Divisions, Departments, Teams), Scoped Actors, and Dynamic Approval Rules.
 - **Zero-React DOM Rendering**: Replicant-driven UI rendering with seamless Fulcro normalized graph state management and zero React runtime overhead.
