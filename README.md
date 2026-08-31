@@ -1,151 +1,129 @@
 # workforce
 
-A multi-tenant workforce and organization management system built with Clojure, Red Planet Labs Rama, Polylith, Pathom 3, Fulcro, Buddy, and the `omni-auth` security engine.
+A multi-tenant workforce, organization, and headcount management system built with Clojure, Red Planet Labs Rama, Polylith, Pathom 3, Replicant, Fulcro normalized state graph, Buddy, and the `omni-auth` security engine.
+
+## Key Capabilities
+
+- **Event-Sourced Hierarchy & RBAC**: Rama module topologies managing multi-tenant Organizations, Recursive Org Units (Divisions, Departments, Teams), Scoped Actors, and Dynamic Approval Rules.
+- **Headcount Requisition & Approval Engine**: Multi-step approval workflows with budget checks, SLA tracking, and audit timelines.
+- **Zero-React DOM Rendering**: Replicant-driven UI rendering with seamless Fulcro normalized graph state management and zero React runtime overhead.
+- **Transactional Email System**: MJML responsive email templates (verification, password reset, org invitations) delivered via HTTP Send APIs with provider presets (`:mailpit`, `:resend`, `:postmark`, `:sendgrid`).
+- **Hybrid Stateless Auth**: JWT access tokens validated via RSA public keys with instant Rama PState revocation checks (`$$revoked-tokens`).
+
+---
 
 ## Prerequisites
 
 - **JDK 21+** (Temurin 21 or 25 recommended)
-- **Babashka** (`bb`) — task runner and dev launchpad
+- **Babashka** (`bb`) — task runner and development launchpad
 - **Clojure CLI** (`clojure`) — `tools.deps`
-- **Node.js** (v18+) — for frontend build and SSR server
+- **Node.js** (v18+) & **pnpm** — for frontend asset compilation and Node SSR server
+- **Mailpit** (`brew install mailpit`) — local transactional email server and inspector
+
+---
 
 ## Quick Start
 
 ```bash
-# Start the dev REPL and Launchpad (nREPL + Shadow-CLJS + SSR server)
+# Start the full development stack (Launchpad + Mailpit + Shadow-CLJS + SSR + Dev REPL)
 bb repl
-
-# Or launch directly with bin/launchpad:
-bb bin/launchpad +default dev +rama test
 ```
 
-> **Note:** The `+default` alias defines all workspace and core components (`omni-auth/*`, `poly/*`).
-
-Launchpad starts a JVM, boots an nREPL server (default port `4005`), compiles ClojureScript via Shadow-CLJS, starts the Node SSR server on port `3000` (proxying `/api/*` to Jetty dev port `8100`), and loads `user.clj` which:
-
-1. Initializes **Integrant** system lifecycle (`user/go`, `user/halt`, `user/reset`)
-2. Activates **clj-reload** for automatic namespace reloading
-3. Automatically mounts the Rama cluster and workforce organization topologies
+Launchpad orchestrates:
+1. **Mailpit Server**: Automatically spawned in the background (SMTP `:1025`, Web UI `http://localhost:8025`).
+2. **nREPL Server**: Boots on port `4005` (or dynamic non-conflicting port in worktrees).
+3. **Shadow-CLJS**: Watches and compiles `:app` (browser client) and `:ssr` (server-side rendering bundle).
+4. **Node SSR Proxy**: Runs `ssr-server/server.js` on port `3000`, routing frontend SSR and proxying `/api/*` to Jetty backend.
+5. **Integrant JVM Lifecycle**: Mounts the in-memory Rama cluster, seeds demo data, and starts Jetty on port `8100`.
 
 In your connected editor or REPL:
 
 ```clojure
-(go)     ;; Start the system (Jetty on port 8100)
-(halt)   ;; Stop the system
-(reset)  ;; Reload changed namespaces + restart system
+(user/start-and-seed!) ;; Starts system and populates Rama seed data
+(user/go)              ;; Starts the system
+(user/halt)            ;; Stops the system
+(user/reset)           ;; Hot-reloads changed namespaces & rebuilds system (< 1s)
 ```
 
-## Worktrees & Multi-Branch REPL Isolation
+---
 
-When working in a Git worktree (e.g. `spike-replicant-renderer` or feature branches created with `bb wt-new <branch>`):
+## Worktrees & Multi-Branch Development
 
-- **Always boot a dedicated REPL within your worktree**: Run `bb repl` inside that worktree directory.
-- **Never connect to the REPL in `main`**: The REPL in `main` points to `main`'s files and classpath. Modifications in your worktree will not be recognized by `main`'s REPL, and evaluating code against `main` will corrupt its shared in-memory Rama state.
-- **Dynamic Port Assignment**: Worktrees automatically configure `:nrepl-port 0` and `:jetty/port {:dev 0}` in `deps.local.edn`. Launchpad assigns dynamic non-conflicting ports and writes the active port to `.nrepl-port` in the worktree root.
-- **CLI task discovery**: Commands like `bb test-fast` automatically read `.nrepl-port` from the current working directory.
+When developing in Git worktrees:
 
-## Verification
+- **Isolated Dev Ports**: Worktrees automatically configure `:nrepl-port 0` and `:jetty/port {:dev 0}` in `deps.local.edn`. Launchpad allocates non-conflicting free ports and records active ports in `.nrepl-port`.
+- **Dedicated REPL per Worktree**: Always run `bb repl` inside the worktree directory.
+- **Clean Port Management**: Run `bb kill-ports` at any time to terminate any lingering processes across all dev ports (nREPL, Shadow-CLJS, SSR, Jetty, Mailpit).
 
-```bash
-# Verify backend API (Jetty dev port 8100)
-curl http://localhost:8100/api/health
-# {"status":"ok"}
+---
 
-# Verify SSR frontend server (port 3000)
-curl http://localhost:3000/api/health
-# {"status":"ok"}
-```
+## Verification & URLs
 
-## Testing
+| Service | URL | Description |
+|---|---|---|
+| **Workforce Web App** | `http://localhost:3000` | Full Replicant frontend via Node SSR proxy |
+| **Backend REST & EQL API** | `http://localhost:8100` | Jetty 12 Ring HTTP server + Pathom 3 EQL endpoint |
+| **Mailpit Web UI** | `http://localhost:8025` | Local email inspector & inbox viewer |
+| **Shadow-CLJS Dashboard** | `http://localhost:9630` | ClojureScript build inspector |
 
-`workforce` provides a tiered testing setup for rapid in-REPL feedback (<0.5s) and multi-runtime verification:
+---
 
-| Command | Environment | Description | Speed |
+## Testing & Quality Assurance
+
+`workforce` provides tiered testing for rapid in-REPL feedback (<0.5s) and full end-to-end multi-runtime verification:
+
+| Command | Environment | Description | Typical Speed |
 |---|---|---|---|
-| `bb test-fast` | Warm Dev REPL | Runs all backend test suites against active dev system | **< 0.5s** |
+| `bb test-fast` | Warm Dev REPL / JVM | Runs backend test suites (Org, Resolvers, Auth, Web, RBAC) | **< 1.0s** (Warm) |
 | `bb test-fast <ns>` | Warm Dev REPL | Runs a single test namespace | **~ 50ms** |
-| `bb test-fast-clean` | Warm Dev REPL | Runs test suite on a fresh ephemeral in-memory Rama cluster | **~ 1.0s** |
-| `bb fe-test` | Node.js (`shadow-cljs`) | Headless ClojureScript Fulcro unit tests | **~ 5s** |
-| `bb test-all` | JVM + Node + Proxy | Full multi-tier test suites sequentially | **~ 25s** |
+| `bb fe-test` | Node.js (`shadow-cljs`) | Headless ClojureScript Replicant page & component tests (93 tests, 341 assertions) | **~ 5s** |
+| `bb lint` | `clj-kondo` | Lints entire codebase (workforce + omni-auth components) | **< 1s** (0 errors, 0 warnings) |
+| `bb fmt-check` | `standard-clj` | Code style and formatting validator | **< 1s** |
 | `bb test` | Standalone JVM | Cold Polylith test runner (`poly test`) | **~ 35s** |
 
-### In-REPL Testing
-
-```clojure
-;; Run all workforce test suites (30 tests, 225 assertions):
-(user/test-all)
-
-;; Run workforce organization resolvers & IPC test suites:
-(user/test-ns 'com.ozimos.workforce.org.resolvers-test)
-(user/test-ns 'com.ozimos.workforce.org.ipc-test)
-
-;; Run web integration tests:
-(user/test-ns 'com.ozimos.workforce.web.integration-test)
-
-;; Run tests against an isolated ephemeral Rama cluster:
-(user/test-clean)
-```
-
-## Production Build
-
-```bash
-# Build production uberjar
-clojure -T:build uberjar
-
-# Run production service
-java --enable-native-access=ALL-UNNAMED -jar target/auth-service.jar
-```
+---
 
 ## Project Structure
 
 ```
 workforce/
-├── workspace.edn              # Polylith configuration
-├── deps.edn                  # Root dependencies & aliases (:dev, :test, :+rama, :+default, :poly)
-├── bb.edn                    # Babashka dev tasks & port management
-├── bin/launchpad             # Development launchpad script
-├── shadow-cljs.edn           # Frontend build (:app, :ssr, :test)
-├── ssr-server/               # Express SSR & API reverse proxy (port 3000)
+├── workspace.edn                     # Polylith workspace definition
+├── deps.edn                         # Root dependencies & aliases (:dev, :test, :+rama, :+default, :poly)
+├── bb.edn                           # Babashka tasks, linting, and port lifecycles
+├── bin/launchpad                    # Development launchpad orchestration script
+├── shadow-cljs.edn                  # ClojureScript build definitions (:app, :ssr, :test)
+├── ssr-server/                      # Express SSR relay & reverse proxy (port 3000)
 │
-├── components/               # Polylith components
-│   ├── org-rama/             # Rama OrgModule, depots, PStates, and Pathom 3 resolvers
-│   │                         # (Organizations, Members, Invitations, Roles, Teams)
-│   ├── schema/               # Malli schemas & validation
-│   ├── config/               # Aero configuration loader
-│   ├── rama/                 # Rama cluster lifecycle & IPC fixtures
-│   ├── security/             # Buddy authentication & authorization middleware
-│   ├── token/                # JWT issuance & verification (Buddy Sign)
-│   ├── user-rama/            # User depot, PState & password hashing (Buddy Hashers)
-│   ├── session-rama/         # Session lifecycle management & depot
-│   ├── revocation-rama/      # Token revocation depot & Bloom filter PState
-│   └── frontend/             # Fulcro client UI components & organization views
+├── components/                      # Polylith components
+│   ├── org-rama/                    # Rama OrgModule, depots, PStates, and Pathom 3 resolvers
+│   │                                # (Organizations, Org Units, Headcount Requisitions, Scoped Actors, RBAC)
+│   └── frontend/                    # Replicant UI pages, components, and Fulcro state graph
 │
 ├── bases/
-│   └── web/                  # Ring HTTP API, Reitit routes, Jetty 12 adapter, SSR bridge
+│   └── web/                         # Ring HTTP API, Reitit routes, Jetty 12 adapter, SSR bridge
+│       └── resources/config.edn     # System configuration (HTTP email presets, auth policies, ports)
 │
 ├── development/
-│   ├── resources/config.edn  # Dev Integrant configuration
-│   └── src/clojure/user.clj  # Dev REPL entry point
+│   └── src/clojure/user.clj         # REPL entry point, clj-reload, and interactive comment forms
 │
 └── projects/
-    └── auth-service/         # Production deployment uberjar configuration
+    └── auth-service/                # Production uberjar project packaging
 ```
+
+---
 
 ## Tech Stack
 
 | Layer | Technology |
 |---|---|
-| Language | Clojure 1.12 on JDK 21+ |
-| Architecture | Polylith Architecture |
-| Data Layer | Red Planet Labs Rama (Depots, PStates, Topologies) |
-| Resolvers & Graph | Pathom 3 (EQL Attribute Resolution) |
-| HTTP & Routing | Ring + Jetty 12 (Virtual Threads) + Reitit |
-| Authentication | Buddy (buddy-auth, buddy-sign, buddy-hashers) |
-| Schemas | Malli |
-| Frontend | ClojureScript + Fulcro 3 + Shadow-CLJS |
-| SSR Gateway | Node.js Express SSR proxy |
-| System Lifecycle | Integrant + integrant-repl |
-| Hot Reloading | clj-reload + Launchpad |
-## License
+| **Language** | Clojure 1.12 on JDK 21+ (Java Virtual Threads) |
+| **Architecture** | Polylith Modular Architecture |
+| **Data Layer** | Red Planet Labs Rama (Event Depots, Topologies, PStates) |
+| **API & Graph** | Pathom 3 (EQL Attribute Resolution) + Reitit + Ring |
+| **Frontend Rendering** | Replicant (Virtual DOM-free declarative DOM rendering) |
+| **State Management** | Fulcro 3 Normalized Graph State DB + Mutations |
+| **Email Engine** | MJML Responsive Templates + Pure HTTP Delivery (`hato` / `jsonista`) |
+| **Security & Auth** | Buddy (Auth, Sign, Hashers) + Rama Revocation Index |
+| **System Lifecycle** | Integrant + integrant-repl + clj-reload |
 
 MIT

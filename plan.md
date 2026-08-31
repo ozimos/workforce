@@ -1,337 +1,95 @@
-# best_auth — Clojure Authentication Template
+# workforce & best_auth — Architecture & Roadmap Plan
 
-## Overview
+## 1. Executive Summary & Core Stack
 
-A reusable authentication application template built with:
-- **Clojure** (JVM 21)
-- **Rama** (Red Planet Labs) — full data layer
-- **Polylith** — code organization
-- **Spring Security** — JWT validation, servlet filter chain
-- **Integrant** — lifecycle management (config-as-data)
-- **Ring + Jetty 12 + Reitit** — HTTP server with Java 21 virtual threads
-- **Malli** — data validation and route coercion
-- **Launchpad + integrant-repl** — REPL-first development workflow
+**workforce** is a high-performance, multi-tenant workforce and organization management system paired with the **omni-auth** security engine, built entirely on:
+- **Clojure 1.12** on **JDK 21+** (leveraging Java Virtual Threads / Project Loom).
+- **Red Planet Labs Rama** — primary data layer, event sourcing engine, stream topologies, and materialized partitioned PStates (replacing traditional RDBMS/SQL).
+- **Polylith Architecture** — clean component boundaries and testable Lego-brick interfaces.
+- **Buddy** (`buddy-auth`, `buddy-sign`, `buddy-hashers`) — JWT issuance, RS256 token verification, password hashing (Argon2 / BCrypt), and RBAC middleware.
+- **Replicant + Fulcro DB** — high-performance declarative UI rendering (zero React DOM overhead) backed by Fulcro normalized client graph state, denormalized EQL queries, and `defmutation`s.
+- **Pathom 3** — attribute resolution engine and EQL graph processing.
+- **Transactional Notification Engine** — MJML responsive templates with pure HTTP email delivery supporting presets (`:mailpit`, `:resend`, `:postmark`, `:sendgrid`).
+- **Integrant + clj-reload + Launchpad** — sub-second REPL feedback loop and port orchestration.
 
-## Authentication Strategy
+---
 
-Hybrid stateless JWT with Rama-backed revocation index:
-
-```
-Incoming Request
-    |
-    v
-1. Spring Security JWT Validation (in-memory, RSA public key)
-    |
-    v
-2. OAuth2TokenValidator checks Rama $$revoked-tokens PState by jti
-    |
-    +---[ revoked ]---> 401 Unauthorized
-    +---[ valid ]-----> 200 OK (pass to Ring handler)
-```
-
-Login issues a short-lived Access JWT (15 min) with a unique `jti` claim and a long-lived Refresh Token.
-Logout appends a revocation event to a Rama depot; the ETL topology writes the `jti` to the `$$revoked-tokens` PState.
-"Logout everywhere" revokes all active JTIs for a user via the `$$user-active-jtis` PState.
-
-Password encoding (BCrypt) lives in the `user` component — Spring Security's `DaoAuthenticationProvider` is not used; login is handled by a custom Ring handler that verifies credentials directly via `user/matches-password?`.
-
-## Architecture
+## 2. Completed Architecture & Milestones
 
 ```
-                     Integrant (config.edn)
-                     config-as-data, #ig/ref dependencies
-                     init = leaf-first, halt = reverse order
-                              |
-                              v
-  :rama/cluster --> :token/encoder ---+
-  :token/decoder -->                  +--> :security/app-context
-  :revocation/validator -------------+         |
-  :user/store  :session/store               v
-                                         FilterChainProxy
-                                              |
-                                              v
-                                        :adapter/jetty
-                                        (ring-jetty-adapter
-                                         + virtual threads
-                                         + DelegatingFilterProxy)
-                                              |
-                                              v
-                                        Ring Handler
-                                        (Reitit + Malli)
-                                              |
-                                              v
-                                        Component interfaces
-                                        (user, session, token, etc.)
-                                              |
-                                              v
-                                        Rama PStates/Depots
+                     ┌────────────────────────────────────────────────────────┐
+                     │                    Integrant System                    │
+                     │  (config.edn: HTTP presets, Rama cluster, Jetty, Auth) │
+                     └───────────────────────────┬────────────────────────────┘
+                                                 │
+                  ┌──────────────────────────────┴─────────────────────────────┐
+                  ▼                                                            ▼
+     ┌────────────────────────┐                                   ┌────────────────────────┐
+     │   omni-auth Security   │                                   │ workforce Org & Domain │
+     │  - User identity       │                                   │  - Multi-tenant Orgs   │
+     │  - Sessions & JTI      │                                   │  - Recursive Org Units │
+     │  - WebAuthn & MFA      │                                   │  - Headcount Requests  │
+     │  - OAuth2 & SAML       │                                   │  - Scoped Actors & RBAC│
+     │  - HTTP Notifications  │                                   │  - Approval Workflows  │
+     └────────────┬───────────┘                                   └────────────┬───────────┘
+                  │                                                            │
+                  └──────────────────────────────┬─────────────────────────────┘
+                                                 ▼
+                                ┌─────────────────────────────────┐
+                                │       Red Planet Labs Rama      │
+                                │   - Module Depots (Append-Only) │
+                                │   - Stream & Microbatch ETL     │
+                                │   - Materialized PState Views   │
+                                └─────────────────────────────────┘
 ```
 
-### Request Flow
+### Key Completed Modules:
+1. **Multi-Tenant Org & Hierarchy Topologies**: Recursive parent-child Org Units (Divisions, Departments, Teams) with instant tree lookups and aggregation stats (`$$unit-headcount-stats`).
+2. **Headcount Requisition Workflows**: Multi-step approvals with dynamic condition evaluation, audit timelines, and SLA tracking.
+3. **Pure Replicant UI Migration**: Zero React DOM runtime with Fulcro normalized client state, UI mutations, and real-time DOM reconciliation.
+4. **Transactional MJML Email System**: Responsive verification, password reset, and org invitation templates delivered over HTTP Send API with local Mailpit integration.
 
-1. Jetty (virtual threads) receives HTTP request
-2. `ServletContextHandler` routes to `DelegatingFilterProxy` → `FilterChainProxy`
-3. `BearerTokenAuthenticationFilter` validates JWT signature via `JwtDecoder`
-4. `OAuth2TokenValidator` checks Rama `$$revoked-tokens` PState by `jti`
-5. On success, `SecurityContextHolder` is populated
-6. Ring handler (Reitit route match) executes
-7. Handler calls component interfaces (user, session, token, etc.)
-8. Component interfaces query Rama PStates or append to depots
-9. JSON response returned
+## 3. Security & Token Architecture
 
-## Polylith Workspace Structure
+The security architecture utilizes **Buddy** (`buddy-auth`, `buddy-sign`, `buddy-hashers`) and Rama:
 
-Top namespace: `com.ozimos.workforce`
-Source paths: `src/clojure` (not `src`)
+1. **Password Hashing**: Argon2 / BCrypt via `com.ozimos.omni-auth.security.core`.
+2. **Stateless JWT + Revocation Check**:
+   - Access tokens (15m expiry) signed via RS256 with key ID.
+   - `wrap-authentication` middleware decodes JWT and verifies `jti` against Rama `$$revoked-tokens` PState.
+   - Tokens can be instantly revoked individually (`/api/auth/logout`) or across all devices (`/api/auth/logout-everywhere`).
+3. **MFA & WebAuthn / Passkeys**:
+   - TOTP with encrypted secrets.
+   - FIDO2 / Passkeys WebAuthn credentials via COSE public key verification.
+   - Single-use recovery backup codes.
 
-```
-best_auth/
-├── workspace.edn
-├── deps.edn                          # dev alias, :+default/:+rama profiles, :poly alias
-├── bb.edn                            # Launchpad babashka deps
-├── bin/launchpad                     # executable bb script
-├── build.clj                          # tools.build for uberjars
-│
-├── components/
-│   ├── schema/                        # Malli validation schemas
-│   │   ├── deps.edn                   # metosin/malli
-│   │   └── src/clojure/com/ozimos/auth/schema/
-│   │       ├── interface.clj          # email, username, password, role schemas
-│   │       └── interface/registration.clj  # register-request, login-request, etc.
-│   │
-│   ├── config/                        # Aero-based config loading
-│   │   ├── deps.edn                   # aero, integrant
-│   │   └── src/clojure/com/ozimos/auth/config/
-│   │       ├── interface.clj          # load-config
-│   │       └── core.clj               # Aero reader, #profile + #ig/ref resolution
-│   │
-│   ├── rama/                          # Rama cluster + AuthModule
-│   │   ├── deps.edn                   # com.rpl/rama, rama-helpers, integrant
-│   │   └── src/clojure/com/ozimos/auth/rama/
-│   │       ├── interface.clj          # pstate, depot, cluster-manager, module-name
-│   │       ├── module.clj             # defmodule AuthModule (depots, PStates, topologies)
-│   │       └── core.clj               # ig/init-key :rama/cluster (IPC/cluster)
-│   │
-│   ├── user/                          # Rama-backed user store (+ BCrypt password encoding)
-│   │   ├── deps.edn                   # integrant, spring-security-core (BCrypt)
-│   │   └── src/clojure/com/ozimos/auth/user/
-│   │       ├── interface.clj          # register!, find-by-username, find-by-id, verify!,
-│   │       │                           # change-password!, encode-password, matches-password?
-│   │       └── core.clj               # uses rama + schema interfaces; BCryptPasswordEncoder
-│   │
+## 4. REPL-First Development Workflow
 
-│   │
-│   ├── session/                       # Session management
-│   │   ├── deps.edn                   # integrant
-│   │   └── src/clojure/com/ozimos/auth/session/
-│   │       ├── interface.clj          # create!, verify, revoke!, revoke-all!, list-for-user
-│   │       └── core.clj               # uses rama interface
-│   │
-│   ├── revocation/                    # Token revocation check
-│   │   ├── deps.edn                   # spring-security-oauth2-jose, integrant
-│   │   └── src/clojure/com/ozimos/auth/revocation/
-│   │       ├── interface.clj          # is-revoked?, revoke!, revoke-all-for-user!, validator
-│   │       └── core.clj               # OAuth2TokenValidator<Jwt> backed by Rama PState or atom
-│   │
-│   ├── token/                         # JWT issuance + validation
-│   │   ├── deps.edn                   # spring-security-oauth2-jose, nimbus-jose-jwt, integrant
-│   │   └── src/clojure/com/ozimos/auth/token/
-│   │       ├── interface.clj          # issue-access-token, issue-refresh-token, decode, rsa-key
-│   │       └── core.clj               # NimbusJwtEncoder, NimbusJwtDecoder, RSAKey, ig/init-key
-│   │
-│   └── security/                      # Spring Security filter chain
-│       ├── deps.edn                   # spring-security-web/config/oauth2-*, spring-context, integrant
-│       └── src/
-│           ├── java/com/ozimos/auth/security/
-│           │   └── SecurityConfig.java    # @Configuration @EnableWebSecurity @Bean SecurityFilterChain
-│           └── clojure/com/ozimos/auth/security/
-│               ├── interface.clj      # filter-chain-proxy, application-context
-│               └── core.clj           # ig/init-key :security/app-context
-│
-├── bases/
-│   └── auth-api/                      # HTTP API entry point
-│       ├── deps.edn                   # ring-jetty-adapter, reitit-ring/malli, muuntaja, spring-web
-│       └── src/clojure/com/ozimos/auth/auth_api/
-│           ├── main.clj              # (:gen-class) -main → load config → ig/init
-│           ├── routes.clj            # reitit router with Malli coercion
-│           ├── handlers.clj          # Ring handlers calling component interfaces
-│           ├── middleware.clj         # wrap-authenticated (checks SecurityContext)
-│           └── system.clj            # ig/init-key :adapter/jetty (ring-jetty + configurator),
-│                                       # :handler/app, :handler/routes, config loading
-│       └── resources/
-│           └── config.edn             # Integrant config wiring (all components)
-│
-├── development/
-│   ├── resources/config.edn          # dev-specific overrides
-│   └── src/clojure/dev/
-│       └── user.clj                   # integrant-repl bridge (go/halt/reset)
-│
-└── projects/
-    └── auth-service/
-        └── deps.edn                   # production deployment (all components + auth-api base)
-```
+- **Launchpad (Babashka)**: Automatically provisions nREPL, manages dynamic ports, spawns Mailpit, and starts Shadow-CLJS & SSR server.
+- **integrant-repl + clj-reload**:
+  - `(user/go)` / `(user/start-and-seed!)` — mounts Rama topologies, loads seed data, starts Jetty on virtual threads.
+  - `(user/halt)` — gracefully tears down system.
+  - `(user/reset)` — hot-reloads modified namespaces in < 1s.
+  - `(user/test-all)` — runs all backend tests against running state (< 0.5s).
 
-## Component Dependency Graph
-
-```
-auth-api (base)
-  +-> schema.interface (route coercion + validation)
-  +-> user.interface (register, login, verify, encode-password, matches-password?)
-  +-> session.interface (session lifecycle)
-  +-> token.interface (issue/decode JWTs)
-  +-> revocation.interface (revoke tokens)
-  +-> security.interface (FilterChainProxy for Jetty)
-
-user --> rama.interface (PStates/depots)
-user --> schema.interface (validate inputs)
-user --> BCryptPasswordEncoder (inline, not a separate component)
-
-session --> rama.interface (PStates/depots)
-revocation --> rama.interface ($$revoked-tokens PState)
-token --> revocation.interface (OAuth2TokenValidator in decoder)
-security --> user.interface (UserDetailsService)
-security --> token.interface (JwtDecoder bean)
-```
-
-## Integrant Configuration
-
-`config.edn` (base resources) defines the system as data:
-
-```clojure
-{:rama/cluster          {:mode :ipc :tasks 4 :threads 2}
- :token/encoder         {:rsa-key-id "auth-template-key-1"}
- :token/decoder         {:rsa-key-id "auth-template-key-1"
-                         :revocation-validator #ig/ref :revocation/validator}
- :revocation/validator  {:rama #ig/ref :rama/cluster}
- :security/app-context  {:jwt-decoder #ig/ref :token/decoder
-                         :user-service #ig/ref :user/store}
- :user/store            {:rama #ig/ref :rama/cluster}
- :session/store         {:rama #ig/ref :rama/cluster}
- :adapter/jetty         {:port 8080 :host "0.0.0.0"
-                         :filter-chain-proxy #ig/ref :security/app-context
-                         :handler #ig/ref :handler/app}
- :handler/app           {:routes #ig/ref :handler/routes}
- :handler/routes        {:user-store #ig/ref :user/store
-                         :session-store #ig/ref :session/store
-                         :token-encoder #ig/ref :token/encoder
-                         :token-decoder #ig/ref :token/decoder
-                         :revocation-validator #ig/ref :revocation/validator}}
-```
-
-Init order (leaf-first): rama → revocation → token → user → session → security → handler → jetty
-Halt order (reverse): jetty → handler → security → session → user → token → revocation → rama
-
-## Rama AuthModule
-
-### Depots (event logs)
-| Depot | Partitioning | Purpose |
-|---|---|---|
-| `*registration-depot` | hash-by :username | Registration events |
-| `*verification-depot` | hash-by :user-id | Account verification events |
-| `*password-change-depot` | hash-by :user-id | Password change events |
-| `*session-depot` | hash-by :user-id | Session creation events |
-| `*session-end-depot` | hash-by :session-id | Session termination events |
-| `*revoke-all-depot` | hash-by :user-id | Batch revocation events |
-| `*revocation-depot` | hash-by :jti | Token revocation events |
-
-### PStates (materialized views)
-| PState | Schema | Purpose |
-|---|---|---|
-| `$$username->id` | `{String Long}` | Unique username → user-id index |
-| `$$email->id` | `{String Long}` | Unique email → user-id index |
-| `$$profiles` | `{Long {:username String :pwd-hash String :email String :verified Boolean :roles (set-schema String {:subindex? true})}}` | User profiles |
-| `$$sessions` | `{String {:user-id Long :jti String :expires-at Long}}` | Active sessions by session-id |
-| `$$user-sessions` | `{Long (set-schema String {:subindex? true})}` | User-id → set of session-ids |
-| `$$revoked-tokens` | `{String Long}` | jti → expiry timestamp |
-| `$$user-active-jtis` | `{Long (set-schema String {:subindex? true})}` | User-id → set of active JTIs |
-
-### ETL Topology (`auth` stream topology)
-Processes depot events to materialize PStates:
-- Registration → creates profile in `$$profiles`, unique indices in `$$username->id`/`$$email->id`
-- Verification → sets `:verified true` in `$$profiles`
-- Password change → updates `:pwd-hash` in `$$profiles`
-- Session start → creates entry in `$$sessions` + `$$user-sessions` + `$$user-active-jtis`
-- Session end → removes from `$$sessions`
-- Revoke all → removes all sessions for user, revokes all JTIs
-- Token revocation → adds jti to `$$revoked-tokens`
-
-## Spring Security Integration
-
-### Java SecurityConfig.java
-```java
-@Configuration
-@EnableWebSecurity
-public class SecurityConfig {
-    @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http,
-                                           JwtDecoder jwtDecoder,
-                                           UserDetailsService userDetailsService) throws Exception {
-        http
-            .csrf(csrf -> csrf.disable())
-            .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-            .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> jwt.decoder(jwtDecoder)))
-            .userDetailsService(userDetailsService)
-            .authorizeHttpRequests(authz -> authz
-                .requestMatchers("/api/auth/login", "/api/auth/register",
-                                 "/api/auth/verify", "/api/auth/forgot-password",
-                                 "/api/auth/refresh", "/api/auth/reset-password",
-                                 "/actuator/**").permitAll()
-                .anyRequest().authenticated());
-        return http.build();
-    }
-}
-```
-
-Note: `PasswordEncoder` is NOT a Spring bean. Password verification is handled by the custom login Ring handler via `user/matches-password?`. Spring Security only handles JWT validation + authorization.
-
-### Integrant ownership
-- Integrant constructs all Java objects (JwtDecoder, UserDetailsService) via `ig/init-key`
-- Integrant registers them as singletons in `AnnotationConfigApplicationContext`
-- Spring context refreshes, `SecurityConfig` auto-wires the beans, builds `SecurityFilterChain`
-- Integrant extracts `FilterChainProxy` (bean named `springSecurityFilterChain`)
-- `auth-api` base's `:adapter/jetty` init-key uses `ring-jetty-adapter`'s `:configurator` to inject `DelegatingFilterProxy` into the `ServletContextHandler`
-
-### Revocation via OAuth2TokenValidator
-Instead of a custom servlet filter, the revocation check is folded into `JwtDecoder`:
-- `revocation/core.clj` implements `OAuth2TokenValidator<Jwt>` via `reify`
-- The validator queries Rama `$$revoked-tokens` PState by `jti` (or an atom set in dev)
-- `NimbusJwtDecoder` uses `DelegatingOAuth2TokenValidator` (default timestamp/issuer validators + custom revocation validator)
-- Revocation check runs during JWT decoding — single-stage, no separate filter
-
-## REPL-First Development Workflow
-
-### Launchpad (outer layer)
-- Launches JVM with Java 21, starts nREPL, watches `deps.edn`/`.env` for changes
-- Hot-reloads classpath when dependencies change (no JVM restart needed)
-- Invoked via `bin/launchpad` (babashka script)
-
-### integrant-repl (inner layer)
-- `(go)` — Integrant `ig/init` the entire system: Rama IPC launches, Spring context builds, Jetty starts
-- `(halt)` — Integrant `ig/halt!` everything in reverse order
-- `(reset)` — `tools.namespace` reloads changed namespaces, Integrant halts/reinits affected keys
-- `(reset-all)` — Reload ALL namespaces + rebuild system
-
-### Hot-reload of SecurityFilterChain
-When you `(reset)` after changing security config:
-1. `tools.namespace` reloads changed Clojure namespaces
-2. Integrant halts `:security/app-context` (closes Spring context)
-3. Integrant reinits `:security/app-context` (rebuilds Spring context, new SecurityFilterChain)
-4. Integrant reinits `:adapter/jetty` (rebuilds Jetty configurator with new FilterChainProxy)
-5. Ring-Jetty adapter keeps the same port — no socket unbind
-
-## API Endpoints (Phase 1 scope)
+## 5. Core API & Graph Endpoints
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| POST | `/api/auth/register` | public | Register a new user |
-| POST | `/api/auth/login` | public | Login with username/password, returns access + refresh tokens |
-| POST | `/api/auth/refresh` | public | Refresh access token using refresh token |
-| POST | `/api/auth/logout` | authenticated | Revoke current session's JWT |
-| POST | `/api/auth/logout-everywhere` | authenticated | Revoke all sessions + tokens for user |
-| POST | `/api/auth/verify` | public | Verify account with token |
-| POST | `/api/auth/forgot-password` | public | Request password reset email (stubbed) |
+| POST | `/api/auth/register` | public | Register user & send verification email |
+| POST | `/api/auth/login` | public | Authenticate credentials & return JWT pair |
+| POST | `/api/auth/verify` | public | Verify account token |
+| POST | `/api/auth/forgot-password` | public | Request password reset email |
 | POST | `/api/auth/reset-password` | public | Reset password with token |
-| GET | `/actuator/health` | public | Health check |
+| POST | `/api/auth/refresh` | public | Issue new access token from refresh token |
+| POST | `/api/auth/logout` | authenticated | Revoke session & active JTI |
+| POST | `/api/auth/logout-everywhere` | authenticated | Revoke all active JTIs for user |
+| POST | `/api/mfa/setup` | authenticated | Generate TOTP secret & QR code |
+| POST | `/api/mfa/verify` | authenticated | Confirm and activate TOTP |
+| POST | `/api/webauthn/register/options` | authenticated | Get WebAuthn registration options |
+| POST | `/api/webauthn/register/verify` | authenticated | Register WebAuthn credential |
+| POST | `/api/v1/graphql` / `/api/eql` | mixed | Pathom 3 EQL attribute & mutation endpoint |
+| GET | `/api/health` | public | Health check endpoint |
 
 ## Profiles
 
@@ -823,3 +581,54 @@ For each PR / push to main:
 #### 14.3 Scheduled runs
 - Nightly full test run including uberjar build + smoke test
 - Weekly `deps.edn` dependency freshness report (via `antq` or similar)
+
+---
+
+## 3. Future Directions & Next Evolution
+
+### Phase 15: Workforce Employment, Compensation, Transfers & Terminations
+
+To support enterprise-grade headcount cost tracking, organizational changes, and historical auditing, the domain model will formalize the distinction between **Employee** (Worker Identity) and **Employment** (Temporal Position Assignment).
+
+```
+              1 : N
+  [Organization] ─────────► [OrgUnit (Dept/Team)]
+         │                          │
+         │ 1 : N                    │ 1 : N
+         ▼                          ▼
+    [Employee] ─── (1 : N) ───► [Employment] ◄─── (0..1 : 1) ─── [Headcount Requisition]
+  (Person / Worker)          (Assignment / Position)              (Approved Slot)
+```
+
+#### 15.1 Domain Model & Entities in Rama
+- **`Employee` (Identity Entity)**:
+  - Immutable worker identity in the org (`employee-id`, `user-id`, `name`, `personal-email`, `hire-date`, `status`: `:active`, `:on_leave`, `:terminated`).
+  - Materialized in `$$employees {Long {:employee-id ... :status ... :current-employment-id ...}}`.
+- **`Employment` (Assignment / Placement Entity)**:
+  - Temporal position record representing job title, level, department unit, compensation, and start/end dates.
+  - Fields: `employment-id`, `employee-id`, `org-id`, `unit-id`, `job-title`, `job-level`, `base-salary`, `bonus-target`, `currency`, `start-date`, `end-date`, `status` (`:active`, `:past`, `:scheduled`).
+  - Materialized in `$$employments` and indexed by history `$$employee->employment-history`.
+- **`HeadcountRequisition` (Budgeted Slot)**:
+  - Tracks planned/committed cost and approval workflows. Filled requisitions link to the resulting `Employment` assignment.
+
+#### 15.2 Event Depots & Stream Topologies
+- `*employee-hire-depot`: Creates new `Employee` and initial active `Employment`. Marks linked `HeadcountRequisition` as `:filled`.
+- `*employee-transfer-depot`: Handles lateral department transfers and promotions. Closes previous `Employment` (`end-date = effective-date`) and activates the new `Employment` in the target `OrgUnit`.
+- `*employment-comp-revision-depot`: Records compensation/raise adjustments with effective dates.
+- `*employee-terminate-depot`: Updates employee status to `:terminated`, ends active employment, updates unit headcount metrics, and triggers security token/session revocations via `omni-auth`.
+
+#### 15.3 Cost Aggregations & Rollups
+- **`$$unit-cost-stats`**: Pre-materialized financial and headcount metrics per Org Unit and recursively rolled up along the `$$org-hierarchy` tree:
+  ```clojure
+  {:total-base-payroll 1450000
+   :total-planned-payroll 1800000  ;; includes open approved requisitions
+   :active-headcount 8
+   :open-requisitions 2
+   :avg-tenure-months 18.4}
+  ```
+- **Realized vs. Planned Budget Variance**: Enables real-time variance analysis without heavy relational SQL `JOIN` operations.
+
+#### 15.4 Replicant UI Pages & EQL Resolvers
+- **Employee Directory & Profile Page**: Replicant-rendered profile displaying current position and historical career timeline (promotions, department moves, title changes).
+- **Internal Transfer & Reorganization Modal**: UI flow allowing managers and HR to initiate internal transfers, select target requisitions, and adjust compensation.
+- **Offboarding / Termination Flow**: Guided termination with severance/reason capture and automatic access de-provisioning.
