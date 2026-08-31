@@ -19,6 +19,12 @@
  {:rama #ig/ref :rama/cluster
   :interval-ms 300000}
 
+ :notification/service
+ {:provider #profile {:dev :smtp :test :mock :prod :smtp}
+  :smtp {:host #or [#env SMTP_HOST "localhost"]
+         :port #or [#long #env SMTP_PORT 1025]
+         :from #or [#env SMTP_FROM "auth@bestauth.local"]}}
+
  :auth/policy
  {:verification-mode #profile {:dev :soft :test :soft :prod :strict}
   :auto-verify-social true}
@@ -28,6 +34,7 @@
   :token-encoder #ig/ref :token/encoder
   :token-decoder #ig/ref :token/decoder
   :policy #ig/ref :auth/policy
+  :notification #ig/ref :notification/service
   :org-resolvers #ig/ref :workforce/org-resolvers}
 
  :adapter/jetty

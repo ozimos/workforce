@@ -1,6 +1,7 @@
 (ns com.ozimos.workforce.web.system
   (:require
    [com.ozimos.omni-auth.config.interface :as config]
+   [com.ozimos.omni-auth.notification.interface]
    [com.ozimos.omni-auth.rama.interface :as rama]
    [com.ozimos.omni-auth.token.interface]
    [com.ozimos.workforce.org.interface]

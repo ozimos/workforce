@@ -107,7 +107,13 @@
           (do (println "\n=== REPL not detected, falling back to standalone JVM test runner ===")
               (run-jvm-tests args))))))
 
-  lint         (shell {:continue true} "clj-kondo" "--lint" "bases" "components" "projects" "development/src/clojure" "../../omni-auth/main/components/security")
+  lint         (let [omni-root (if (.exists (java.io.File. "../../omni-auth/feat-email-verification"))
+                                 "../../omni-auth/feat-email-verification"
+                                 "../../omni-auth/main")]
+                 (shell {:continue true} "clj-kondo" "--lint" "bases" "components" "projects" "development/src/clojure"
+                        (str omni-root "/components/security")
+                        (str omni-root "/components/token")
+                        (str omni-root "/components/notification")))
   kondo-copy-configs (let [cp (str/trim (:out (p/shell {:out :string} "clojure" "-Spath" "-A:+default:dev")))]
                        (shell {:continue true} "clj-kondo" "--copy-configs" "--lint" cp "--skip-warnings"))
   fmt-check    (shell {:continue true} "standard-clj" "check" "bases" "components" "projects" "development/src/clojure")

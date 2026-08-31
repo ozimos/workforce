@@ -15,6 +15,7 @@
         com.ozimos.omni-auth/webauthn        {:local/root "../../../../omni-auth/main/components/webauthn"}
         com.ozimos.omni-auth/oauth           {:local/root "../../../../omni-auth/main/components/oauth"}
         com.ozimos.omni-auth/saml            {:local/root "../../../../omni-auth/main/components/saml"}
+        com.ozimos.omni-auth/notification    {:local/root "../../../../omni-auth/main/components/notification"}
 
         poly/org-rama        {:local/root "../../components/org-rama"}
         poly/web             {:local/root "../../bases/web"}

@@ -2,6 +2,7 @@
   (:require
    [clojure.edn :as edn]
    [com.ozimos.omni-auth.mfa.interface :as mfa]
+   [com.ozimos.omni-auth.notification.interface :as notification]
    [com.ozimos.omni-auth.oauth.interface :as oauth]
    [com.ozimos.omni-auth.pathom.interface :as pathom]
    [com.ozimos.omni-auth.revocation.interface :as revocation]
@@ -82,7 +83,23 @@
   (let [result (user/register! system body-params)
         mode (get-in system [:policy :verification-mode] :soft)]
     (if (first result)
-      (let [u (second result)]
+      (let [u (second result)
+            token-encoder (:token-encoder system)
+            encoder (when token-encoder (get-encoder token-encoder))
+            issuer "com.ozimos.workforce"
+            vtoken (when encoder (token/issue-verification-token encoder issuer (:id u)))
+            base-url (or (get-in system [:policy :app-url])
+                         (get-in system [:config :app-url])
+                         "http://localhost:8100")
+            verify-url (str base-url "/verify?token=" vtoken "&user-id=" (:id u))]
+        ;; Send verification email via notification service (mock, console, or SMTP)
+        (try
+          (notification/send-verification-email!
+           system
+           {:to (:email u)
+            :user-name (:username u)
+            :verify-url verify-url})
+          (catch Exception _ nil))
         (if (= mode :soft)
           {:status 201
            :body (issue-user-session-tokens system u)}
@@ -173,19 +190,51 @@
 
 (defn verify
   [{:keys [body-params system]}]
-  (let [{:keys [user-id]} body-params]
-    (if-let [parsed-id (parse-user-id user-id)]
-      (if (user/verify! system parsed-id)
-        {:status 200 :body {:message "Account verified"}}
+  (let [{:keys [token-decoder]} system
+        token (:token body-params)
+        user-id-param (or (:user-id body-params) (:user_id body-params))]
+    (cond
+      user-id-param
+      (if-let [uid (parse-user-id (str user-id-param))]
+        (do
+          (user/verify! system uid)
+          {:status 200 :body {:message "Account verified"}})
         {:status 400 :body {:errors {:user-id ["Invalid user-id"]}}})
-      {:status 400 :body {:errors {:user-id ["Invalid user-id"]}}})))
+
+      token
+      (try
+        (let [jwt (token/decode token-decoder token)
+              token-type (or (:type jwt) (.getClaim jwt "type"))
+              sub (or (:sub jwt) (.getSubject jwt))
+              user-id (parse-user-id (str sub))]
+          (if (and (= token-type "verification") user-id)
+            (do
+              (user/verify! system user-id)
+              {:status 200 :body {:message "Account verified"}})
+            {:status 400 :body {:errors {:token ["Invalid verification token"]}}}))
+        (catch Exception _
+          {:status 400 :body {:errors {:token ["Invalid verification token"]}}}))
+
+      :else
+      {:status 400 :body {:errors {:auth ["user-id or verification token required"]}}})))
 
 (defn forgot-password
   [{:keys [body-params system]}]
   (let [{:keys [email]} body-params
         user-record (user/find-by-email system email)]
     (when user-record
-      (user/create-reset-token! system (:id user-record)))
+      (let [token (user/create-reset-token! system (:id user-record))
+            base-url (or (get-in system [:policy :app-url])
+                         (get-in system [:config :app-url])
+                         "http://localhost:8100")
+            reset-url (str base-url "/reset-password?token=" token)]
+        (try
+          (notification/send-password-reset-email!
+           system
+           {:to (:email user-record)
+            :user-name (:username user-record)
+            :reset-url reset-url})
+          (catch Exception _ nil))))
     {:status 200 :body {:message "If an account exists with this email, password reset instructions have been sent."}}))
 
 (defn reset-password

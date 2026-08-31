@@ -4,6 +4,7 @@
    [clojure.string :as string]
    [clojure.test :refer [deftest is testing use-fixtures]]
    [com.ozimos.omni-auth.mfa.interface :as mfa]
+   [com.ozimos.omni-auth.notification.interface :as notification]
    [com.ozimos.omni-auth.user.interface :as user]
    [com.ozimos.workforce.web.test-system :as ts]
    [com.rpl.rama.ops :as ops]
@@ -258,13 +259,28 @@
 
 (deftest ^:integration password-reset-test
   (let [user (random-user)
-        _ (post-edn "/api/auth/register" user)]
+        _ (notification/clear-sent-messages! nil)
+        reg-resp (post-edn "/api/auth/register" user)]
+    (is (= 201 (:status reg-resp)))
 
-    (testing "POST /api/auth/forgot-password with valid email returns 200"
+    (testing "Registration sends verification email"
+      (let [messages (notification/get-sent-messages nil)
+            verify-msg (first (filter #(= "Verify your email address" (:subject %)) messages))]
+        (is (some? verify-msg) "verification email should be sent")
+        (is (= (:email user) (:to verify-msg)))
+        (is (string/includes? (:html verify-msg) "Verify Account"))))
+
+    (testing "POST /api/auth/forgot-password with valid email returns 200 and sends reset email"
+      (notification/clear-sent-messages! nil)
       (let [resp (post-edn "/api/auth/forgot-password"
                            {:email (:email user)})]
         (is (= 200 (:status resp)))
-        (is (string? (get-in resp [:body :message])))))
+        (is (string? (get-in resp [:body :message])))
+        (let [messages (notification/get-sent-messages nil)
+              reset-msg (first (filter #(= "Reset your password" (:subject %)) messages))]
+          (is (some? reset-msg) "password reset email should be sent")
+          (is (= (:email user) (:to reset-msg)))
+          (is (string/includes? (:html reset-msg) "Reset Password")))))
 
     (testing "POST /api/auth/forgot-password with unknown email returns 200 (no enumeration)"
       (let [resp (post-edn "/api/auth/forgot-password"
