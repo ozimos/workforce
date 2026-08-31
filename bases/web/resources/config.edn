@@ -20,10 +20,11 @@
   :interval-ms 300000}
 
  :notification/service
- {:provider #profile {:dev :smtp :test :mock :prod :smtp}
-  :smtp {:host #or [#env SMTP_HOST "localhost"]
-         :port #or [#long #env SMTP_PORT 1025]
-         :from #or [#env SMTP_FROM "auth@bestauth.local"]}}
+ {:provider #profile {:dev :http :test :mock :prod :http}
+  :http {:preset #profile {:dev :mailpit :prod #or [#keyword #env EMAIL_PRESET :resend]}
+         :from   #or [#env EMAIL_FROM "auth@bestauth.local"]
+         :url    #env EMAIL_API_URL
+         :api-key #env EMAIL_API_KEY}}
 
  :auth/policy
  {:verification-mode #profile {:dev :soft :test :soft :prod :strict}

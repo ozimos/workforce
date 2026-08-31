@@ -278,23 +278,23 @@
   ;; ===========================================================================
   (require '[com.ozimos.omni-auth.notification.interface :as notify])
 
-  ;; 1. Send Account Verification Email to Mailpit
+  ;; 1. Send Account Verification Email to Mailpit (HTTP Send API)
   (notify/send-verification-email!
-   {:notification/service {:provider :smtp :smtp {:host "localhost" :port 1025}}}
+   {:notification/service {:provider :http :http {:preset :mailpit :from "auth@bestauth.local"}}}
    {:to "alice@acme.com"
     :user-name "Alice Smith"
     :verify-url "http://localhost:8100/verify?token=sample-verification-jwt-token"})
 
-  ;; 2. Send Password Reset Email to Mailpit
+  ;; 2. Send Password Reset Email to Mailpit (HTTP Send API)
   (notify/send-password-reset-email!
-   {:notification/service {:provider :smtp :smtp {:host "localhost" :port 1025}}}
+   {:notification/service {:provider :http :http {:preset :mailpit :from "auth@bestauth.local"}}}
    {:to "bob@acme.com"
     :user-name "Bob Jones"
     :reset-url "http://localhost:8100/reset-password?token=sample-password-reset-jwt-token"})
 
-  ;; 3. Send Organization Invitation Email to Mailpit
+  ;; 3. Send Organization Invitation Email to Mailpit (HTTP Send API)
   (notify/send-org-invitation-email!
-   {:notification/service {:provider :smtp :smtp {:host "localhost" :port 1025}}}
+   {:notification/service {:provider :http :http {:preset :mailpit :from "auth@bestauth.local"}}}
    {:to "carol@acme.com"
     :inviter-name "Alice Smith"
     :org-name "Acme Engineering"

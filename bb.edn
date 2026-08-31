@@ -115,8 +115,12 @@
           (do (println "\n=== REPL not detected, falling back to standalone JVM test runner ===")
               (run-jvm-tests args))))))
 
-  lint         (let [omni-root (if (.exists (java.io.File. "../../omni-auth/feat-email-verification"))
+  lint         (let [omni-root (cond
+                                 (.exists (java.io.File. "../../omni-auth/feat-http-email"))
+                                 "../../omni-auth/feat-http-email"
+                                 (.exists (java.io.File. "../../omni-auth/feat-email-verification"))
                                  "../../omni-auth/feat-email-verification"
+                                 :else
                                  "../../omni-auth/main")]
                  (shell {:continue true} "clj-kondo" "--lint" "bases" "components" "projects" "development/src/clojure"
                         (str omni-root "/components/security")
