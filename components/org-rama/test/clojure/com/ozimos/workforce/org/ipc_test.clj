@@ -360,3 +360,199 @@
       ;; Stats show only 1 pending
       (let [stats (org/get-unit-headcount-stats deps unit-id)]
         (is (= 1 (:pending stats)))))))
+
+(deftest employee-lifecycle-and-financial-rollups-ipc-test
+  (testing "Phase 15: Employee Hire, Multi-Currency, Load Factors, Custom Attributes, Transfers & Terminations"
+    (let [deps *deps*
+          suffix (short-id)
+          [_ owner] (user/register! deps {:email (str "owner-emp-" suffix "@example.com")
+                                          :password "P@ssword123!"
+                                          :username (str "owner_emp_" suffix)})
+          owner-id (:id owner)
+          [_ org-data] (org/create-org! deps {:name (str "GlobalCorp-" suffix) :owner-user-id owner-id})
+          org-id (:id org-data)
+
+          ;; 1. Configure Multi-Currency: Base = USD, GBP -> USD = 1.25, EUR -> USD = 1.10
+          _ (org/set-org-currency! deps org-id "USD")
+          _ (org/set-fx-rate! deps org-id "GBP" "USD" 1.25)
+          _ (org/set-fx-rate! deps org-id "EUR" "USD" 1.10)
+
+          curr-settings (org/get-org-currency-settings deps org-id)
+          fx-rates (org/get-fx-rates deps org-id)
+          _ (is (= "USD" (:base-currency curr-settings)))
+          _ (is (= 1.25 (get fx-rates ["GBP" "USD"])))
+
+          ;; 2. Configure Employee Types
+          _ (org/define-employee-type! deps {:org-id org-id
+                                             :type-id :part-time
+                                             :label "Part Time (24h)"
+                                             :annual-multiplier 0.6
+                                             :hours-per-week 24})
+          _ (org/define-employee-type! deps {:org-id org-id
+                                             :type-id :intern
+                                             :label "Summer Intern"
+                                             :annual-multiplier 0.25
+                                             :hours-per-week 40})
+          emp-types (org/get-employee-types deps org-id)
+          _ (is (= 0.6 (:annual-multiplier (:part-time emp-types))))
+
+          ;; 3. Configure Load Factors (Taxes, Healthcare, Pension burden)
+          ;; UK Engineering L5 -> 1.20 (20% burden)
+          _ (org/set-load-factor! deps {:org-id org-id :location-code "GB" :job-category :engineering :job-level "L5" :multiplier 1.20})
+          ;; US CA L6 -> 1.15
+          _ (org/set-load-factor! deps {:org-id org-id :location-code "US-CA" :job-category :engineering :job-level "L6" :multiplier 1.15})
+          load-factors (org/get-load-factors deps org-id)
+          _ (is (= 1.20 (get load-factors ["GB" "engineering" "L5"])))
+
+          ;; 4. Define Custom Attributes (Display vs Cost Modifiers)
+          ;; Cost Modifier: Health Benefit (£5,000 / yr)
+          _ (org/define-tenant-attribute! deps {:org-id org-id
+                                                :attribute-id :health-benefit
+                                                :target-entity :employment
+                                                :label "Health Benefit Tier"
+                                                :data-type :currency
+                                                :cost-modifier? true
+                                                :cost-cadence :annual})
+          ;; Cost Modifier: Signing Bonus (£10,000 one-off)
+          _ (org/define-tenant-attribute! deps {:org-id org-id
+                                                :attribute-id :signing-bonus
+                                                :target-entity :employment
+                                                :label "Signing Bonus"
+                                                :data-type :currency
+                                                :cost-modifier? true
+                                                :cost-cadence :one-off})
+          ;; Display Only: Reference Previous Pay (display only, cost-modifier? false)
+          _ (org/define-tenant-attribute! deps {:org-id org-id
+                                                :attribute-id :previous-salary
+                                                :target-entity :employment
+                                                :label "Previous Stated Salary"
+                                                :data-type :currency
+                                                :cost-modifier? false})
+          attr-defs (org/get-tenant-attributes deps org-id :employment)
+          _ (is (true? (:cost-modifier? (:health-benefit attr-defs))))
+          _ (is (false? (:cost-modifier? (:previous-salary attr-defs))))
+
+          ;; 5. Create Org Units: London Dept (eng-lon) and SF Dept (eng-sf)
+          unit-lon (str "dept-lon-" suffix)
+          unit-sf (str "dept-sf-" suffix)
+          _ (org/create-org-unit! deps {:unit-id unit-lon :org-id org-id :name "London Engineering" :parent-id nil :budget 5})
+          _ (org/create-org-unit! deps {:unit-id unit-sf :org-id org-id :name "SF Platform" :parent-id nil :budget 5})
+
+          ;; 6. Hire Employee 1 into London Dept:
+          ;; Base: £60,000 GBP, Part-Time (0.6 -> £36,000), UK L5 Load Factor (1.20 -> £43,200),
+          ;; Bonus (10% -> £3,600), Custom Health (£5,000), Custom Signing (£10,000)
+          ;; Display Only Previous Pay: £50,000 (ignored in cost)
+          ;; Local Total = 43,200 + 3,600 + 5,000 + 10,000 = £61,800 GBP
+          ;; Converted Base Currency Total (USD) = £61,800 * 1.25 FX = $77,250.00 USD
+          emp1-id (str "emp1-" suffix)
+          empid1 (str "empid1-" suffix)
+          [hire-ok? _] (org/hire-employee! deps
+                         {:employee-id emp1-id
+                          :org-id org-id
+                          :user-id owner-id
+                          :first-name "Alice"
+                          :last-name "Smith"
+                          :personal-email (str "alice-" suffix "@example.com")
+                          :hire-date "2026-09-01"
+                          :status :active
+                          :employment-id empid1
+                          :unit-id unit-lon
+                          :job-title "Senior Software Engineer"
+                          :job-category :engineering
+                          :job-level "L5"
+                          :employee-type :part-time
+                          :location "GB"
+                          :base-salary 60000.0
+                          :currency "GBP"
+                          :bonus-target 0.10
+                          :custom-attributes {:health-benefit 5000.0
+                                              :signing-bonus 10000.0
+                                              :previous-salary 50000.0}})
+          _ (is (true? hire-ok?))
+
+          ;; Verify Employee record and current employment
+          emp-record (org/get-employee deps emp1-id)
+          _ (is (= "Alice" (:first-name emp-record)))
+          _ (is (= empid1 (:current-employment-id emp-record)))
+          _ (is (= [empid1] (org/get-employee-employment-history deps emp1-id)))
+
+          employment1 (org/get-employment deps empid1)
+          _ (is (= 60000.0 (:base-salary employment1)))
+          _ (is (= "GBP" (:currency employment1)))
+          _ (is (= :part-time (:employee-type employment1)))
+
+          ;; Verify London Unit Cost stats (materialized in USD)
+          lon-stats (org/get-unit-cost-stats deps unit-lon)
+          _ (is (= 1 (:headcount lon-stats)))
+          _ (is (= 36000.0 (:total-raw-base-payroll lon-stats)))
+          _ (is (= 43200.0 (:total-loaded-payroll lon-stats)))
+          _ (is (= 15000.0 (:total-custom-modifiers-cost lon-stats)))
+          _ (is (= 77250.0 (:total-cost-base-currency lon-stats)))
+
+          ;; 7. Internal Transfer: Alice transfers from London Dept to SF Platform
+          empid2 (str "empid2-" suffix)
+          [xfer-ok? _] (org/transfer-employment! deps
+                         {:employment-id empid2
+                          :employee-id emp1-id
+                          :org-id org-id
+                          :unit-id unit-sf
+                          :job-title "Staff Platform Engineer"
+                          :job-category :engineering
+                          :job-level "L6"
+                          :employee-type :full-time
+                          :location "US-CA"
+                          :base-salary 180000.0
+                          :currency "USD"
+                          :bonus-target 0.15
+                          :custom-attributes {:health-benefit 12000.0}
+                          :effective-date "2027-01-01"
+                          :previous-employment-id empid1})
+          _ (is (true? xfer-ok?))
+
+          ;; Check Employee updated pointer and history
+          emp-after-xfer (org/get-employee deps emp1-id)
+          _ (is (= empid2 (:current-employment-id emp-after-xfer)))
+          _ (is (= [empid1 empid2] (org/get-employee-employment-history deps emp1-id)))
+
+          ;; London Unit headcount should be 0
+          lon-stats-after (org/get-unit-cost-stats deps unit-lon)
+          _ (is (= 0 (:headcount lon-stats-after)))
+
+          ;; SF Unit should have 1 headcount and updated loaded cost in USD
+          ;; Base: 180k, FT (1.0), US-CA L6 Load factor (1.15 -> 207k), Bonus (15% -> 27k), Health (12k)
+          ;; Total SF = 207k + 27k + 12k = 246,000 USD (FX = 1.0)
+          sf-stats (org/get-unit-cost-stats deps unit-sf)
+          _ (is (= 1 (:headcount sf-stats)))
+          _ (is (< (Math/abs (- 207000.0 (double (:total-loaded-payroll sf-stats)))) 0.01))
+          _ (is (< (Math/abs (- 246000.0 (double (:total-cost-base-currency sf-stats)))) 0.01))
+
+          ;; 8. Compensation Revision: Give Alice a raise in SF Platform
+          [rev-ok? _] (org/revise-employment-comp! deps
+                        {:employment-id empid2
+                         :employee-id emp1-id
+                         :org-id org-id
+                         :base-salary 200000.0
+                         :currency "USD"
+                         :bonus-target 0.20
+                         :custom-attributes {:health-benefit 15000.0}})
+          _ (is (true? rev-ok?))
+          rev-emp (org/get-employment deps empid2)
+          _ (is (= 200000.0 (:base-salary rev-emp)))
+          _ (is (= 0.20 (:bonus-target rev-emp)))
+
+          ;; 9. Termination: Alice leaves company
+          [term-ok? _] (org/terminate-employee! deps
+                         {:employee-id emp1-id
+                          :org-id org-id
+                          :end-date "2027-12-31"
+                          :termination-reason "Relocated"})
+          _ (is (true? term-ok?))
+          term-emp (org/get-employee deps emp1-id)
+          _ (is (= :terminated (:status term-emp)))
+          _ (is (= "Relocated" (:termination-reason term-emp)))
+          _ (is (= "2027-12-31" (:end-date term-emp)))
+
+          ;; SF Unit headcount should decrement to 0
+          sf-stats-final (org/get-unit-cost-stats deps unit-sf)]
+      (is (= 0 (:headcount sf-stats-final))))))
+

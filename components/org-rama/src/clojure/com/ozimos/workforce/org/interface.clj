@@ -200,3 +200,69 @@
 (defn ensure-seeded!
   ([deps] (seed/ensure-seeded! deps))
   ([deps path] (seed/ensure-seeded! deps path)))
+
+;; =============================================================================
+;; Phase 15: Global Currency, Load Factors, Custom Attributes & Employees
+;; =============================================================================
+
+(defn set-org-currency!
+  ([deps input] (core/set-org-currency! deps input))
+  ([deps org-id base-currency] (core/set-org-currency! deps {:org-id org-id :base-currency base-currency})))
+
+(defn get-org-currency-settings [deps org-id]
+  (core/get-org-currency-settings deps org-id))
+
+(defn set-fx-rate!
+  ([deps input] (core/set-fx-rate! deps input))
+  ([deps org-id from-currency to-currency rate] (core/set-fx-rate! deps {:org-id org-id :from-currency from-currency :to-currency to-currency :rate rate})))
+
+(defn get-fx-rates [deps org-id]
+  (core/get-fx-rates deps org-id))
+
+(defn define-employee-type! [deps input]
+  (core/define-employee-type! deps input))
+
+(defn get-employee-types [deps org-id]
+  (core/get-employee-types deps org-id))
+
+(defn set-load-factor! [deps input]
+  (core/set-load-factor! deps input))
+
+(defn get-load-factors [deps org-id]
+  (core/get-load-factors deps org-id))
+
+(defn define-tenant-attribute! [deps input]
+  (core/define-tenant-attribute! deps input))
+
+(defn get-tenant-attributes
+  ([deps org-id]
+   (core/get-tenant-attributes deps org-id nil))
+  ([deps org-id target-entity]
+   (core/get-tenant-attributes deps org-id target-entity)))
+
+(defn hire-employee! [deps input]
+  (core/hire-employee! deps input))
+
+(defn transfer-employment! [deps input]
+  (core/transfer-employment! deps input))
+
+(defn revise-employment-comp! [deps input]
+  (core/revise-employment-comp! deps input))
+
+(defn terminate-employee! [deps input]
+  (core/terminate-employee! deps input))
+
+(defn get-employee [deps employee-id]
+  (core/get-employee deps employee-id))
+
+(defn get-employment [deps employment-id]
+  (core/get-employment deps employment-id))
+
+(defn get-employee-employment-history [deps employee-id]
+  (core/get-employee-employment-history deps employee-id))
+
+(defn list-unit-employments [deps unit-id]
+  (core/list-unit-employments deps unit-id))
+
+(defn get-unit-cost-stats [deps unit-id]
+  (core/get-unit-cost-stats deps unit-id))

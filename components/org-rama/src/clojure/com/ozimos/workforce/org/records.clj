@@ -28,3 +28,44 @@
 ;; Approval Rules & Role Permissions
 (defrecord ApprovalRuleSet [org-id rules updated-at])
 (defrecord RolePermissionSet [org-id role permissions updated-at])
+
+;; =============================================================================
+;; Phase 15: Currency Settings & Exchange Rates
+;; =============================================================================
+(defrecord OrgCurrencySet
+  [org-id base-currency updated-at])
+
+(defrecord OrgFxRateSet
+  [org-id from-currency to-currency rate updated-at])
+
+;; Employee Types & Load Factors (Taxes, Burden, Multipliers)
+(defrecord EmployeeTypeDefine
+  [org-id type-id label annual-multiplier hours-per-week default-benefits? updated-at])
+
+(defrecord LoadFactorRuleSet
+  [org-id location-code job-category job-level multiplier effective-date])
+
+;; Tenant-Defined Custom Attribute Definitions
+(defrecord TenantAttributeDefine
+  [org-id attribute-id target-entity label data-type cost-modifier? cost-cadence currency options required? default-value updated-at])
+
+;; Employee (Identity Entity) Commands
+(defrecord EmployeeHire
+  [employee-id org-id user-id first-name last-name personal-email hire-date status
+   employment-id unit-id job-title job-category job-level employee-type location
+   base-salary currency bonus-target custom-attributes start-date created-at idempotency-key])
+
+(defrecord EmployeeStatusUpdate
+  [employee-id org-id status updated-at idempotency-key])
+
+(defrecord EmployeeTerminate
+  [employee-id org-id end-date termination-reason updated-at idempotency-key])
+
+;; Employment (Temporal Placement / Position Entity) Commands
+(defrecord EmploymentTransfer
+  [employment-id employee-id org-id unit-id job-title job-category job-level employee-type location
+   base-salary currency bonus-target custom-attributes effective-date previous-employment-id idempotency-key])
+
+(defrecord EmploymentCompRevision
+  [employment-id employee-id org-id base-salary currency bonus-target custom-attributes effective-date idempotency-key])
+

@@ -1,276 +1,279 @@
 (ns com.ozimos.workforce.org.seed
+  "Seed data generator and binary Nippy archive manager.
+   Supports generating full 10,000-person enterprise organizations with
+   tree hierarchies, 80/20 employee vs headcount split, multi-currency,
+   and batch depot ingestion."
   (:require
    [clojure.java.io :as io]
    [com.ozimos.omni-auth.user.interface :as user]
    [com.ozimos.workforce.org.core :as core]
+   [com.ozimos.workforce.org.generator :as gen]
+   [com.ozimos.workforce.org.records :as rec]
+   [com.rpl.rama :as ramaapi]
+   [com.ozimos.omni-auth.rama.interface :as rama]
    [taoensso.nippy :as nippy]))
 
 (def default-seed-path ".seed/workforce-seed-data.nippy")
 
+(defn generate-enterprise-org-dataset
+  "Constructs a 10,000-person dataset for a given organization."
+  [{:keys [org-id org-name owner-user-id seed total-nodes]
+    :or {org-id "org-acme" org-name "Acme Corp" owner-user-id "u-alice" seed 42 total-nodes 10000}}]
+  (let [generated (gen/generate-10k-workforce-nodes {:org-id org-id :total-nodes total-nodes :seed seed})]
+    {:org-id org-id
+     :name org-name
+     :owner-user-id owner-user-id
+     :units (:org-units generated)
+     :tree (:tree generated)
+     :employees (:employees generated)
+     :employments (:employments generated)
+     :headcounts (:headcounts generated)
+     :load-factor-rules
+     [{:rule-id (str org-id "-uk-eng")
+       :priority 100
+       :name "UK Engineering Burden"
+       :conditions {:location ["GB"] :job-category [:engineering]}
+       :multiplier 1.20}
+      {:rule-id (str org-id "-us-ca-platform")
+       :priority 90
+       :name "US-CA Platform Burden"
+       :conditions {:location ["US-CA"]}
+       :multiplier 1.15}
+      {:rule-id (str org-id "-apac-sales")
+       :priority 80
+       :name "APAC Sales Multiplier"
+       :conditions {:location ["SG"] :division ["div-sales"]}
+       :multiplier 1.10}]
+     :custom-attributes
+     [{:attribute-id :health-benefit :label "Health Benefit" :data-type :currency :cost-modifier? true :cost-cadence :annual :default-value 5000.0}
+      {:attribute-id :signing-bonus :label "Signing Bonus" :data-type :currency :cost-modifier? true :cost-cadence :one-time :default-value 0.0}
+      {:attribute-id :performance-rating :label "Performance Rating" :data-type :string :cost-modifier? false :default-value "Meets Expectations"}]}))
+
 (defn generate-seed-data
-  "Constructs a rich, deterministic seed dataset covering:
-   - 2 Organizations (Acme Corp & Globex Innovations)
-   - 13 User Personas (Admins, Managers, VPs, Recruiters, and Cross-Org shared user Carol)
-   - Full Unit Hierarchies (Divisions, Departments with Budgets)
-   - Scoped Actor Role Assignments
-   - Custom Approval Routing Rules & Role Permission Matrices
-   - Headcount Requisitions across all lifecycle states (:draft, :in-approval, :approved, :filled, :rejected)"
-  []
-  {:version 1
-   :generated-at (System/currentTimeMillis)
-   :users
-   [{:user-id "u-alice" :email "alice@acme.com" :username "alice" :password "P@ssword123" :roles ["ADMIN"]}
-    {:user-id "u-bob" :email "bob@globex.com" :username "bob" :password "P@ssword123" :roles ["ADMIN"]}
-    {:user-id "u-carol" :email "carol@crossorg.com" :username "carol" :password "P@ssword123" :roles ["MEMBER"]}
-    {:user-id "u-dan-mgr" :email "dan.mgr@acme.com" :username "dan_mgr" :password "P@ssword123" :roles ["MEMBER"]}
-    {:user-id "u-eva-lead" :email "eva.lead@acme.com" :username "eva_lead" :password "P@ssword123" :roles ["MEMBER"]}
-    {:user-id "u-frank-vp" :email "frank.vp@acme.com" :username "frank_vp" :password "P@ssword123" :roles ["MEMBER"]}
-    {:user-id "u-grace-hr" :email "grace.hr@acme.com" :username "grace_hr" :password "P@ssword123" :roles ["MEMBER"]}
-    {:user-id "u-ian-eng" :email "ian.eng@acme.com" :username "ian_eng" :password "P@ssword123" :roles ["MEMBER"]}
-    {:user-id "u-jane-eng" :email "jane.eng@acme.com" :username "jane_eng" :password "P@ssword123" :roles ["MEMBER"]}
-    {:user-id "u-karen-vp" :email "karen.vp@globex.com" :username "karen_vp" :password "P@ssword123" :roles ["MEMBER"]}
-    {:user-id "u-leo-mgr" :email "leo.mgr@globex.com" :username "leo_mgr" :password "P@ssword123" :roles ["MEMBER"]}
-    {:user-id "u-mia-recruiter" :email "mia.recruiter@globex.com" :username "mia_recruiter" :password "P@ssword123" :roles ["MEMBER"]}
-    {:user-id "u-noah-eng" :email "noah.eng@globex.com" :username "noah_eng" :password "P@ssword123" :roles ["MEMBER"]}]
+  "Constructs complete multi-org seed dataset with standard personas + optional 10k enterprise hierarchies."
+  ([] (generate-seed-data {:generate-10k? false}))
+  ([{:keys [generate-10k?] :or {generate-10k? false}}]
+   (let [base-users
+         [{:user-id "u-alice" :email "alice@acme.com" :username "alice" :password "P@ssword123" :roles ["ADMIN"]}
+          {:user-id "u-bob" :email "bob@globex.com" :username "bob" :password "P@ssword123" :roles ["ADMIN"]}
+          {:user-id "u-carol" :email "carol@crossorg.com" :username "carol" :password "P@ssword123" :roles ["MEMBER"]}
+          {:user-id "u-dan-mgr" :email "dan.mgr@acme.com" :username "dan_mgr" :password "P@ssword123" :roles ["MEMBER"]}
+          {:user-id "u-eva-lead" :email "eva.lead@acme.com" :username "eva_lead" :password "P@ssword123" :roles ["MEMBER"]}
+          {:user-id "u-frank-vp" :email "frank.vp@acme.com" :username "frank_vp" :password "P@ssword123" :roles ["MEMBER"]}
+          {:user-id "u-grace-hr" :email "grace.hr@acme.com" :username "grace_hr" :password "P@ssword123" :roles ["MEMBER"]}
+          {:user-id "u-ian-eng" :email "ian.eng@acme.com" :username "ian_eng" :password "P@ssword123" :roles ["MEMBER"]}
+          {:user-id "u-jane-eng" :email "jane.eng@acme.com" :username "jane_eng" :password "P@ssword123" :roles ["MEMBER"]}
+          {:user-id "u-karen-vp" :email "karen.vp@globex.com" :username "karen_vp" :password "P@ssword123" :roles ["MEMBER"]}
+          {:user-id "u-leo-mgr" :email "leo.mgr@globex.com" :username "leo_mgr" :password "P@ssword123" :roles ["MEMBER"]}
+          {:user-id "u-mia-recruiter" :email "mia.recruiter@globex.com" :username "mia_recruiter" :password "P@ssword123" :roles ["MEMBER"]}
+          {:user-id "u-noah-eng" :email "noah.eng@globex.com" :username "noah_eng" :password "P@ssword123" :roles ["MEMBER"]}]
 
-   :organizations
-   [{:org-id "org-acme"
-     :name "Acme Corp"
-     :owner-user-id "u-alice"
-     :members
-     [{:email "carol@crossorg.com" :user-id "u-carol" :role "MEMBER"}
-      {:email "dan.mgr@acme.com" :user-id "u-dan-mgr" :role "MEMBER"}
-      {:email "eva.lead@acme.com" :user-id "u-eva-lead" :role "MEMBER"}
-      {:email "frank.vp@acme.com" :user-id "u-frank-vp" :role "MEMBER"}
-      {:email "grace.hr@acme.com" :user-id "u-grace-hr" :role "MEMBER"}
-      {:email "ian.eng@acme.com" :user-id "u-ian-eng" :role "MEMBER"}
-      {:email "jane.eng@acme.com" :user-id "u-jane-eng" :role "MEMBER"}]
+         canonical-units-acme
+         [{:unit-id "div-acme-eng" :name "Engineering Division" :budget 35 :parent-id nil}
+          {:unit-id "dept-acme-backend" :name "Backend Systems Dept" :budget 15 :parent-id "div-acme-eng"}
+          {:unit-id "dept-acme-frontend" :name "Frontend & Web Platform Dept" :budget 10 :parent-id "div-acme-eng"}
+          {:unit-id "dept-acme-ai" :name "Applied AI & ML Dept" :budget 10 :parent-id "div-acme-eng"}
+          {:unit-id "div-acme-prod" :name "Product & Design Division" :budget 15 :parent-id nil}
+          {:unit-id "dept-acme-core-prod" :name "Core Platform Product Dept" :budget 8 :parent-id "div-acme-prod"}
+          {:unit-id "dept-acme-design" :name "Product Design & UX Dept" :budget 7 :parent-id "div-acme-prod"}]
 
-     :units
-     [{:unit-id "div-acme-eng" :name "Engineering Division" :budget 35 :parent-id nil}
-      {:unit-id "dept-acme-backend" :name "Backend Systems Dept" :budget 15 :parent-id "div-acme-eng"}
-      {:unit-id "dept-acme-frontend" :name "Frontend & Web Platform Dept" :budget 10 :parent-id "div-acme-eng"}
-      {:unit-id "dept-acme-ai" :name "Applied AI & ML Dept" :budget 10 :parent-id "div-acme-eng"}
-      {:unit-id "div-acme-prod" :name "Product & Design Division" :budget 15 :parent-id nil}
-      {:unit-id "dept-acme-core-prod" :name "Core Platform Product Dept" :budget 8 :parent-id "div-acme-prod"}
-      {:unit-id "dept-acme-design" :name "Product Design & UX Dept" :budget 7 :parent-id "div-acme-prod"}]
+         canonical-actors-acme
+         [{:unit-id "dept-acme-backend" :user-id "u-dan-mgr" :role :hiring-manager}
+          {:unit-id "dept-acme-backend" :user-id "u-carol" :role :dept-head}
+          {:unit-id "dept-acme-backend" :user-id "u-frank-vp" :role :vp}
+          {:unit-id "dept-acme-frontend" :user-id "u-eva-lead" :role :hiring-manager}
+          {:unit-id "dept-acme-frontend" :user-id "u-carol" :role :dept-head}
+          {:unit-id "dept-acme-frontend" :user-id "u-frank-vp" :role :vp}
+          {:unit-id "dept-acme-ai" :user-id "u-dan-mgr" :role :hiring-manager}
+          {:unit-id "dept-acme-ai" :user-id "u-carol" :role :dept-head}
+          {:unit-id "dept-acme-ai" :user-id "u-frank-vp" :role :vp}
+          {:unit-id "dept-acme-design" :user-id "u-dan-mgr" :role :hiring-manager}
+          {:unit-id "dept-acme-design" :user-id "u-carol" :role :dept-head}]
 
-     :actors
-     [{:unit-id "dept-acme-backend" :user-id "u-dan-mgr" :role :hiring-manager}
-      {:unit-id "dept-acme-backend" :user-id "u-carol" :role :dept-head}
-      {:unit-id "dept-acme-backend" :user-id "u-frank-vp" :role :vp}
-      {:unit-id "dept-acme-frontend" :user-id "u-eva-lead" :role :hiring-manager}
-      {:unit-id "dept-acme-frontend" :user-id "u-carol" :role :dept-head}
-      {:unit-id "dept-acme-frontend" :user-id "u-frank-vp" :role :vp}
-      {:unit-id "dept-acme-ai" :user-id "u-dan-mgr" :role :hiring-manager}
-      {:unit-id "dept-acme-ai" :user-id "u-carol" :role :dept-head}
-      {:unit-id "dept-acme-ai" :user-id "u-frank-vp" :role :vp}
-      {:unit-id "dept-acme-design" :user-id "u-dan-mgr" :role :hiring-manager}
-      {:unit-id "dept-acme-design" :user-id "u-carol" :role :dept-head}]
+         canonical-reqs-acme
+         [{:request-id "hc-acme-backend-1"
+           :unit-id "dept-acme-backend"
+           :title "Senior Distributed Systems Engineer"
+           :job-level "L5"
+           :salary-band "$160k - $190k"
+           :bonus-target "15%"
+           :justification "Core Rama scaling"
+           :requester-id "u-dan-mgr"
+           :chain-snapshot [{:step 1 :role :hiring-manager} {:step 2 :role :dept-head}]
+           :approvals [{:step 1 :approver-user-id "u-dan-mgr"} {:step 2 :approver-user-id "u-carol"}]
+           :hire {:candidate-user-id "u-ian-eng"}
+           :status :filled
+           :final-status :filled}
+          {:request-id "hc-acme-frontend-1"
+           :unit-id "dept-acme-frontend"
+           :title "Staff Frontend Architect"
+           :job-level "L6"
+           :salary-band "$190k - $230k"
+           :bonus-target "20%"
+           :justification "Fulcro & design system revamp"
+           :requester-id "u-eva-lead"
+           :chain-snapshot [{:step 1 :role :dept-head} {:step 2 :role :vp}]
+           :approvals [{:step 1 :approver-user-id "u-carol"}]
+           :status :in-approval
+           :final-status :in-approval}
+          {:request-id "hc-acme-ai-1"
+           :unit-id "dept-acme-ai"
+           :title "AI Research Scientist"
+           :job-level "L5"
+           :salary-band "$170k - $210k"
+           :bonus-target "15%"
+           :justification "LLM & Agentic orchestration engine"
+           :requester-id "u-dan-mgr"
+           :chain-snapshot [{:step 1 :role :hiring-manager} {:step 2 :role :dept-head}]
+           :approvals []
+           :status :in-approval
+           :final-status :in-approval}
+          {:request-id "hc-acme-design-1"
+           :unit-id "dept-acme-design"
+           :title "Lead Product Designer"
+           :job-level "L5"
+           :salary-band "$150k - $180k"
+           :bonus-target "15%"
+           :justification "Enterprise workspace UX"
+           :requester-id "u-dan-mgr"
+           :chain-snapshot [{:step 1 :role :hiring-manager} {:step 2 :role :dept-head}]
+           :approvals [{:step 1 :approver-user-id "u-dan-mgr"} {:step 2 :approver-user-id "u-carol"}]
+           :status :approved
+           :final-status :approved}
+          {:request-id "hc-acme-backend-2"
+           :unit-id "dept-acme-backend"
+           :title "Junior DevOps Engineer"
+           :job-level "L3"
+           :salary-band "$80k - $100k"
+           :bonus-target "10%"
+           :justification "CI/CD maintenance"
+           :requester-id "u-dan-mgr"
+           :chain-snapshot [{:step 1 :role :hiring-manager} {:step 2 :role :dept-head}]
+           :rejection {:rejecter-user-id "u-frank-vp" :reason "Budget reallocated to AI initiatives"}
+           :status :rejected
+           :final-status :rejected}
+          {:request-id "hc-acme-prod-1"
+           :unit-id "dept-acme-core-prod"
+           :title "Associate Product Manager"
+           :job-level "L4"
+           :salary-band "$140k - $165k"
+           :bonus-target "12%"
+           :justification "Growth initiatives"
+           :requester-id "u-eva-lead"
+           :chain-snapshot [{:step 1 :role :dept-head}]
+           :status :draft
+           :final-status :draft}]
 
-     :approval-rules
-     [{:rule-id "r-acme-exec"
-       :priority 100
-       :name "Executive L6+ Rule"
-       :conditions [:= :job-level "L6"]
-       :chain [{:step 1 :role :dept-head} {:step 2 :role :vp}]}
-      {:rule-id "r-acme-standard"
-       :priority 50
-       :name "Standard IC Rule"
-       :conditions [:= :job-level "L5"]
-       :chain [{:step 1 :role :hiring-manager} {:step 2 :role :dept-head}]}]
+         canonical-reqs-globex
+         [{:request-id "hc-globex-sre-1"
+           :unit-id "dept-globex-sre"
+           :title "Lead Site Reliability Engineer"
+           :job-level "L5"
+           :salary-band "$155k - $185k"
+           :bonus-target "15%"
+           :justification "Kubernetes cluster resilience"
+           :requester-id "u-leo-mgr"
+           :chain-snapshot [{:step 1 :role :hiring-manager}]
+           :approvals [{:step 1 :approver-user-id "u-leo-mgr"}]
+           :hire {:candidate-user-id "u-noah-eng"}
+           :status :filled
+           :final-status :filled}
+          {:request-id "hc-globex-sec-1"
+           :unit-id "dept-globex-sec"
+           :title "Cloud Security Architect"
+           :job-level "L6"
+           :salary-band "$195k - $240k"
+           :bonus-target "20%"
+           :justification "Zero-trust network architecture"
+           :requester-id "u-leo-mgr"
+           :chain-snapshot [{:step 1 :role :hiring-manager} {:step 2 :role :vp}]
+           :approvals [{:step 1 :approver-user-id "u-leo-mgr"}]
+           :status :in-approval
+           :final-status :in-approval}
+          {:request-id "hc-globex-sales-1"
+           :unit-id "dept-globex-sales"
+           :title "Enterprise Sales Director"
+           :job-level "L6"
+           :salary-band "$180k - $220k"
+           :bonus-target "25%"
+           :justification "Enterprise account expansion"
+           :requester-id "u-leo-mgr"
+           :chain-snapshot [{:step 1 :role :hiring-manager} {:step 2 :role :vp}]
+           :approvals [{:step 1 :approver-user-id "u-leo-mgr"} {:step 2 :approver-user-id "u-karen-vp"}]
+           :status :approved
+           :final-status :approved}
+          {:request-id "hc-globex-sec-2"
+           :unit-id "dept-globex-sec"
+           :title "Junior Security Analyst"
+           :job-level "L3"
+           :salary-band "$85k - $110k"
+           :bonus-target "10%"
+           :justification "SOC alerts triaging"
+           :requester-id "u-leo-mgr"
+           :chain-snapshot [{:step 1 :role :hiring-manager}]
+           :field-edits [{:editor-user-id "u-leo-mgr" :field-name :salary-band :new-value "$90k - $115k"}]
+           :status :draft
+           :final-status :draft}]
 
-     :role-permissions
-     {:admin {:can-create-requisition true :can-approve true :view-scope :view-all :visible-fields #{:salary-band :bonus-target :rsu-grant}}
-      :hr {:can-create-requisition true :can-approve false :view-scope :view-all :visible-fields #{:salary-band :bonus-target :rsu-grant}}
-      :dept-head {:can-create-requisition true :can-approve true :view-scope :view-tree :visible-fields #{:salary-band :bonus-target}}
-      :hiring-manager {:can-create-requisition true :can-approve true :view-scope :view-own :visible-fields #{:salary-band}}
-      :employee {:can-create-requisition false :can-approve false :view-scope :view-own :visible-fields #{}}}
+         acme-10k (if generate-10k?
+                    (generate-enterprise-org-dataset {:org-id "org-acme" :org-name "Acme Corp" :owner-user-id "u-alice" :seed 42 :total-nodes 10000})
+                    nil)
+         globex-10k (if generate-10k?
+                      (generate-enterprise-org-dataset {:org-id "org-globex" :org-name "Globex Innovations" :owner-user-id "u-bob" :seed 99 :total-nodes 10000})
+                      nil)]
 
-     :requisitions
-     [;; 1. Filled requisition
-      {:request-id "hc-acme-backend-1"
-       :unit-id "dept-acme-backend"
-       :title "Senior Distributed Systems Engineer"
-       :job-level "L5"
-       :salary-band "$160k - $190k"
-       :bonus-target "15%"
-       :justification "Core Rama scaling"
-       :requester-id "u-dan-mgr"
-       :chain-snapshot [{:step 1 :role :hiring-manager} {:step 2 :role :dept-head}]
-       :approvals [{:step 1 :approver-user-id "u-dan-mgr"}
-                   {:step 2 :approver-user-id "u-carol"}]
-       :hire {:candidate-user-id "u-ian-eng"}
-       :final-status :filled}
+     {:version 1
+      :generated-at (System/currentTimeMillis)
+      :users base-users
+      :organizations
+      [(merge
+        {:org-id "org-acme"
+         :name "Acme Corp"
+         :owner-user-id "u-alice"
+         :members
+         [{:email "carol@crossorg.com" :user-id "u-carol" :role "MEMBER"}
+          {:email "dan.mgr@acme.com" :user-id "u-dan-mgr" :role "MEMBER"}
+          {:email "eva.lead@acme.com" :user-id "u-eva-lead" :role "MEMBER"}
+          {:email "frank.vp@acme.com" :user-id "u-frank-vp" :role "MEMBER"}
+          {:email "grace.hr@acme.com" :user-id "u-grace-hr" :role "MEMBER"}
+          {:email "ian.eng@acme.com" :user-id "u-ian-eng" :role "MEMBER"}
+          {:email "jane.eng@acme.com" :user-id "u-jane-eng" :role "MEMBER"}]
+         :units (into canonical-units-acme (or (:units acme-10k) []))
+         :actors canonical-actors-acme
+         :approval-rules
+         [{:rule-id "r-acme-exec" :priority 100 :name "Executive L6+ Rule" :conditions [:= :job-level "L6"] :chain [{:step 1 :role :dept-head} {:step 2 :role :vp}]}
+          {:rule-id "r-acme-standard" :priority 50 :name "Standard IC Rule" :conditions [:= :job-level "L5"] :chain [{:step 1 :role :hiring-manager} {:step 2 :role :dept-head}]}]
+         :role-permissions
+         {:admin {:can-create-requisition true :can-approve true :view-scope :view-all :visible-fields #{:salary-band :bonus-target :rsu-grant}}
+          :hr {:can-create-requisition true :can-approve false :view-scope :view-all :visible-fields #{:salary-band :bonus-target :rsu-grant}}
+          :dept-head {:can-create-requisition true :can-approve true :view-scope :view-tree :visible-fields #{:salary-band :bonus-target}}
+          :hiring-manager {:can-create-requisition true :can-approve true :view-scope :view-own :visible-fields #{:salary-band}}
+          :employee {:can-create-requisition false :can-approve false :view-scope :view-own :visible-fields #{}}}
+         :requisitions (into canonical-reqs-acme (or (:headcounts acme-10k) []))}
+        acme-10k)
 
-      ;; 2. In-approval (Step 2)
-      {:request-id "hc-acme-frontend-1"
-       :unit-id "dept-acme-frontend"
-       :title "Staff Frontend Architect"
-       :job-level "L6"
-       :salary-band "$190k - $230k"
-       :bonus-target "20%"
-       :justification "Fulcro & design system revamp"
-       :requester-id "u-eva-lead"
-       :chain-snapshot [{:step 1 :role :dept-head} {:step 2 :role :vp}]
-       :approvals [{:step 1 :approver-user-id "u-carol"}]
-       :final-status :in-approval}
-
-      ;; 3. In-approval (Step 1)
-      {:request-id "hc-acme-ai-1"
-       :unit-id "dept-acme-ai"
-       :title "AI Research Scientist"
-       :job-level "L5"
-       :salary-band "$170k - $210k"
-       :bonus-target "15%"
-       :justification "LLM & Agentic orchestration engine"
-       :requester-id "u-dan-mgr"
-       :chain-snapshot [{:step 1 :role :hiring-manager} {:step 2 :role :dept-head}]
-       :approvals []
-       :final-status :in-approval}
-
-      ;; 4. Approved
-      {:request-id "hc-acme-design-1"
-       :unit-id "dept-acme-design"
-       :title "Lead Product Designer"
-       :job-level "L5"
-       :salary-band "$150k - $180k"
-       :bonus-target "15%"
-       :justification "Enterprise workspace UX"
-       :requester-id "u-dan-mgr"
-       :chain-snapshot [{:step 1 :role :hiring-manager} {:step 2 :role :dept-head}]
-       :approvals [{:step 1 :approver-user-id "u-dan-mgr"}
-                   {:step 2 :approver-user-id "u-carol"}]
-       :final-status :approved}
-
-      ;; 5. Rejected
-      {:request-id "hc-acme-backend-2"
-       :unit-id "dept-acme-backend"
-       :title "Junior DevOps Engineer"
-       :job-level "L3"
-       :salary-band "$90k - $115k"
-       :bonus-target "10%"
-       :justification "Infrastructure maintenance"
-       :requester-id "u-dan-mgr"
-       :chain-snapshot [{:step 1 :role :hiring-manager} {:step 2 :role :dept-head}]
-       :rejection {:rejecter-user-id "u-dan-mgr" :reason "Budget reallocated to AI initiatives"}
-       :final-status :rejected}
-
-      ;; 6. Draft (reset via sensitive field edit)
-      {:request-id "hc-acme-prod-1"
-       :unit-id "dept-acme-core-prod"
-       :title "Growth Product Manager"
-       :job-level "L4"
-       :salary-band "$130k - $155k"
-       :bonus-target "12%"
-       :justification "Self-serve onboarding flow"
-       :requester-id "u-dan-mgr"
-       :chain-snapshot [{:step 1 :role :hiring-manager}]
-       :field-edits [{:editor-user-id "u-dan-mgr" :field-name :salary-band :new-value "$140k - $165k"}]
-       :final-status :draft}]}
-
-    {:org-id "org-globex"
-     :name "Globex Innovations"
-     :owner-user-id "u-bob"
-     :members
-     [{:email "carol@crossorg.com" :user-id "u-carol" :role "MEMBER"}
-      {:email "karen.vp@globex.com" :user-id "u-karen-vp" :role "MEMBER"}
-      {:email "leo.mgr@globex.com" :user-id "u-leo-mgr" :role "MEMBER"}
-      {:email "mia.recruiter@globex.com" :user-id "u-mia-recruiter" :role "MEMBER"}
-      {:email "noah.eng@globex.com" :user-id "u-noah-eng" :role "MEMBER"}]
-
-     :units
-     [{:unit-id "div-globex-infra" :name "Cloud Infrastructure Division" :budget 20 :parent-id nil}
-      {:unit-id "dept-globex-sre" :name "Site Reliability Engineering Dept" :budget 12 :parent-id "div-globex-infra"}
-      {:unit-id "dept-globex-sec" :name "Cloud Security & Compliance Dept" :budget 8 :parent-id "div-globex-infra"}
-      {:unit-id "div-globex-growth" :name "Growth & Sales Division" :budget 10 :parent-id nil}
-      {:unit-id "dept-globex-mkt" :name "Performance Marketing Dept" :budget 5 :parent-id "div-globex-growth"}
-      {:unit-id "dept-globex-sales" :name "Enterprise Solutions Dept" :budget 5 :parent-id "div-globex-growth"}]
-
-     :actors
-     [{:unit-id "dept-globex-sre" :user-id "u-leo-mgr" :role :hiring-manager}
-      {:unit-id "dept-globex-sre" :user-id "u-karen-vp" :role :vp}
-      {:unit-id "dept-globex-sec" :user-id "u-leo-mgr" :role :hiring-manager}
-      {:unit-id "dept-globex-sec" :user-id "u-karen-vp" :role :vp}
-      {:unit-id "dept-globex-mkt" :user-id "u-carol" :role :vp}]
-
-     :approval-rules
-     [{:rule-id "r-globex-exec"
-       :priority 100
-       :name "Executive L6 Rule"
-       :conditions [:= :job-level "L6"]
-       :chain [{:step 1 :role :hiring-manager} {:step 2 :role :vp}]}
-      {:rule-id "r-globex-standard"
-       :priority 50
-       :name "Standard Rule"
-       :conditions [:= :job-level "L5"]
-       :chain [{:step 1 :role :hiring-manager}]}]
-
-     :role-permissions
-     {:admin {:can-create-requisition true :can-approve true :view-scope :view-all :visible-fields #{:salary-band :bonus-target :rsu-grant}}
-      :hr {:can-create-requisition true :can-approve false :view-scope :view-all :visible-fields #{:salary-band :bonus-target :rsu-grant}}
-      :dept-head {:can-create-requisition true :can-approve true :view-scope :view-tree :visible-fields #{:salary-band :bonus-target}}
-      :hiring-manager {:can-create-requisition true :can-approve true :view-scope :view-own :visible-fields #{:salary-band}}
-      :employee {:can-create-requisition false :can-approve false :view-scope :view-own :visible-fields #{}}}
-
-     :requisitions
-     [;; 1. Filled
-      {:request-id "hc-globex-sre-1"
-       :unit-id "dept-globex-sre"
-       :title "Lead Site Reliability Engineer"
-       :job-level "L5"
-       :salary-band "$155k - $185k"
-       :bonus-target "15%"
-       :justification "Kubernetes cluster resilience"
-       :requester-id "u-leo-mgr"
-       :chain-snapshot [{:step 1 :role :hiring-manager}]
-       :approvals [{:step 1 :approver-user-id "u-leo-mgr"}]
-       :hire {:candidate-user-id "u-noah-eng"}
-       :final-status :filled}
-
-      ;; 2. In-approval (Step 2)
-      {:request-id "hc-globex-sec-1"
-       :unit-id "dept-globex-sec"
-       :title "Cloud Security Architect"
-       :job-level "L6"
-       :salary-band "$195k - $240k"
-       :bonus-target "20%"
-       :justification "Zero-trust network architecture"
-       :requester-id "u-leo-mgr"
-       :chain-snapshot [{:step 1 :role :hiring-manager} {:step 2 :role :vp}]
-       :approvals [{:step 1 :approver-user-id "u-leo-mgr"}]
-       :final-status :in-approval}
-
-      ;; 3. Approved
-      {:request-id "hc-globex-sales-1"
-       :unit-id "dept-globex-sales"
-       :title "Enterprise Sales Director"
-       :job-level "L6"
-       :salary-band "$180k - $220k"
-       :bonus-target "25%"
-       :justification "Enterprise account expansion"
-       :requester-id "u-leo-mgr"
-       :chain-snapshot [{:step 1 :role :hiring-manager} {:step 2 :role :vp}]
-       :approvals [{:step 1 :approver-user-id "u-leo-mgr"}
-                   {:step 2 :approver-user-id "u-karen-vp"}]
-       :final-status :approved}
-
-      ;; 4. Draft
-      {:request-id "hc-globex-sec-2"
-       :unit-id "dept-globex-sec"
-       :title "Junior Security Analyst"
-       :job-level "L3"
-       :salary-band "$85k - $110k"
-       :bonus-target "10%"
-       :justification "SOC alerts triaging"
-       :requester-id "u-leo-mgr"
-       :chain-snapshot [{:step 1 :role :hiring-manager}]
-       :field-edits [{:editor-user-id "u-leo-mgr" :field-name :salary-band :new-value "$90k - $115k"}]
-       :final-status :draft}]}]})
+       (merge
+        {:org-id "org-globex"
+         :name "Globex Innovations"
+         :owner-user-id "u-bob"
+         :members
+         [{:email "carol@crossorg.com" :user-id "u-carol" :role "MEMBER"}
+          {:email "karen.vp@globex.com" :user-id "u-karen-vp" :role "MEMBER"}
+          {:email "leo.mgr@globex.com" :user-id "u-leo-mgr" :role "MEMBER"}
+          {:email "mia.recruiter@globex.com" :user-id "u-mia-recruiter" :role "MEMBER"}
+          {:email "noah.eng@globex.com" :user-id "u-noah-eng" :role "MEMBER"}]
+         :actors
+         [{:unit-id "org-globex-dept-eng-platform" :user-id "u-leo-mgr" :role :hiring-manager}
+          {:unit-id "org-globex-dept-eng-platform" :user-id "u-karen-vp" :role :vp}]
+         :approval-rules
+         [{:rule-id "r-globex-exec" :priority 100 :name "Executive L6 Rule" :conditions [:= :job-level "L6"] :chain [{:step 1 :role :hiring-manager} {:step 2 :role :vp}]}]
+         :role-permissions
+         {:admin {:can-create-requisition true :can-approve true :view-scope :view-all :visible-fields #{:salary-band :bonus-target :rsu-grant}}}
+         :requisitions canonical-reqs-globex}
+        globex-10k)]})))
 
 (defn write-seed-nippy!
-  "Generates the seed dataset and serializes it to a binary Nippy archive
-   with Snappy compression."
+  "Generates the seed dataset and serializes it to a binary Nippy archive with Snappy compression."
   ([]
    (write-seed-nippy! default-seed-path))
   ([path]
@@ -278,7 +281,7 @@
          parent (.getParentFile file)]
      (when (and parent (not (.exists parent)))
        (.mkdirs parent))
-     (let [data (generate-seed-data)]
+     (let [data (generate-seed-data {:generate-10k? true})]
        (nippy/freeze-to-file path data {:compressor nippy/snappy-compressor})
        {:ok true :path path :size (.length (io/file path)) :organizations (count (:organizations data))}))))
 
@@ -292,14 +295,30 @@
        (nippy/thaw-from-file path)
        (throw (ex-info (str "Seed file does not exist at " path) {:path path}))))))
 
-(defn load-seed-data!
-  "Ingests a parsed seed dataset map into Rama depots and PStates.
-   Returns a map with counts of seeded entities."
-  [deps dataset]
-  (let [user-map (atom {})
-        org-map (atom {})]
+(defn- get-cmgr [deps]
+  (or (-> deps :rama :cluster-manager)
+      (:cluster-manager deps)
+      (throw (ex-info "Could not resolve Rama cluster manager from deps" {:deps-keys (keys deps)}))))
 
-    ;; 1. Register users in omni-auth
+(defn load-seed-data!
+  "Fast batch-appends seed data into Rama depots and omni-auth user stores."
+  [deps dataset]
+  (let [cmgr (get-cmgr deps)
+        mod-name (rama/module-name)
+        user-map (atom {})
+        org-map (atom {})
+        now (System/currentTimeMillis)
+
+        ;; Rama Depots
+        unit-depot (rama/depot cmgr mod-name "*org-unit-depot")
+        actor-depot (rama/depot cmgr mod-name "*actor-depot")
+        policy-depot (rama/depot cmgr mod-name "*policy-depot")
+        load-factor-depot (rama/depot cmgr mod-name "*load-factor-depot")
+        tenant-attr-depot (rama/depot cmgr mod-name "*tenant-attr-depot")
+        employee-depot (rama/depot cmgr mod-name "*employee-depot")
+        headcount-depot (rama/depot cmgr mod-name "*headcount-depot")]
+
+    ;; 1. Register base personas in omni-auth
     (doseq [u (:users dataset)]
       (let [existing (user/find-by-email deps (:email u))
             user-rec (if existing
@@ -313,7 +332,7 @@
                            created)))]
         (swap! user-map assoc (:user-id u) (:id user-rec))))
 
-    ;; 2. Create organizations and memberships
+    ;; 2. Ingest Organizations
     (doseq [org (:organizations dataset)]
       (let [owner-resolved-id (get @user-map (:owner-user-id org))
             existing-org (core/find-org-by-name deps (:name org))
@@ -339,36 +358,62 @@
                       (core/join-org! deps {:user-id resolved-m-id
                                             :invitation-id (:invitation-id inv)}))))))))
 
-        ;; 3. Create Org Units (Divisions and Departments)
+        ;; 3. Org Units
         (doseq [u (:units org)]
-          (core/create-org-unit! deps {:unit-id (:unit-id u)
-                                       :org-id org-id
-                                       :name (:name u)
-                                       :parent-id (:parent-id u)
-                                       :budget (:budget u)}))
+          (ramaapi/foreign-append! unit-depot
+            (rec/->OrgUnitCreate (:unit-id u) org-id (:division-id u) (:dept-id u) (:name u) (:parent-id u) (or (:budget u) 0) now)
+            :ack))
 
-        ;; 4. Assign Actors
+        ;; 4. Actors & Policies
         (doseq [a (:actors org)]
-          (let [resolved-u-id (get @user-map (:user-id a))]
-            (when resolved-u-id
-              (core/assign-org-actor! deps {:org-id org-id
-                                            :unit-id (:unit-id a)
-                                            :user-id resolved-u-id
-                                            :role (:role a)}))))
+          (when-let [resolved-u-id (get @user-map (:user-id a))]
+            (ramaapi/foreign-append! actor-depot
+              (rec/->OrgActorAssign org-id (:unit-id a) resolved-u-id (name (:role a)) now)
+              :ack)))
 
-        ;; 5. Set Approval Rules and Role Permissions
         (when-let [rules (:approval-rules org)]
-          (core/set-approval-rules! deps org-id rules))
+          (ramaapi/foreign-append! policy-depot (rec/->ApprovalRuleSet org-id rules now) :ack))
         (when-let [perms (:role-permissions org)]
           (doseq [[role role-perms] perms]
-            (core/set-role-permissions! deps org-id role role-perms)))
+            (ramaapi/foreign-append! policy-depot (rec/->RolePermissionSet org-id (name role) role-perms now) :ack)))
 
-        ;; 6. Create & Advance Headcount Requisitions
+        ;; 5. Custom Attributes & Load Factors
+        (doseq [attr (:custom-attributes org)]
+          (ramaapi/foreign-append! tenant-attr-depot
+            (rec/->TenantAttributeDefine org-id (:attribute-id attr) :employment (:label attr) (:data-type attr)
+                                         (:cost-modifier? attr) (:cost-cadence attr) "USD" nil false (:default-value attr) now)
+            :ack))
+
+        (doseq [lf (:load-factor-rules org)]
+          (let [cat (first (get-in lf [:conditions :job-category] [:engineering]))
+                loc (first (get-in lf [:conditions :location] ["*"]))]
+            (ramaapi/foreign-append! load-factor-depot
+              (rec/->LoadFactorRuleSet org-id loc (name cat) "*" (:multiplier lf) now)
+              :ack)))
+
+        ;; 6. Employees & Employments Batch Appends
+        (let [emp-map (into {} (map (fn [empmt] [(:employee-id empmt) empmt])) (:employments org))]
+          (doseq [e (:employees org)]
+            (let [empmt (get emp-map (:employee-id e))]
+              (ramaapi/foreign-append! employee-depot
+                (rec/->EmployeeHire (:employee-id e) org-id owner-resolved-id
+                                    (:first-name e) (:last-name e) (:personal-email e)
+                                    (:hire-date e) :active
+                                    (:employment-id empmt) (:unit-id empmt)
+                                    (:job-title empmt) (:job-category empmt) (:job-level empmt)
+                                    (:employee-type empmt) (:location empmt)
+                                    (:base-salary empmt) (:currency empmt)
+                                    (:bonus-target empmt) (:custom-attributes empmt)
+                                    (:hire-date e) now (str "seed-" (:employee-id e)))
+                :ack))))
+
+        ;; 7. Headcount Requisitions Lifecycle & Appends
         (doseq [req (:requisitions org)]
-          (let [requester-resolved-id (get @user-map (:requester-id req))
+          (let [requester-resolved-id (get @user-map (:requester-id req) owner-resolved-id)
                 create-input (assoc req
                                     :org-id org-id
                                     :requester-id requester-resolved-id
+                                    :chain-snapshot (or (:chain-snapshot req) [])
                                     :idempotency-key (str "seed-create-" (:request-id req)))
                 [ok created-req] (core/create-headcount-request! deps create-input)
                 req-id (if ok (:request-id created-req) (:request-id req))]
@@ -406,7 +451,17 @@
                 (core/transition-headcount-to-hire! deps {:org-id org-id
                                                           :request-id req-id
                                                           :hired-user-id cand-resolved-id
-                                                          :idempotency-key (str "seed-hire-" req-id)})))))))
+                                                          :idempotency-key (str "seed-hire-" req-id)})))))
+
+        ;; 8. Additional Generated Headcounts (if any)
+        (doseq [hc (:headcounts org)]
+          (ramaapi/foreign-append! headcount-depot
+            (rec/->HeadcountCreate (:request-id hc) org-id (:unit-id hc) (:division-id hc) nil
+                                   (:location hc) (:job-level hc) (:employee-type hc)
+                                   owner-resolved-id (:title hc) "10k Seed Headcount"
+                                   "Requisition Description" (:salary-band hc) (:bonus-target hc)
+                                   (:status hc) 1 [] now (str "seed-" (:request-id hc)))
+            :ack))))
 
     {:ok true
      :users-seeded (count (:users dataset))

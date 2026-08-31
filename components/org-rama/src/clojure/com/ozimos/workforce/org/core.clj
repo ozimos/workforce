@@ -316,15 +316,15 @@
         mod-name (rama/module-name)
         depot (rama/depot cmgr mod-name "*headcount-depot")
         created-at (now-ms)
+        init-status (or (:status input) :in-approval)
         res (unwrap-ack (ramaapi/foreign-append! depot
                           (rec/->HeadcountCreate request-id org-id unit-id division-id dept-id location
                             job-level employee-type requester-id title justification
-                            job-description salary-band bonus-target :in-approval
+                            job-description salary-band bonus-target init-status
                             1 (or chain-snapshot []) created-at idempotency-key)
-                          :ack))]
-    (if (and (string? res) (not= res request-id))
-      [true {:request-id res :status :in-approval :current-step 1 :duplicate true}]
-      [true {:request-id request-id :status :in-approval :current-step 1}])))
+                          :ack))
+        final-rid (if (and (string? res) (seq res)) res request-id)]
+    [true {:request-id final-rid :status init-status :current-step 1}]))
 
 (defn approve-headcount-step! [deps input]
   (let [{:keys [org-id request-id approver-user-id idempotency-key]} input
@@ -456,3 +456,179 @@
         mod-name (rama/module-name)
         sla (rama/pstate cmgr mod-name "$$approval-sla")]
     (or (safe-select-one (keypath unit-id) sla) [])))
+
+;; =============================================================================
+;; Phase 15: Currency, Load Factors, Custom Attributes & Employee Financials
+;; =============================================================================
+
+(defn set-org-currency! [deps input]
+  (let [{:keys [org-id base-currency]} input
+        cmgr (get-cmgr deps)
+        mod-name (rama/module-name)
+        depot (rama/depot cmgr mod-name "*currency-depot")]
+    (ramaapi/foreign-append! depot (rec/->OrgCurrencySet org-id (or base-currency "USD") (now-ms)) :ack)
+    [true {:org-id org-id :base-currency (or base-currency "USD")}]))
+
+(defn get-org-currency-settings [deps org-id]
+  (let [cmgr (get-cmgr deps)
+        mod-name (rama/module-name)
+        pstate (rama/pstate cmgr mod-name "$$org-currency-settings")]
+    (or (safe-select-one (keypath org-id) pstate) {:base-currency "USD"})))
+
+(defn set-fx-rate! [deps input]
+  (let [{:keys [org-id from-currency to-currency rate]} input
+        cmgr (get-cmgr deps)
+        mod-name (rama/module-name)
+        depot (rama/depot cmgr mod-name "*currency-depot")]
+    (ramaapi/foreign-append! depot (rec/->OrgFxRateSet org-id from-currency to-currency (double rate) (now-ms)) :ack)
+    [true input]))
+
+(defn get-fx-rates [deps org-id]
+  (let [cmgr (get-cmgr deps)
+        mod-name (rama/module-name)
+        pstate (rama/pstate cmgr mod-name "$$fx-rates")]
+    (or (safe-select-one (keypath org-id) pstate) {})))
+
+(defn define-employee-type! [deps input]
+  (let [{:keys [org-id type-id label annual-multiplier hours-per-week default-benefits?]} input
+        cmgr (get-cmgr deps)
+        mod-name (rama/module-name)
+        depot (rama/depot cmgr mod-name "*load-factor-depot")]
+    (ramaapi/foreign-append! depot
+      (rec/->EmployeeTypeDefine org-id type-id label annual-multiplier hours-per-week default-benefits? (now-ms))
+      :ack)
+    [true {:org-id org-id :type-id (keyword type-id)}]))
+
+(defn get-employee-types [deps org-id]
+  (let [cmgr (get-cmgr deps)
+        mod-name (rama/module-name)
+        pstate (rama/pstate cmgr mod-name "$$employee-types")]
+    (or (safe-select-one (keypath org-id) pstate) {})))
+
+(defn set-load-factor! [deps input]
+  (let [{:keys [org-id location-code job-category job-level multiplier]} input
+        cmgr (get-cmgr deps)
+        mod-name (rama/module-name)
+        depot (rama/depot cmgr mod-name "*load-factor-depot")]
+    (ramaapi/foreign-append! depot
+      (rec/->LoadFactorRuleSet org-id location-code job-category job-level multiplier (now-ms))
+      :ack)
+    [true input]))
+
+(defn get-load-factors [deps org-id]
+  (let [cmgr (get-cmgr deps)
+        mod-name (rama/module-name)
+        pstate (rama/pstate cmgr mod-name "$$load-factors")]
+    (or (safe-select-one (keypath org-id) pstate) {})))
+
+(defn define-tenant-attribute! [deps input]
+  (let [{:keys [org-id attribute-id target-entity label data-type cost-modifier? cost-cadence currency options required? default-value]} input
+        cmgr (get-cmgr deps)
+        mod-name (rama/module-name)
+        depot (rama/depot cmgr mod-name "*tenant-attr-depot")]
+    (ramaapi/foreign-append! depot
+      (rec/->TenantAttributeDefine org-id attribute-id (or target-entity :employment) label (or data-type :string)
+                                   (boolean cost-modifier?) (or cost-cadence :annual) currency options (boolean required?) default-value (now-ms))
+      :ack)
+    [true {:org-id org-id :attribute-id (keyword attribute-id)}]))
+
+(defn get-tenant-attributes [deps org-id & [target-entity]]
+  (let [cmgr (get-cmgr deps)
+        mod-name (rama/module-name)
+        pstate (rama/pstate cmgr mod-name "$$tenant-attribute-definitions")]
+    (if target-entity
+      (or (safe-select-one (keypath org-id (keyword target-entity)) pstate) {})
+      (or (safe-select-one (keypath org-id) pstate) {}))))
+
+(defn hire-employee! [deps input]
+  (let [{:keys [employee-id org-id user-id first-name last-name personal-email hire-date status
+                employment-id unit-id job-title job-category job-level employee-type location
+                base-salary currency bonus-target custom-attributes start-date idempotency-key]} input
+        cmgr (get-cmgr deps)
+        mod-name (rama/module-name)
+        depot (rama/depot cmgr mod-name "*employee-depot")
+        eid (or employee-id (str (ops/random-uuid7)))
+        empid (or employment-id (str (ops/random-uuid7)))
+        now (now-ms)
+        h-date (or hire-date (subs (str (java.time.LocalDate/now)) 0 10))]
+    (ramaapi/foreign-append! depot
+      (rec/->EmployeeHire eid org-id user-id first-name last-name personal-email h-date (or status :active)
+                          empid unit-id job-title job-category job-level (or employee-type :full-time) location
+                          (or base-salary 0.0) (or currency "USD") (or bonus-target 0.0) (or custom-attributes {})
+                          (or start-date h-date) now idempotency-key)
+      :ack)
+    [true {:employee-id eid :employment-id empid :org-id org-id :unit-id unit-id}]))
+
+(defn transfer-employment! [deps input]
+  (let [{:keys [employment-id employee-id org-id unit-id job-title job-category job-level employee-type location
+                base-salary currency bonus-target custom-attributes effective-date previous-employment-id idempotency-key]} input
+        cmgr (get-cmgr deps)
+        mod-name (rama/module-name)
+        depot (rama/depot cmgr mod-name "*employment-depot")
+        empid (or employment-id (str (ops/random-uuid7)))
+        eff (or effective-date (subs (str (java.time.LocalDate/now)) 0 10))]
+    (ramaapi/foreign-append! depot
+      (rec/->EmploymentTransfer empid employee-id org-id unit-id job-title job-category job-level (or employee-type :full-time) location
+                                (or base-salary 0.0) (or currency "USD") (or bonus-target 0.0) (or custom-attributes {})
+                                eff previous-employment-id idempotency-key)
+      :ack)
+    [true {:employment-id empid :employee-id employee-id :unit-id unit-id}]))
+
+(defn revise-employment-comp! [deps input]
+  (let [{:keys [employment-id employee-id org-id base-salary currency bonus-target custom-attributes effective-date idempotency-key]} input
+        cmgr (get-cmgr deps)
+        mod-name (rama/module-name)
+        depot (rama/depot cmgr mod-name "*employment-depot")
+        eff (or effective-date (subs (str (java.time.LocalDate/now)) 0 10))]
+    (ramaapi/foreign-append! depot
+      (rec/->EmploymentCompRevision employment-id employee-id org-id (or base-salary 0.0) (or currency "USD")
+                                    (or bonus-target 0.0) (or custom-attributes {}) eff idempotency-key)
+      :ack)
+    [true {:employment-id employment-id :employee-id employee-id}]))
+
+(defn terminate-employee! [deps input]
+  (let [{:keys [employee-id org-id end-date termination-reason idempotency-key]} input
+        cmgr (get-cmgr deps)
+        mod-name (rama/module-name)
+        depot (rama/depot cmgr mod-name "*employee-depot")
+        ed (or end-date (subs (str (java.time.LocalDate/now)) 0 10))]
+    (ramaapi/foreign-append! depot
+      (rec/->EmployeeTerminate employee-id org-id ed termination-reason (now-ms) idempotency-key)
+      :ack)
+    [true {:employee-id employee-id :status :terminated}]))
+
+(defn get-employee [deps employee-id]
+  (let [cmgr (get-cmgr deps)
+        mod-name (rama/module-name)
+        pstate (rama/pstate cmgr mod-name "$$employees")]
+    (safe-select-one (keypath employee-id) pstate)))
+
+(defn get-employment [deps employment-id]
+  (let [cmgr (get-cmgr deps)
+        mod-name (rama/module-name)
+        pstate (rama/pstate cmgr mod-name "$$employments")]
+    (safe-select-one (keypath employment-id) pstate)))
+
+(defn get-employee-employment-history [deps employee-id]
+  (let [cmgr (get-cmgr deps)
+        mod-name (rama/module-name)
+        pstate (rama/pstate cmgr mod-name "$$employee->employment-history")]
+    (or (safe-select-one (keypath employee-id) pstate) [])))
+
+(defn list-unit-employments [deps unit-id]
+  (let [cmgr (get-cmgr deps)
+        mod-name (rama/module-name)
+        pstate (rama/pstate cmgr mod-name "$$unit->employments")
+        emp-ids (keys (or (safe-select-one (keypath unit-id) pstate) {}))]
+    (mapv #(get-employment deps %) emp-ids)))
+
+(defn get-unit-cost-stats [deps unit-id]
+  (let [cmgr (get-cmgr deps)
+        mod-name (rama/module-name)
+        pstate (rama/pstate cmgr mod-name "$$unit-cost-stats")]
+    (or (safe-select-one (keypath unit-id) pstate)
+        {:headcount 0
+         :total-raw-base-payroll 0.0
+         :total-loaded-payroll 0.0
+         :total-custom-modifiers-cost 0.0
+         :total-cost-base-currency 0.0})))
