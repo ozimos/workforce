@@ -630,15 +630,69 @@ Each organization can extend the standard schema with custom operational metadat
     $$\text{Total Unit Cost} = \text{Base Payroll} + \text{Bonus Pool} + \sum_{\substack{a \in \text{Attrs} \\ a.\text{cost-modifier?} = \text{true}}} \text{NormalizedAnnual}(a.\text{value}, a.\text{cadence})$$
   - Display-only attributes are rendered in UI forms, candidate offer profiles, and employee views without affecting department budget rollups or runway simulations.
 
-#### 15.4 Cost Aggregations & Rollups
-- **`$$unit-cost-stats`**: Pre-materialized financial and headcount metrics per Org Unit and recursively rolled up along the `$$org-hierarchy` tree:
+#### 15.4 Global Multi-Currency & Loaded Cost Engine
+Organizations can employ staff globally with pay stated in local currencies, converted seamlessly into Base and Display currencies while preserving original local values:
+
+```
+  [Employee / Position Input]
+  ├── Base Pay: £60,000 GBP (or $50/hr)
+  ├── Employee Type: :part-time (0.6 FTE annualization multiplier)
+  ├── Location & Job: London, Engineering, L5 (UK Load Factor = 1.18 for National Insurance + Pension)
+  └── Custom Cost Modifiers (e.g. £4,000 Health Plan)
+                               │
+                               ▼
+  ┌─────────────────────────────────────────────────────────────┐
+  │              Annual Local Loaded Cost Calculation           │
+  │  Base Annualized = £60,000 × 0.6 = £36,000                  │
+  │  Loaded Base     = £36,000 × 1.18 = £42,480                 │
+  │  Total Local     = £42,480 + Bonus + £4,000 = £46,480 GBP   │
+  └────────────────────────────┬────────────────────────────────┘
+                               │
+                               ▼
+  ┌─────────────────────────────────────────────────────────────┐
+  │        Multi-Currency Conversion Engine (PState: $$fx-rates)│
+  │  Local Total (£46,480 GBP) ──[ × 1.27 FX ]──► $59,029.60 USD│
+  │                                       (Stored in Base Org)  │
+  └────────────────────────────┬────────────────────────────────┘
+                               │
+         ┌─────────────────────┴─────────────────────┐
+         ▼                                           ▼
+  ┌──────────────────────────────┐    ┌──────────────────────────────┐
+  │  PState Rollups (Base Curr)  │    │  UI Aggregate & Table Views  │
+  │  - Materialized in USD       │    │  - Total Cost: in Base (USD) │
+  │  - Instant Hierarchy Aggs    │    │    or selected Display Curr  │
+  │                              │    │  - Inputs (e.g. Base Pay):   │
+  │                              │    │    shown in native £ GBP     │
+  └──────────────────────────────┘    └──────────────────────────────┘
+```
+
+1. **Multi-Currency Architecture**:
+   - **Base Currency**: Tenant-configured organization currency (defaults to `"USD"`). All internal metric rollups in `$$unit-cost-stats` are pre-materialized in this base currency for instant zero-join aggregation.
+   - **FX Rates PState (`$$fx-rates`)**: Materialized matrix of conversion rates against base currency (`{org-id -> {["GBP" "USD"] 1.27, ["EUR" "USD"] 1.08}}`).
+   - **Display Currency Switching**: Users can toggle their preferred display currency on financial dashboards (e.g., viewing EMEA department costs in EUR while APAC is viewed in SGD).
+   - **Native Input Currency Preservation**: In employee lists, roster tables, and aggregate drill-downs, individual input values (e.g. base salary, signing bonus, hourly rate) are always retained and displayed in their **original stated currency** alongside the normalized converted totals.
+
+2. **Employee Types & Annualization Multipliers**:
+   - Standard types (`:full-time` [1.0 FTE], `:part-time` [e.g. 0.5 or 0.6 FTE], `:intern` [e.g. 0.25 FTE], `:contractor`).
+   - Custom employee types defined per tenant (`EmployeeTypeDefine` record) with custom annualization multipliers and standard weekly hours.
+
+3. **Fully Loaded Multipliers ("Load Factor")**:
+   - Captures regional taxes, pension mandates, healthcare, and employer burden:
+     $$\text{Load Factor} = f(\text{Location}, \text{Job Category}, \text{Job Level})$$
+   - Recorded via `LoadFactorRuleSet` (e.g. `US-CA / Engineering / L6 -> 1.22`, `DE / * / * -> 1.28`).
+
+#### 15.5 Cost Aggregations & Rollups
+- **`$$unit-cost-stats`**: Pre-materialized financial and headcount metrics per Org Unit in Base Currency, recursively rolled up along the `$$org-hierarchy` tree:
   ```clojure
-  {:total-base-payroll 1450000
-   :total-planned-payroll 1800000  ;; includes open approved requisitions
-   :active-headcount 8
-   :open-requisitions 2
-   :custom-cost-modifiers {:health-tier 126000 :signing-bonus 50000} ;; only attributes with cost-modifier? = true
-   :avg-tenure-months 18.4}
+  {:unit-id "eng-emea"
+   :base-currency "USD"
+   :active-headcount 14
+   :open-requisitions 3
+   :total-raw-base-payroll-usd 1650000
+   :total-loaded-payroll-usd 2046000  ;; includes Load Factors + Employee Type multipliers + FX
+   :total-planned-payroll-usd 2480000 ;; includes open approved requisitions
+   :custom-cost-modifiers-usd {:health-tier 142000 :signing-bonus 65000}
+   :avg-tenure-months 19.2}
   ```
 - **Realized vs. Planned Budget Variance**: Enables real-time variance analysis without heavy relational SQL `JOIN` operations.
 

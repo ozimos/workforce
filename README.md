@@ -34,6 +34,8 @@ Instead, `workforce` unifies data from these disparate systems of record into a 
 ## Key Capabilities
 
 - **Headcount Decision Engine & Requisitions**: Multi-step requisition workflows with dynamic approval routing, budget validation, and real-time SLA metrics.
+- **Global Multi-Currency & Loaded Cost Engine**: Organization Base Currency (defaults to USD) with dynamic FX conversion, Display Currency switching, and native input currency preservation in aggregate views.
+- **Burden Load Factors & Employee Types**: Location/Category/Level load multipliers (taxes, pension, benefits) and custom employee type annualization multipliers (`:full-time`, `:part-time`, `:intern`).
 - **Tenant-Defined Custom Attributes**: Extensible attribute schemas for Employees and Headcounts supporting both display-only metadata (equity grants, previous pay) and active financial cost modifiers (bonuses, health plans, overhead) rolled up into payroll totals.
 - **Schema-Driven Dynamic CSV Ingestion**: Auto-generated import templates reflecting each tenant's custom schema with client/server pre-flight validation.
 - **Pipeline-to-Budget Synchronization**: Reconciles open ATS interview pipelines and pending offers against department budget allocations in real time.
