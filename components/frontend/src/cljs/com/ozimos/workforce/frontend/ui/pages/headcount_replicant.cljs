@@ -11,6 +11,14 @@
 ;; Pure State Transitions (shared Web/Mobile)
 ;; -----------------------------------------------------------------------------
 
+(def form-fields #{:form-title :form-unit-id :form-level :form-salary :form-justification})
+
+(defn form-valid?
+  "Checks whether all required requisition form fields are valid."
+  [{:keys [form-title form-unit-id]}]
+  (and (boolean (seq (str/trim (or form-title ""))))
+       (boolean (seq (str/trim (or form-unit-id ""))))))
+
 (defn set-form-field-state
   "Pure: assoc form field k with v."
   [db k v]
@@ -19,7 +27,7 @@
 (defn clear-form-state
   "Pure: clear form fields after submit."
   [db]
-  (assoc db :form-title "" :form-justification ""))
+  (assoc db :form-title "" :form-justification "" :form-salary "" :form-unit-id ""))
 
 (defn set-pending-approvals-state
   [db approvals]
@@ -198,6 +206,6 @@
                     :class "w-full rounded-md border-0 px-3 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 sm:text-sm"}]]]
       [:div {:class "mt-6 flex justify-end"}
        [:button {:class "rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 disabled:opacity-50"
-                 :disabled submitting
+                 :disabled (or submitting (not (form-valid? {:form-title form-title :form-unit-id form-unit-id})))
                  :on {:click [::create]}}
         (if submitting "Submitting..." "Submit Requisition")]]]]))
