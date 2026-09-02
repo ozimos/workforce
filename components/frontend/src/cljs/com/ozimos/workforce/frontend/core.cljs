@@ -126,20 +126,39 @@
             (fetch-org-chart!))
           (fetch-user-session!))))))
 
+(defn load-rc!
+  "Pure headless data loader: sends a component's EQL query to `/api/query`
+   and automatically merges and normalizes the response into the Fulcro App DB."
+  [component ident-or-query & [{:keys [on-success on-error]}]]
+  (when (is-logged-in?)
+    (let [state-atom (::app/state-atom app-inst)
+          eql-query (if (vector? ident-or-query)
+                      ident-or-query
+                      [{ident-or-query (:query (meta component))}])]
+      (swap! state-atom assoc :loading true :error nil)
+      (-> (transit/fetch-transit "/api/query" eql-query)
+          (.then (fn [{:keys [body status]}]
+                   (if (and status (>= status 400))
+                     (do
+                       (swap! state-atom assoc :loading false :error (str "Request failed with status " status))
+                       (when on-error (on-error body)))
+                     (do
+                       (swap! state-atom assoc :loading false)
+                       (when on-success (on-success body))))))
+          (.catch (fn [err]
+                    (swap! state-atom assoc :loading false :error (str err))
+                    (when on-error (on-error err))))))))
+
 (defn- fetch-org-chart! []
   (when (is-logged-in?)
     (let [state-atom (::app/state-atom app-inst)
           active-org (:active-org @state-atom)]
       (when-let [org-id (:org/id active-org)]
-        (swap! state-atom assoc :loading true :error nil)
-        (-> (transit/fetch-transit "/api/query"
-              [{[:org/id org-id]
-                [{:org/chart [:org/id :org/hierarchy
-                              {:org/units [:unit/id :unit/name :unit/division-id
-                                           :unit/dept-id :unit/parent-id :unit/budget
-                                           :unit/filled :unit/open :unit/pending
-                                           :unit/actors :unit/children]}]}]}])
-            (.then (fn [{:keys [body]}]
+        (load-rc! org-chart/OrgChartReplicant
+                  {[:org/id org-id] [{:org/chart [:org/id :org/hierarchy
+                                                  {:org/units (:query (meta org-chart/OrgUnit))}]}]}
+                  {:on-success
+                   (fn [body]
                      (let [chart (get-in body [[:org/id org-id] :org/chart])
                            unit-list (:org/units chart)
                            ;; Normalize entities into distinct dimensional tables
@@ -183,43 +202,37 @@
                                     (assoc :units unit-table
                                            :hierarchy hier
                                            :loading false)
-                                    ;; Standard Fulcro Entity Tables
                                     (update :division/id merge div-table)
                                     (update :dept/id merge dept-table)
-                                    (update :unit/id merge unit-table)))))))
-            (.catch (fn [err]
-                      (swap! state-atom assoc
-                             :loading false
-                             :error (str "Failed to load org chart: " err)))))))))
+                                    (update :unit/id merge unit-table))))))})))))
 
 (defn- fetch-user-session! []
   (when (is-logged-in?)
-    (-> (transit/fetch-transit "/api/query"
-          [:current-user/email :current-user/username :current-user/verified
-           {:user/active-org [:org/id :org/name :org/role]}
-           {:user/orgs [:org/id :org/name]}])
-        (.then (fn [{:keys [status body]}]
-                 (when (= 200 status)
-                   (let [data body
-                         active-org (:user/active-org data)
-                         orgs (:user/orgs data)
-                         org-table (into {}
-                                         (keep (fn [org]
-                                                 (when-let [oid (:org/id org)]
-                                                   [oid org])))
-                                         (concat (when active-org [active-org]) (or orgs [])))
-                         state-atom (::app/state-atom app-inst)]
-                     (when-let [e (:current-user/email data)]
-                       (.setItem js/localStorage "email" e))
-                     (when-let [u (:current-user/username data)]
-                       (.setItem js/localStorage "username" u))
-                     (swap! state-atom
-                            (fn [db]
-                              (-> db
-                                  (assoc :active-org active-org
-                                         :orgs (or orgs []))
-                                  (update :org/id merge org-table))))
-                     (fetch-org-chart!))))))))
+    (load-rc! nil
+              [:current-user/email :current-user/username :current-user/verified
+               {:user/active-org [:org/id :org/name :org/role]}
+               {:user/orgs [:org/id :org/name]}]
+              {:on-success
+               (fn [data]
+                 (let [active-org (:user/active-org data)
+                       orgs (:user/orgs data)
+                       org-table (into {}
+                                       (keep (fn [org]
+                                               (when-let [oid (:org/id org)]
+                                                 [oid org])))
+                                       (concat (when active-org [active-org]) (or orgs [])))
+                       state-atom (::app/state-atom app-inst)]
+                   (when-let [e (:current-user/email data)]
+                     (.setItem js/localStorage "email" e))
+                   (when-let [u (:current-user/username data)]
+                     (.setItem js/localStorage "username" u))
+                   (swap! state-atom
+                          (fn [db]
+                            (-> db
+                                (assoc :active-org active-org
+                                       :orgs (or orgs []))
+                                (update :org/id merge org-table))))
+                   (fetch-org-chart!)))})))
 
 (defn- handle-login-submit! []
   (let [state-atom (::app/state-atom app-inst)
