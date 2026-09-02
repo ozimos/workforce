@@ -303,7 +303,7 @@
   [ctx]
   (let [local (read-deps-local)
         auto-start? (get local :system/auto-start true)
-        auto-seed?  (get local :system/auto-seed false)]
+        auto-seed?  (get local :system/auto-seed true)]
     (if auto-start?
       (if auto-seed?
         (do (log/info "Configuring automatic system startup & seeding (user/start-and-seed!)...")
