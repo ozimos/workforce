@@ -21,6 +21,15 @@
           :permissions {:view-comp true}}
          overrides))
 
+(defn- base-headcounts []
+  {:headcount/id    "hc-001"
+   :headcount/title "Senior Engineer"
+   :headcount/division-id "ENG"
+   :headcount/dept-id "BE"
+   :headcount/job-level "L5"
+   :headcount/location "US"
+   :headcount/status "open"})
+
 (defn- valid-hiccup? [node]
   (cond
     (nil? node) true
@@ -55,6 +64,159 @@
       (is (not (str/includes? html "$320000")))
       (is (str/includes? html "Comp restricted"))
       (is (str/includes? html "Comp Masked")))))
+
+;; =============================================================================
+;; ABAC Headcount Filtering Tests (Unit-Level, Pure Functions)
+;; =============================================================================
+
+(deftest accessible-headcount-predicate
+  (testing "nil policy grants access to all headcounts (unrestricted/admin)"
+    (is (true? (sut/accessible-headcount? (base-headcounts) nil))))
+
+  (testing "matching all allowed dimensions grants access"
+    (let [policy {:allowed-divisions #{"ENG"}
+                  :allowed-depts #{"BE"}
+                  :allowed-levels #{"L5"}
+                  :allowed-locations #{"US"}}]
+      (is (true? (sut/accessible-headcount? (base-headcounts) policy)))))
+
+  (testing "division mismatch denies access"
+    (let [policy {:allowed-divisions #{"SALES"}}]
+      (is (false? (sut/accessible-headcount? (base-headcounts) policy)))))
+
+  (testing "dept mismatch denies access"
+    (let [policy {:allowed-depts #{"FE"}}]
+      (is (false? (sut/accessible-headcount? (base-headcounts) policy)))))
+
+  (testing "job level mismatch denies access"
+    (let [policy {:allowed-levels #{"L3" "L4"}}]
+      (is (false? (sut/accessible-headcount? (base-headcounts) policy)))))
+
+  (testing "location mismatch denies access"
+    (let [policy {:allowed-locations #{"EU" "Remote"}}]
+      (is (false? (sut/accessible-headcount? (base-headcounts) policy)))))
+
+  (testing "nil dimension in policy means unrestricted for that dimension"
+    (let [policy {:allowed-divisions nil   ;; unrestricted
+                  :allowed-depts #{"BE"}
+                  :allowed-levels nil      ;; unrestricted
+                  :allowed-locations #{"US" "EU"}}]
+      (is (true? (sut/accessible-headcount? (base-headcounts) policy)))))
+
+  (testing "partial policy — only specified dimensions are checked"
+    (let [policy {:allowed-divisions #{"ENG"}}  ;; only division restricted
+          hc-be {:headcount/id "hc-be" :headcount/division-id "ENG" :headcount/dept-id "ANY"
+                 :headcount/job-level "L2" :headcount/location "LATAM"}]
+      ;; All other dimensions unrestricted (nil) — only division matters
+      (is (true? (sut/accessible-headcount? hc-be policy)))))
+
+  (testing "empty policy map behaves as fully unrestricted (all nil dimensions)"
+    (is (true? (sut/accessible-headcount? (base-headcounts) {})))))
+
+(deftest filter-accessible-headcounts-pure
+  (let [hc-eng-be  {:headcount/id "hc-1" :headcount/division-id "ENG" :headcount/dept-id "BE"
+                    :headcount/job-level "L5" :headcount/location "US"}
+        hc-eng-fe  {:headcount/id "hc-2" :headcount/division-id "ENG" :headcount/dept-id "FE"
+                    :headcount/job-level "L3" :headcount/location "EU"}
+        hc-sales   {:headcount/id "hc-3" :headcount/division-id "SALES" :headcount/dept-id "SDR"
+                    :headcount/job-level "L2" :headcount/location "US"}]
+
+    (testing "nil policy returns all headcounts"
+      (is (= [hc-eng-be hc-eng-fe hc-sales]
+             (sut/filter-accessible-headcounts [hc-eng-be hc-eng-fe hc-sales] nil))))
+
+    (testing "policy restricting to ENG division filters out SALES"
+      (let [policy {:allowed-divisions #{"ENG"}}
+            result (sut/filter-accessible-headcounts [hc-eng-be hc-eng-fe hc-sales] policy)]
+        (is (= 2 (count result)))
+        (is (not (some #(= "hc-3" (:headcount/id %)) result)))))
+
+    (testing "policy restricting to BE dept returns only BE headcount"
+      (let [policy {:allowed-depts #{"BE"}}
+            result (sut/filter-accessible-headcounts [hc-eng-be hc-eng-fe hc-sales] policy)]
+        (is (= 1 (count result)))
+        (is (= "hc-1" (:headcount/id (first result))))))
+
+    (testing "policy restricting to L5 level returns only L5 headcounts"
+      (let [policy {:allowed-levels #{"L5"}}
+            result (sut/filter-accessible-headcounts [hc-eng-be hc-eng-fe hc-sales] policy)]
+        (is (= 1 (count result)))
+        (is (= "hc-1" (:headcount/id (first result))))))
+
+    (testing "combined division+location policy filters correctly"
+      (let [policy {:allowed-divisions #{"ENG"}
+                    :allowed-locations #{"EU"}}
+            result (sut/filter-accessible-headcounts [hc-eng-be hc-eng-fe hc-sales] policy)]
+        (is (= 1 (count result)))
+        (is (= "hc-2" (:headcount/id (first result))))))
+
+    (testing "empty headcount list returns empty"
+      (is (= [] (sut/filter-accessible-headcounts [] {:allowed-divisions #{"ENG"}}))))))
+
+;; =============================================================================
+;; ABAC Integration Tests (Rendering)
+;; =============================================================================
+
+(deftest abac-headcounts-rendering
+  (testing "headcounts visible when abac-policy is nil (unrestricted)"
+    (let [hcs-by-mgr {"u-alice" [{:headcount/id "hc-1"
+                                  :headcount/title "Senior Engineer"
+                                  :headcount/division-id "ENG"
+                                  :headcount/dept-id "BE"
+                                  :headcount/job-level "L5"
+                                  :headcount/location "US"}]}
+          props (base-props {:headcounts-by-manager hcs-by-mgr})
+          html (rs/render (sut/PeopleChartReplicant props))]
+      (is (str/includes? html "Senior Engineer"))
+      (is (str/includes? html "HC Unrestricted"))))
+
+  (testing "ABAC-allowed headcounts are shown; forbidden ones hidden"
+    (let [hcs-by-mgr {"u-alice" [{:headcount/id "hc-1"
+                                  :headcount/title "Senior Engineer"
+                                  :headcount/division-id "ENG"
+                                  :headcount/dept-id "BE"
+                                  :headcount/job-level "L5"
+                                  :headcount/location "US"}
+                                 {:headcount/id "hc-2"
+                                  :headcount/title "Sales Director"
+                                  :headcount/division-id "SALES"
+                                  :headcount/dept-id "AE"
+                                  :headcount/job-level "M3"
+                                  :headcount/location "EU"}]}
+          ;; Only ENG division allowed
+          abac-policy {:allowed-divisions #{"ENG"}}
+          props (base-props {:headcounts-by-manager hcs-by-mgr
+                             :abac/headcount-policy abac-policy})
+          html (rs/render (sut/PeopleChartReplicant props))]
+      (is (str/includes? html "Senior Engineer"))       ;; ENG → visible
+      (is (not (str/includes? html "Sales Director")))  ;; SALES → hidden
+      (is (str/includes? html "HC Scoped"))))           ;; policy indicator shown
+
+  (testing "fully forbidden policy hides all headcounts"
+    (let [hcs-by-mgr {"u-alice" [{:headcount/id "hc-1"
+                                  :headcount/title "Senior Engineer"
+                                  :headcount/division-id "ENG"
+                                  :headcount/dept-id "BE"
+                                  :headcount/job-level "L5"
+                                  :headcount/location "US"}]}
+          abac-policy {:allowed-divisions #{"SALES"}}  ;; ENG not allowed
+          props (base-props {:headcounts-by-manager hcs-by-mgr
+                             :abac/headcount-policy abac-policy})
+          html (rs/render (sut/PeopleChartReplicant props))]
+      (is (not (str/includes? html "Senior Engineer")))
+      ;; But employees still visible
+      (is (str/includes? html "Alice Smith"))))
+
+  (testing "employees are never hidden by ABAC (only headcounts are filtered)"
+    (let [abac-policy {:allowed-divisions #{}  ;; nothing allowed
+                       :allowed-depts #{}
+                       :allowed-levels #{}
+                       :allowed-locations #{}}
+          props (base-props {:abac/headcount-policy abac-policy})
+          html (rs/render (sut/PeopleChartReplicant props))]
+      ;; Employees always visible — ABAC doesn't touch person nodes
+      (is (str/includes? html "Alice Smith"))
+      (is (str/includes? html "Dan Johnson")))))
 
 (deftest pure-state-transitions
   (testing "collapse toggle and search pure functions"

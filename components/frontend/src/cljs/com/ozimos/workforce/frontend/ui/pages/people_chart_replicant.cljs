@@ -1,12 +1,65 @@
 (ns com.ozimos.workforce.frontend.ui.pages.people-chart-replicant
   "Pure Replicant People Org Chart: renders human reporting trees (manager -> reports),
    avatar badges, job titles, department tags, and conditional compensation figures
-   based on role-based access control (:view-comp permission)."
+   based on role-based access control (:view-comp permission).
+
+   ABAC Headcount Filtering
+   ========================
+   Employees (people nodes) are always shown — no ABAC applies to person visibility.
+   Headcounts (open/in-approval positions) ARE subject to ABAC. A user's
+   :abac/headcount-policy map specifies which dimension combinations they may see:
+
+     {:allowed-divisions  #{\"ENG\" \"SALES\"}   ;; nil = unrestricted
+      :allowed-depts      #{\"FE\" \"BE\"}        ;; nil = unrestricted
+      :allowed-levels     #{\"L3\" \"L4\" \"L5\"}  ;; nil = unrestricted
+      :allowed-locations  #{\"US\" \"EU\"}}       ;; nil = unrestricted
+
+   A headcount is visible iff ALL provided allow-sets admit its attributes.
+   Missing allow-set (nil) means the dimension is unrestricted."
   (:require-macros
    [com.ozimos.workforce.frontend.defrc :refer [defrc]])
   (:require
    [clojure.string :as str]
    [com.fulcrologic.fulcro.mutations :refer [defmutation]]))
+
+;; -----------------------------------------------------------------------------
+;; ABAC: Pure Headcount Access Predicate (shared Web / Mobile / SSR)
+;; -----------------------------------------------------------------------------
+
+(defn accessible-headcount?
+  "Returns true iff `headcount` is visible to a user with `policy`.
+   `policy` is the :abac/headcount-policy map from app state (may be nil).
+
+   A nil policy (e.g. admin / unrestricted user) grants access to all headcounts.
+   Each non-nil set in the policy restricts access: the headcount must match at
+   least one value in the set for that dimension. All dimensions must pass.
+
+   Headcount attributes checked:
+     :headcount/division-id  vs :allowed-divisions
+     :headcount/dept-id      vs :allowed-depts
+     :headcount/job-level    vs :allowed-levels
+     :headcount/location     vs :allowed-locations"
+  [headcount policy]
+  (if (nil? policy)
+    true
+    (let [{:keys [allowed-divisions allowed-depts allowed-levels allowed-locations]} policy
+          div    (:headcount/division-id headcount)
+          dept   (:headcount/dept-id headcount)
+          level  (:headcount/job-level headcount)
+          loc    (:headcount/location headcount)]
+      (and (or (nil? allowed-divisions) (contains? allowed-divisions div))
+           (or (nil? allowed-depts)     (contains? allowed-depts dept))
+           (or (nil? allowed-levels)    (contains? allowed-levels level))
+           (or (nil? allowed-locations) (contains? allowed-locations loc))))))
+
+(defn filter-accessible-headcounts
+  "Pure: returns the subset of `headcounts` (a seq of headcount maps) that the
+   user can access according to `abac-policy`. If `abac-policy` is nil,
+   all headcounts are returned."
+  [headcounts abac-policy]
+  (if (nil? abac-policy)
+    (vec headcounts)
+    (filterv #(accessible-headcount? % abac-policy) headcounts)))
 
 ;; -----------------------------------------------------------------------------
 ;; Pure State Transitions (shared Web / Mobile)
@@ -96,6 +149,26 @@
     [:div {:class (str "flex h-10 w-10 shrink-0 items-center justify-center rounded-full font-bold text-xs shadow-sm " bg-color)}
      initials]))
 
+(defn- headcount-badge
+  "Renders a compact badge for a visible headcount under a person node."
+  [hc]
+  [:div {:replicant/key (str (:headcount/id hc))
+         :class "flex items-center gap-1.5 px-2 py-1 bg-amber-50 rounded-md border border-amber-200 text-[11px]"}
+   [:span {:class "inline-flex items-center justify-center h-4 w-4 rounded-full bg-amber-200 text-amber-800 font-bold text-[10px]"} "HC"]
+   [:span {:class "font-medium text-amber-800 truncate max-w-[120px]"} (or (:headcount/title hc) "Open Position")]
+   (when-let [level (:headcount/job-level hc)]
+     [:span {:class "text-amber-600 font-mono"} level])
+   (when-let [loc (:headcount/location hc)]
+     [:span {:class "text-amber-500"} (str "· " loc)])])
+
+(defn- headcounts-for-person
+  "Returns visible headcounts (after ABAC filtering) for `person-id`.
+   `headcounts-by-manager` is a map of manager-id -> [headcount ...].
+   `abac-policy` is the :abac/headcount-policy from app state (nil = all visible)."
+  [person-id headcounts-by-manager abac-policy]
+  (let [hcs (get headcounts-by-manager person-id [])]
+    (filter-accessible-headcounts hcs abac-policy)))
+
 (defrc PersonCard
   {:query [:person/id :person/name :person/title :person/email :person/unit-id
            :person/department-name :person/division-name :person/role
@@ -114,7 +187,8 @@
        [:p {:class "text-xs text-indigo-600 mt-0.5"} (or department-name division-name)])]]])
 
 (defn- render-person-tree-node
-  [person-id people-map hierarchy collapsed-nodes search-term can-view-comp?]
+  [person-id people-map hierarchy collapsed-nodes search-term can-view-comp?
+   headcounts-by-manager abac-policy]
   (let [person (get people-map person-id {:person/id person-id :person/name (str person-id)})
         children (get hierarchy person-id [])
         has-children? (pos? (count children))
@@ -128,7 +202,9 @@
         matches-search? (and (seq search-term)
                              (or (str/includes? (str/lower-case name) search-term)
                                  (str/includes? (str/lower-case title) search-term)
-                                 (when dept (str/includes? (str/lower-case (str dept)) search-term))))]
+                                 (when dept (str/includes? (str/lower-case (str dept)) search-term))))
+        ;; ABAC-filtered headcounts for this person (as a manager)
+        visible-hcs (headcounts-for-person person-id headcounts-by-manager abac-policy)]
     [:div {:replicant/key (str person-id)
            :class "flex flex-col items-center"}
      ;; Person Card Node
@@ -143,11 +219,11 @@
          [:h4 {:class "font-bold text-sm text-gray-900 truncate"} name]
          (when role
            [:span {:class "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-gray-100 text-gray-700"}
-            (str/upper-case (name role))])]
+            (str/upper-case (clojure.core/name role))])]
         [:p {:class "text-xs font-medium text-gray-600 truncate mt-0.5"} title]
         (when dept
           [:p {:class "text-[11px] text-indigo-600 truncate font-mono mt-0.5"} (str "📁 " dept)])
-        ;; Compensation details (Field-Level RBAC Protected)
+        ;; Compensation details (Field-Level RBAC Protected — view-comp permission)
         (if can-view-comp?
           (if comp
             [:div {:class "mt-2 pt-2 border-t border-gray-100 flex items-center justify-between text-[11px] text-gray-500"}
@@ -157,6 +233,14 @@
             [:div {:class "mt-2 pt-2 border-t border-gray-100 text-[11px] text-gray-400 italic"} "Comp: Not configured"])
           [:div {:class "mt-2 pt-2 border-t border-gray-100 flex items-center gap-1 text-[11px] text-gray-400"}
            [:span "🔒 Comp restricted"]])]]
+
+      ;; ABAC-Filtered Headcounts for this manager
+      ;; Note: employees are always shown; only headcounts are ABAC-filtered.
+      (when (seq visible-hcs)
+        [:div {:class "mt-3 pt-2 border-t border-amber-100"}
+         [:p {:class "text-[10px] font-semibold text-amber-700 mb-1.5 uppercase tracking-wide"} "Open Headcounts"]
+         (into [:div {:class "flex flex-col gap-1"}]
+               (map headcount-badge visible-hcs))])
 
       ;; Expand / Collapse Toggle if has direct reports
       (when has-children?
@@ -178,7 +262,8 @@
                (when (> (count children) 1)
                  [[:div {:class "absolute top-0 left-12 right-12 h-0.5 bg-gray-300"}]])
                (map (fn [cid]
-                      (render-person-tree-node cid people-map hierarchy collapsed-nodes search-term can-view-comp?))
+                      (render-person-tree-node cid people-map hierarchy collapsed-nodes search-term can-view-comp?
+                                               headcounts-by-manager abac-policy))
                     children)))])]))
 
 ;; -----------------------------------------------------------------------------
@@ -187,14 +272,15 @@
 
 (defrc PeopleChartReplicant
   {:query [:loading :error :active-org :people :people-hierarchy :people-search
-           :collapsed-people :permissions
+           :collapsed-people :permissions :headcounts-by-manager :abac/headcount-policy
            {:people/list (:query (meta PersonCard))}]
    :ident :people-chart-replicant/root
    :ident-key :people-chart-replicant/root
    :route-segment ["org-chart"]}
   [{:keys [loading error active-org people people-hierarchy people-search
-           collapsed-people permissions]}]
-  (let [people-map (or people
+           collapsed-people permissions headcounts-by-manager] :as props}]
+  (let [abac-policy (get props :abac/headcount-policy)
+        people-map (or people
                        {"u-alice" {:person/id "u-alice" :person/name "Alice Smith" :person/title "Chief Executive Officer & Founder" :person/role :admin :person/department-name "Executive" :person/compensation {:salary 320000 :currency "USD"}}
                         "u-frank-vp" {:person/id "u-frank-vp" :person/name "Frank Miller" :person/title "VP of Engineering" :person/role :vp :person/department-name "Engineering Division" :person/manager-id "u-alice" :person/compensation {:salary 240000 :currency "USD"}}
                         "u-carol" {:person/id "u-carol" :person/name "Carol White" :person/title "Head of Core Systems" :person/role :dept-head :person/department-name "Backend Systems" :person/manager-id "u-frank-vp" :person/compensation {:salary 195000 :currency "USD"}}
@@ -217,6 +303,9 @@
                            (= user-role :dept-head)
                            (get-in permissions [:view-comp] false)
                            (get-in permissions [user-role :view-comp] false))
+        ;; headcounts-by-manager: map of manager-id -> [headcount ...]
+        ;; nil = no headcount data loaded (show nothing)
+        hcs-by-mgr (or headcounts-by-manager {})
         total-people (count people-map)]
     [:div {:class "mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 space-y-6"}
      ;; Page Header & Navigation to Alternate View
@@ -259,7 +348,13 @@
          [:div {:class "flex items-center gap-1 text-emerald-700 bg-emerald-50 px-2.5 py-1.5 rounded-md text-xs"}
           "🔓 Comp Visible"]
          [:div {:class "flex items-center gap-1 text-gray-500 bg-gray-50 px-2.5 py-1.5 rounded-md text-xs"}
-          "🔒 Comp Masked"])]]
+          "🔒 Comp Masked"])
+       ;; ABAC policy indicator
+       (if abac-policy
+         [:div {:class "flex items-center gap-1 text-amber-700 bg-amber-50 px-2.5 py-1.5 rounded-md text-xs"}
+          "⚙️ HC Scoped"]
+         [:div {:class "flex items-center gap-1 text-gray-400 bg-gray-50 px-2.5 py-1.5 rounded-md text-xs"}
+          "HC Unrestricted"])]]
 
      ;; People Tree Canvas
      [:div {:class "rounded-xl border border-gray-200 bg-gray-50/50 p-8 shadow-inner overflow-x-auto min-h-[480px]"}
@@ -276,5 +371,6 @@
         [:div {:class "flex justify-center min-w-max py-4"}
          (into [:div {:class "flex flex-col items-center gap-8"}]
                (map (fn [root-id]
-                      (render-person-tree-node root-id people-map hierarchy collapsed-nodes people-search can-view-comp?))
+                      (render-person-tree-node root-id people-map hierarchy collapsed-nodes people-search can-view-comp?
+                                               hcs-by-mgr abac-policy))
                     root-people))])]]))

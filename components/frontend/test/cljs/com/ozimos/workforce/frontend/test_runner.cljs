@@ -19,6 +19,7 @@
    [com.ozimos.workforce.frontend.ui.pages.org-chart-replicant-test]
    [com.ozimos.workforce.frontend.ui.pages.org-chart-test]
    [com.ozimos.workforce.frontend.ui.pages.org-dashboard-replicant-test]
+   [com.ozimos.workforce.frontend.ui.pages.people-chart-replicant-test]
    [com.ozimos.workforce.frontend.ui.pages.policy-settings-replicant-test]
    [com.ozimos.workforce.frontend.ui.pages.profile-replicant-test]
    [com.ozimos.workforce.frontend.ui.pages.profile-test]
@@ -40,6 +41,7 @@
     'com.ozimos.workforce.frontend.ui.pages.login-test
     'com.ozimos.workforce.frontend.ui.pages.org-chart-replicant-test
     'com.ozimos.workforce.frontend.ui.pages.org-dashboard-replicant-test
+    'com.ozimos.workforce.frontend.ui.pages.people-chart-replicant-test
     'com.ozimos.workforce.frontend.ui.pages.policy-settings-replicant-test
     'com.ozimos.workforce.frontend.ui.pages.org-chart-test
     'com.ozimos.workforce.frontend.ui.pages.profile-replicant-test

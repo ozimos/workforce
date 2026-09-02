@@ -318,6 +318,72 @@
       (is (= :filled (:headcount/status hire-data)))
       (is (= cand-id (:headcount/hired-user-id hire-data))))))
 
+(deftest ^:integration org-scoped-resolvers-require-membership-test
+  (testing "org-scoped resolvers and headcount/create reject unauthenticated and non-member viewers"
+    (let [owner (register-user)
+          outsider (register-user)
+          [ok o] (org/create-org! *deps* {:name (str "gate-org-" (short-suffix)) :owner-user-id (:id owner)})
+          _ (is ok)
+          org-id (:id o)
+          owner-env (build-env-with-org {:user-id (:id owner)})
+          outsider-env (build-env-with-org {:user-id (:id outsider)})
+          anon-env (build-env-with-org nil)]
+      (testing "unauthenticated viewers are rejected"
+        (is (thrown-with-msg? ExceptionInfo "Not authenticated"
+              (p.eql/process anon-env {:org/id org-id} [{:org/approval-rules [:rule-id]}]))))
+      (testing "org/approval-rules rejects non-members"
+        (is (thrown-with-msg? ExceptionInfo "Not a member of this org"
+              (p.eql/process outsider-env {:org/id org-id} [{:org/approval-rules [:rule-id]}]))))
+      (testing "org/role-permissions rejects non-members"
+        (is (thrown-with-msg? ExceptionInfo "Not a member of this org"
+              (p.eql/process outsider-env {:org/id org-id} [:org/role-permissions]))))
+      (testing "dept/dashboard rejects non-members of the unit's org"
+        (let [unit-id (str "dept-gate-" (short-suffix))]
+          (org/create-org-unit! *deps* {:unit-id unit-id :org-id org-id :name "Gated" :parent-id nil :budget 3})
+          (is (thrown-with-msg? ExceptionInfo "Not a member of this org"
+                                (p.eql/process outsider-env {:unit/id unit-id} [{:dept/dashboard [:unit/id]}])))))
+      (testing "headcount/timeline rejects non-members"
+        (let [create-res (pathom/process owner-env
+                         [(list 'headcount/create
+                            {:headcount/org-id org-id
+                             :headcount/title "Gated Req"
+                             :headcount/job-level "L6"})])
+              req-id (:headcount/id (first (vals create-res)))]
+          (is (some? req-id))
+          (is (thrown-with-msg? ExceptionInfo "Not a member of this org"
+                                (p.eql/process outsider-env {:headcount/id req-id} [{:headcount/timeline [:event]}])))))
+      (testing "headcount/create rejects non-members"
+        (is (thrown-with-msg? ExceptionInfo "Not a member of this org"
+              (pathom/process outsider-env
+                     [(list 'headcount/create
+                        {:headcount/org-id org-id :headcount/title "Nope"})]))))
+      )))
+
+(deftest ^:integration routing-rules-match-on-create-test
+  (testing "create-headcount-mutation derives bare-key facts so seeded routing rules match"
+    (let [owner (register-user)
+          [ok o] (org/create-org! *deps* {:name (str "route-org-" (short-suffix)) :owner-user-id (:id owner)})
+          _ (is ok)
+          org-id (:id o)
+          owner-env (build-env-with-org {:user-id (:id owner)})
+          _ (org/set-approval-rules! *deps* org-id
+                [{:rule-id "r-l6-vp"
+                  :priority 100
+                  :name "L6 direct-to-VP rule"
+                  :conditions [:= :job-level "L6"]
+                  :chain [{:step 1 :role :vp}]}])
+          create-res (pathom/process owner-env
+                          [(list 'headcount/create
+                                {:headcount/org-id org-id
+                                 :headcount/title "Routed Req"
+                                 :headcount/job-level "L6"})])
+          create-data (first (vals create-res))
+          req-id (:headcount/id create-data)
+          _ (is (some? req-id))
+          req-res (p.eql/process owner-env {:headcount/id req-id} [:headcount/chain-snapshot])
+          chain (:headcount/chain-snapshot req-res)]
+      (is (= [{:step 1 :role :vp}] chain)]))))
+
 (deftest ^:integration policy-and-permissions-mutations-test
   (testing "Approval rules and role permissions mutations & resolvers"
     (let [admin (register-user)

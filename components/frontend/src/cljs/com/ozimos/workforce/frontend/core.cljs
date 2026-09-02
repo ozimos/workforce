@@ -139,9 +139,10 @@
   [component ident-or-query & [{:keys [on-success on-error]}]]
   (when (is-logged-in?)
     (let [state-atom (::app/state-atom app-inst)
-          eql-query (if (vector? ident-or-query)
-                      ident-or-query
-                      [{ident-or-query (:query (meta component))}])]
+          eql-query (cond
+                      (vector? ident-or-query) ident-or-query
+                      (map? ident-or-query) [ident-or-query]
+                      :else [{ident-or-query (:query (meta component))}])]
       (swap! state-atom assoc :loading true :error nil)
       (-> (transit/fetch-transit "/api/query" eql-query)
           (.then (fn [{:keys [body status]}]
@@ -162,11 +163,16 @@
           active-org (:active-org @state-atom)]
       (when-let [org-id (:org/id active-org)]
         (load-rc! org-chart/OrgChartReplicant
-                  {[:org/id org-id] [{:org/chart [:org/id :org/hierarchy
-                                                  {:org/units (:query (meta org-chart/OrgUnit))}]}]}
+                  [{[:org/id org-id]
+                    [{:org/chart [:org/id :org/hierarchy
+                                  {:org/units [:unit/id :unit/name :unit/division-id
+                                               :unit/dept-id :unit/parent-id :unit/budget
+                                               :unit/filled :unit/open :unit/pending
+                                               :unit/actors :unit/children]}]}]}]
                   {:on-success
                    (fn [body]
-                     (let [chart (get-in body [[:org/id org-id] :org/chart])
+                     (let [chart (or (get-in body [[:org/id org-id] :org/chart])
+                                     (some (fn [[k v]] (when (and (vector? k) (= :org/id (first k))) (:org/chart v))) body))
                            unit-list (:org/units chart)
                            ;; Normalize entities into distinct dimensional tables
                            div-table (into {}

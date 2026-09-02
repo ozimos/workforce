@@ -3,6 +3,8 @@
   (:require
    [cljs.test :refer [deftest is testing]]
    [clojure.string :as str]
+   [com.ozimos.workforce.frontend.ui.pages.org-chart-replicant :as org-chart]
+   [com.ozimos.workforce.frontend.ui.pages.people-chart-replicant :as people-chart]
    [com.ozimos.workforce.frontend.ui.root-replicant :as root-rc]
    [replicant.string :as rs]))
 
@@ -34,6 +36,14 @@
       (is (str/includes? html "Workforce Dashboard")))))
 
 (deftest org-chart-populated-units-rendering
+  (testing "resolve-page-view maps :route/org-chart-2 to OrgChartReplicant"
+    (is (= org-chart/OrgChartReplicant
+           (root-rc/resolve-page-view :route/org-chart-2))))
+
+  (testing "resolve-page-view maps :route/org-chart to PeopleChartReplicant"
+    (is (= people-chart/PeopleChartReplicant
+           (root-rc/resolve-page-view :route/org-chart))))
+
   (testing "when org units exist, org-chart-2 page renders hierarchy tree, KPI badges, and NOT empty message"
     (let [units {"org-acme-div-eng"
                  {:unit/id "org-acme-div-eng"
@@ -57,18 +67,16 @@
                   :unit/pending 0}}
           hierarchy {nil ["org-acme-div-eng"]
                      "org-acme-div-eng" ["org-acme-dept-eng-frontend"]}
-          props {:route :route/org-chart-2
-                 :logged-in? true
-                 :active-org {:org/id 0 :org/name "Acme Corp" :org/role "ADMIN"}
-                 :orgs [{:org/id 0 :org/name "Acme Corp"}]
-                 :units units
-                 :hierarchy hierarchy
-                 :collapsed-nodes #{}
-                 :search-term ""
-                 :loading false
-                 :error nil}
-          hiccup (root-rc/RootReplicant props)
-          html (rs/render hiccup)]
+          ;; Test OrgChartReplicant directly rather than via RootReplicant
+          ;; to isolate the routing content from the root layout rendering
+          page-props {:loading false
+                      :error nil
+                      :active-org {:org/id 0 :org/name "Acme Corp" :org/role "ADMIN"}
+                      :units units
+                      :hierarchy hierarchy
+                      :collapsed-nodes #{}
+                      :search-term ""}
+          html (rs/render (org-chart/OrgChartReplicant page-props))]
       (is (str/includes? html "Divisions &amp; Departments Chart"))
       (is (str/includes? html "Acme Corp"))
       (is (str/includes? html "Engineering"))
