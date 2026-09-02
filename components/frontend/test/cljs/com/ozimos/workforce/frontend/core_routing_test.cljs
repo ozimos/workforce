@@ -4,7 +4,7 @@
    [cljs.test :refer [deftest is testing]]
    [clojure.string :as str]
    [com.ozimos.workforce.frontend.ui.pages.org-chart-replicant :as org-chart]
-   [com.ozimos.workforce.frontend.ui.pages.people-chart-replicant :as people-chart]
+   [com.ozimos.workforce.frontend.ui.pages.workforce-chart :as workforce-chart]
    [com.ozimos.workforce.frontend.ui.root-replicant :as root-rc]
    [replicant.string :as rs]))
 
@@ -40,8 +40,8 @@
     (is (= org-chart/OrgChartReplicant
            (root-rc/resolve-page-view :route/org-chart-2))))
 
-  (testing "resolve-page-view maps :route/org-chart to PeopleChartReplicant"
-    (is (= people-chart/PeopleChartReplicant
+  (testing "resolve-page-view maps :route/org-chart to WorkforceChart"
+    (is (= workforce-chart/WorkforceChart
            (root-rc/resolve-page-view :route/org-chart))))
 
   (testing "when org units exist, org-chart-2 page renders hierarchy tree, KPI badges, and NOT empty message"
@@ -87,20 +87,20 @@
       (is (not (str/includes? html "No Organizational Units Found")))
       (is (not (str/includes? html "Get started by creating your first Division")))))
 
-  (testing "org-chart renders people chart by default"
+  (testing "org-chart renders workforce chart by default"
     (let [props {:route :route/org-chart
                  :logged-in? true
                  :active-org {:org/id 0 :org/name "Acme Corp" :org/role "ADMIN"}
                  :orgs [{:org/id 0 :org/name "Acme Corp"}]
-                 :people {"u-alice" {:person/id "u-alice" :person/name "Alice Smith" :person/title "CEO" :person/role :admin :person/department-name "Exec" :person/compensation {:salary 320000 :currency "USD"}}}
-                 :people-hierarchy {nil ["u-alice"]}
-                 :collapsed-people #{}
-                 :people-search ""
+                 :workforce {"u-alice" {:person/id "u-alice" :person/name "Alice Smith" :person/title "CEO" :person/role :admin :person/department-name "Exec" :person/compensation {:salary 320000 :currency "USD"}}}
+                 :workforce-hierarchy {nil ["u-alice"]}
+                 :collapsed-workforce #{}
+                 :workforce-search ""
                  :loading false
                  :error nil}
           hiccup (root-rc/RootReplicant props)
           html (rs/render hiccup)]
-      (is (str/includes? html "People Organization Chart"))
+      (is (str/includes? html "Workforce Chart"))
       (is (str/includes? html "Alice Smith")))))
 
 (deftest dynamic-router-union-query-test

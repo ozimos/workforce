@@ -182,6 +182,10 @@
 (defn handle-mcp-request [deps ctx request-body]
   (mcp/handle-mcp-request deps ctx request-body))
 
+(defn get-org-workforce-chart
+  ([deps org-id viewer-ctx abac-policy]
+   (core/get-org-workforce-chart deps org-id viewer-ctx abac-policy)))
+
 ;; --- Seed Data Generation & Ingestion ---
 
 (defn generate-seed-data []

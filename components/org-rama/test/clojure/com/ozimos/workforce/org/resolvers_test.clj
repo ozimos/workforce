@@ -329,18 +329,18 @@
           outsider-env (build-env-with-org {:user-id (:id outsider)})
           anon-env (build-env-with-org nil)]
       (testing "unauthenticated viewers are rejected"
-        (is (thrown-with-msg? ExceptionInfo "Not authenticated"
+        (is (thrown-with-msg? clojure.lang.ExceptionInfo "Not authenticated"
               (p.eql/process anon-env {:org/id org-id} [{:org/approval-rules [:rule-id]}]))))
       (testing "org/approval-rules rejects non-members"
-        (is (thrown-with-msg? ExceptionInfo "Not a member of this org"
+        (is (thrown-with-msg? clojure.lang.ExceptionInfo "Not a member of this org"
               (p.eql/process outsider-env {:org/id org-id} [{:org/approval-rules [:rule-id]}]))))
       (testing "org/role-permissions rejects non-members"
-        (is (thrown-with-msg? ExceptionInfo "Not a member of this org"
+        (is (thrown-with-msg? clojure.lang.ExceptionInfo "Not a member of this org"
               (p.eql/process outsider-env {:org/id org-id} [:org/role-permissions]))))
       (testing "dept/dashboard rejects non-members of the unit's org"
         (let [unit-id (str "dept-gate-" (short-suffix))]
           (org/create-org-unit! *deps* {:unit-id unit-id :org-id org-id :name "Gated" :parent-id nil :budget 3})
-          (is (thrown-with-msg? ExceptionInfo "Not a member of this org"
+          (is (thrown-with-msg? clojure.lang.ExceptionInfo "Not a member of this org"
                                 (p.eql/process outsider-env {:unit/id unit-id} [{:dept/dashboard [:unit/id]}])))))
       (testing "headcount/timeline rejects non-members"
         (let [create-res (pathom/process owner-env
@@ -350,14 +350,13 @@
                              :headcount/job-level "L6"})])
               req-id (:headcount/id (first (vals create-res)))]
           (is (some? req-id))
-          (is (thrown-with-msg? ExceptionInfo "Not a member of this org"
+          (is (thrown-with-msg? clojure.lang.ExceptionInfo "Not a member of this org"
                                 (p.eql/process outsider-env {:headcount/id req-id} [{:headcount/timeline [:event]}])))))
       (testing "headcount/create rejects non-members"
-        (is (thrown-with-msg? ExceptionInfo "Not a member of this org"
+        (is (thrown-with-msg? clojure.lang.ExceptionInfo "Not a member of this org"
               (pathom/process outsider-env
                      [(list 'headcount/create
-                        {:headcount/org-id org-id :headcount/title "Nope"})]))))
-      )))
+                        {:headcount/org-id org-id :headcount/title "Nope"})])))))))
 
 (deftest ^:integration routing-rules-match-on-create-test
   (testing "create-headcount-mutation derives bare-key facts so seeded routing rules match"
@@ -382,7 +381,7 @@
           _ (is (some? req-id))
           req-res (p.eql/process owner-env {:headcount/id req-id} [:headcount/chain-snapshot])
           chain (:headcount/chain-snapshot req-res)]
-      (is (= [{:step 1 :role :vp}] chain)]))))
+      (is (= [{:step 1 :role :vp}] chain)))))
 
 (deftest ^:integration policy-and-permissions-mutations-test
   (testing "Approval rules and role permissions mutations & resolvers"
@@ -424,3 +423,50 @@
                            [:org/role-permissions])]
       (is (= {:view-headcount :view-tree :view-comp true :view-bonus false}
              (get-in resolved-perms [:org/role-permissions :dept-head]))))))
+
+(deftest ^:integration workforce-chart-resolver-test
+  (testing "workforce-chart-resolver returns workforce tree, hierarchy, and enforces backend RBAC/ABAC"
+    (let [admin (register-user)
+          emp-user (register-user)
+          [ok o] (org/create-org! *deps* {:name (str "wf-org-" (short-suffix)) :owner-user-id (:id admin)})
+          _ (is ok)
+          org-id (:id o)
+          _ (org/invite-to-org! *deps* {:org-id org-id :email (:email emp-user) :role "MEMBER" :invited-by (:id admin)})
+          inv-id (-> (org/list-invitations-for-user *deps* (:email emp-user)) first :invitation/id)
+          _ (org/join-org! *deps* {:user-id (:id emp-user) :invitation-id inv-id})
+
+          admin-env (build-env-with-org {:user-id (:id admin)})
+          emp-env   (build-env-with-org {:user-id (:id emp-user)})
+
+          ;; 1. Admin queries workforce chart
+          admin-res (p.eql/process admin-env {:org/id org-id}
+                      [{:org/workforce-chart [:org/id
+                                             :workforce/list
+                                             :workforce-hierarchy
+                                             :headcounts/list
+                                             :headcounts-by-manager]}])
+          chart-data (:org/workforce-chart admin-res)]
+
+      (is (some? chart-data))
+      (is (= org-id (:org/id chart-data)))
+      (is (vector? (:workforce/list chart-data)))
+      (is (map? (:workforce-hierarchy chart-data)))
+      (is (contains? (:workforce-hierarchy chart-data) nil))
+
+      ;; 2. RBAC Backend Comp Masking: Admin receives compensation
+      (when-let [p (first (:workforce/list chart-data))]
+        (is (some? (:person/compensation p))))
+
+      ;; 3. RBAC Backend Comp Masking: Regular Employee has compensation masked on the wire
+      (let [emp-res (p.eql/process emp-env {:org/id org-id}
+                      [{:org/workforce-chart [:org/id :workforce/list]}])
+            emp-chart (:org/workforce-chart emp-res)]
+        (doseq [p (:workforce/list emp-chart)]
+          (is (nil? (:person/compensation p)) "Employee role must receive nil compensation in raw response")))
+
+      ;; 4. ABAC Backend Headcount Filtering: Policy context excludes forbidden headcounts
+      (let [abac-env (assoc admin-env :abac-policy {:allowed-divisions #{"NONEXISTENT-DIV"}})
+            abac-res (p.eql/process abac-env {:org/id org-id}
+                       [{:org/workforce-chart [:headcounts/list :headcounts-by-manager]}])
+            filtered-hcs (get-in abac-res [:org/workforce-chart :headcounts/list])]
+        (is (empty? filtered-hcs) "Headcounts outside allowed dimensions must be excluded on the backend")))))

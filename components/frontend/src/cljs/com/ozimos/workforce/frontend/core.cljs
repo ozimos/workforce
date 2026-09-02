@@ -14,8 +14,9 @@
    [com.ozimos.workforce.frontend.ui.pages.headcount-replicant :as headcount]
    [com.ozimos.workforce.frontend.ui.pages.join-org-replicant :as join-org]
    [com.ozimos.workforce.frontend.ui.pages.login-replicant :as login]
+   [com.ozimos.workforce.frontend.abac :as abac]
    [com.ozimos.workforce.frontend.ui.pages.org-chart-replicant :as org-chart]
-   [com.ozimos.workforce.frontend.ui.pages.people-chart-replicant :as people-chart]
+   [com.ozimos.workforce.frontend.ui.pages.workforce-chart :as workforce-chart]
    [com.ozimos.workforce.frontend.ui.pages.policy-settings-replicant :as policy-settings]
    [com.ozimos.workforce.frontend.ui.pages.profile-replicant :as profile]
    [com.ozimos.workforce.frontend.ui.pages.register-replicant :as register]
@@ -69,7 +70,7 @@
       (= path "/") (if (is-logged-in?) :route/home :route/login)
       :else :route/login)))
 
-(declare fetch-org-chart! fetch-user-session!)
+(declare fetch-org-chart! fetch-workforce-chart! fetch-user-session!)
 
 (defn- route->target-ident
   "Maps a route keyword to the normalized Fulcro App DB ident for the page."
@@ -80,7 +81,7 @@
     (:route/create-org :route/create-org-replicant)           [:create-org-replicant/root :main]
     (:route/join-org :route/join-org-replicant)               [:join-org-replicant/root :main]
     (:route/org-dashboard :route/org-dashboard-replicant)     [:org-dashboard-replicant/root :main]
-    (:route/org-chart :route/org-chart-replicant)             [:people-chart-replicant/root :main]
+    (:route/org-chart :route/org-chart-replicant)             [:workforce-chart/root :main]
     (:route/org-chart-2 :route/org-chart-2-replicant)         [:org-chart-replicant/root :main]
     (:route/dept-dashboard :route/dept-dashboard-replicant)   [:dept-dashboard-replicant/root :main]
     (:route/headcount :route/headcount-replicant)             [:headcount-replicant/root :main]
@@ -127,9 +128,12 @@
       (sync-route-state! state-atom route (is-logged-in?))
       (when (is-logged-in?)
         (if (:active-org @state-atom)
-          (when (#{:route/org-chart :route/org-chart-replicant
-                   :route/org-chart-2 :route/org-chart-2-replicant
-                   :route/dept-dashboard :route/dept-dashboard-replicant} route)
+          (cond
+            (#{:route/org-chart :route/org-chart-replicant} route)
+            (fetch-workforce-chart!)
+
+            (#{:route/org-chart-2 :route/org-chart-2-replicant
+               :route/dept-dashboard :route/dept-dashboard-replicant} route)
             (fetch-org-chart!))
           (fetch-user-session!))))))
 
@@ -219,6 +223,55 @@
                                     (update :dept/id merge dept-table)
                                     (update :unit/id merge unit-table))))))})))))
 
+(defn- fetch-workforce-chart! []
+  (when (is-logged-in?)
+    (let [state-atom (::app/state-atom app-inst)
+          active-org (:active-org @state-atom)]
+      (when-let [org-id (:org/id active-org)]
+        (load-rc! workforce-chart/WorkforceChart
+                  [{[:org/id org-id]
+                    [{:org/workforce-chart [:org/id
+                                           :workforce/list
+                                           :workforce-hierarchy
+                                           :headcounts/list
+                                           :headcounts-by-manager]}]}]
+                  {:on-success
+                   (fn [body]
+                     (let [chart (or (get-in body [[:org/id org-id] :org/workforce-chart])
+                                     (some (fn [[k v]] (when (and (vector? k) (= :org/id (first k))) (:org/workforce-chart v))) body))
+                           workforce-list (:workforce/list chart)
+                           hierarchy (:workforce-hierarchy chart)
+                           headcounts-list (:headcounts/list chart)
+                           headcounts-by-mgr (:headcounts-by-manager chart)
+
+                           ;; Query-Driven DB Normalization:
+                           ;; Normalize workforce nodes into [:person/id id] entity table
+                           person-table (into {}
+                                              (map (fn [p] [(:person/id p) p]))
+                                              workforce-list)
+
+                           ;; Normalize headcounts into [:headcount/id id] entity table
+                           headcount-table (into {}
+                                                 (map (fn [h] [(:headcount/id h) h]))
+                                                 headcounts-list)
+
+                           ;; Compute initial collapsed nodes:
+                           ;; Expand root and its direct reports (depth <= 1), collapse deeper branches for instant rendering
+                           root-id (first (get hierarchy nil []))
+                           all-managers (set (keys (dissoc hierarchy nil)))
+                           initial-collapsed (disj all-managers root-id)]
+
+                       (swap! state-atom
+                              (fn [s]
+                                (-> s
+                                    (assoc-in [:person/id] (merge (get s :person/id {}) person-table))
+                                    (assoc-in [:headcount/id] (merge (get s :headcount/id {}) headcount-table))
+                                    (assoc :workforce person-table
+                                           :workforce-hierarchy hierarchy
+                                           :headcounts-by-manager headcounts-by-mgr
+                                           :collapsed-workforce initial-collapsed
+                                           :loading false))))))})))))
+
 (defn- fetch-user-session! []
   (when (is-logged-in?)
     (load-rc! nil
@@ -243,9 +296,14 @@
                           (fn [db]
                             (-> db
                                 (assoc :active-org active-org
-                                       :orgs (or orgs []))
+                                       :orgs (or orgs [])
+                                       :abac/policy (let [p (:user/abac-policy data)]
+                                                      (if (abac/policy-active? p) p {})))
                                 (update :org/id merge org-table))))
-                   (fetch-org-chart!)))})))
+                   (let [curr-route (:route @state-atom)]
+                     (if (#{:route/org-chart :route/org-chart-replicant} curr-route)
+                       (fetch-workforce-chart!)
+                       (fetch-org-chart!)))))})))
 
 (defn- handle-login-submit! []
   (let [state-atom (::app/state-atom app-inst)
@@ -384,11 +442,37 @@
    ::org-chart/refresh
    (fn [_] (fetch-org-chart!))
 
-   ;; People Chart Search
-   ::people-chart/set-people-search
-   (fn [ev]
-     (when-let [v (some-> (:replicant/js-event ev) .-target .-value)]
-       (comp/transact! app-inst [(people-chart/set-people-search {:value v})])))
+   ;; Workforce Chart Events
+   :com.ozimos.workforce.frontend.ui.pages.workforce-chart/set-search-term
+   (fn [data]
+     (let [term (if (map? data) (:term data) data)
+           state-atom (::app/state-atom app-inst)]
+       (swap! state-atom assoc :workforce-search term)))
+
+   :com.ozimos.workforce.frontend.ui.pages.workforce-chart/toggle-collapse
+   (fn [{:keys [id]}]
+     (let [state-atom (::app/state-atom app-inst)]
+       (swap! state-atom update :collapsed-workforce
+              (fn [s]
+                (let [curr (or s #{})]
+                  (if (contains? curr id)
+                    (disj curr id)
+                    (conj curr id)))))))
+
+   :com.ozimos.workforce.frontend.ui.pages.workforce-chart/expand-all
+   (fn [_]
+     (let [state-atom (::app/state-atom app-inst)]
+       (swap! state-atom assoc :collapsed-workforce #{})))
+
+   :com.ozimos.workforce.frontend.ui.pages.workforce-chart/collapse-all
+   (fn [_]
+     (let [state-atom (::app/state-atom app-inst)
+           hierarchy (:workforce-hierarchy @state-atom)
+           all-parents (set (keys (dissoc hierarchy nil)))]
+       (swap! state-atom assoc :collapsed-workforce all-parents)))
+
+   :com.ozimos.workforce.frontend.ui.pages.workforce-chart/refresh
+   (fn [_] (fetch-workforce-chart!))
 
    ;; Dept Dashboard
    ::dept-dashboard/set-tab

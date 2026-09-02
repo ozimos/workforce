@@ -179,6 +179,28 @@
                             :unit/children (:children u [])})
                          units)}})))
 
+(pco/defresolver workforce-chart-resolver
+  "Resolve full workforce organization chart hierarchy, employees, and ABAC-filtered headcounts."
+  [{:keys [deps] :as env} params]
+  {::pco/input [:org/id]
+   ::pco/output [{:org/workforce-chart [:org/id
+                                       :workforce/list
+                                       :workforce-hierarchy
+                                       :headcounts/list
+                                       :headcounts-by-manager]}]}
+  (let [user-id (require-auth env)
+        store (get-store deps)
+        org-id (:org/id params)]
+    (when (nil? (org/get-membership store user-id org-id))
+      (throw (ex-info "Not a member of this org" {:type :forbidden})))
+    (let [viewer (get-viewer-context env store org-id)
+          abac-policy (or (get-in env [:auth :abac-policy])
+                          (get-in env [:request :abac-policy])
+                          (get-in env [:abac-policy])
+                          nil)
+          result (org/get-org-workforce-chart store org-id viewer abac-policy)]
+      {:org/workforce-chart result})))
+
 (pco/defresolver dept-dashboard-resolver
   "Resolve department analytics dashboard: budget, filled, open, pending, avg SLA."
   [{:keys [deps] :as _env} params]
@@ -698,6 +720,7 @@
    org-approval-rules-resolver
    org-role-permissions-resolver
    headcount-available-actions-resolver
+   workforce-chart-resolver
 
    ;; Mutations
    create-org-mutation

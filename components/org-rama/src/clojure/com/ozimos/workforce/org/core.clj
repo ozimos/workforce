@@ -382,6 +382,17 @@
         reqs (rama/pstate cmgr mod-name "$$headcount-requests")]
     (safe-select-one (keypath request-id) reqs)))
 
+(defn list-headcount-requests [deps org-id]
+  (let [cmgr (get-cmgr deps)
+        mod-name (rama/module-name)
+        unit-reqs-pstate (rama/pstate cmgr mod-name "$$unit-requests")
+        reqs-pstate (rama/pstate cmgr mod-name "$$headcount-requests")
+        units (list-org-units deps org-id)
+        unit-ids (map :unit-id units)]
+    (vec (keep (fn [req-id] (safe-select-one (keypath req-id) reqs-pstate))
+               (distinct (mapcat (fn [uid] (keys (or (safe-select-one (keypath uid) unit-reqs-pstate) {})))
+                                 unit-ids))))))
+
 (defn get-user-pending-approvals [deps user-id]
   (let [cmgr (get-cmgr deps)
         mod-name (rama/module-name)
@@ -633,3 +644,147 @@
          :total-loaded-payroll 0.0
          :total-custom-modifiers-cost 0.0
          :total-cost-base-currency 0.0})))
+
+;; =============================================================================
+;; Workforce Chart & Reporting Hierarchy (Backend RBAC/ABAC Security Layer)
+;; =============================================================================
+
+(defonce ^:private seed-workforce-cache (atom {}))
+
+(defn- get-seed-org-data [org-name-or-id]
+  (if-let [cached (get @seed-workforce-cache org-name-or-id)]
+    cached
+    (try
+      (when-let [read-fn (requiring-resolve 'com.ozimos.workforce.org.seed/read-seed-nippy)]
+        (let [dataset (read-fn)
+              orgs (:organizations dataset)
+              found (or (some #(when (or (= (:org-id %) (str org-name-or-id))
+                                         (= (:name %) (str org-name-or-id))) %) orgs)
+                        (first orgs))]
+          (when found
+            (swap! seed-workforce-cache assoc org-name-or-id found)
+            found)))
+      (catch Exception _ nil))))
+
+(defn- can-view-comp? [viewer-ctx]
+  (let [role-raw (or (:role viewer-ctx) :employee)
+        role (keyword (str/lower-case (name role-raw)))]
+    (case role
+      (:admin :hr :recruiter :dept-head :hiring-manager) true
+      false)))
+
+(defn- abac-allows-headcount? [hc policy]
+  (if (or (nil? policy) (empty? policy))
+    true
+    (let [{:keys [allowed-divisions allowed-depts allowed-levels allowed-locations]} policy
+          div-id   (or (:division-id hc) (:headcount/division-id hc))
+          dept-id  (or (:dept-id hc) (:unit-id hc) (:headcount/dept-id hc))
+          level    (or (:job-level hc) (:headcount/job-level hc))
+          loc      (or (:location hc) (:headcount/location hc))]
+      (and (or (nil? allowed-divisions) (contains? allowed-divisions div-id))
+           (or (nil? allowed-depts) (contains? allowed-depts dept-id))
+           (or (nil? allowed-levels) (contains? allowed-levels level))
+           (or (nil? allowed-locations) (contains? allowed-locations loc))))))
+
+(defn get-org-workforce-chart
+  "Retrieves the workforce chart for an organization, enforcing backend-level
+   RBAC compensation masking and ABAC headcount filtering before serialization."
+  [deps org-id viewer-ctx abac-policy]
+  (let [seed-org (get-seed-org-data org-id)
+        view-comp? (can-view-comp? viewer-ctx)]
+    (if seed-org
+      ;; 1. Use seeded enterprise workforce dataset (10k nodes)
+      (let [tree (:tree seed-org)
+            employees (:employees seed-org)
+            employments (:employments seed-org)
+            headcounts (:headcounts seed-org)
+            emp-by-nid (into {} (map (fn [e] [(str/replace (:employee-id e) #"^emp-" "") e])) employees)
+            empmt-by-nid (into {} (map (fn [e] [(str/replace (:employee-id e) #"^emp-" "") e])) employments)
+            hc-by-nid (into {} (map (fn [h] [(str/replace (:request-id h) #"^req-" "") h])) headcounts)
+            children (:children tree)
+            root-id (:root-id tree)
+
+            ;; Filter headcounts on the backend via ABAC before transmission
+            allowed-hc-by-nid (into {} (filter (fn [[_ h]] (abac-allows-headcount? h abac-policy)) hc-by-nid))
+
+            ;; Build workforce employee list with backend comp masking
+            workforce-list
+            (mapv (fn [e]
+                    (let [nid (str/replace (:employee-id e) #"^emp-" "")
+                          empmt (get empmt-by-nid nid)]
+                      {:person/id nid
+                       :person/name (str (:first-name e) " " (:last-name e))
+                       :person/title (:job-title empmt "Employee")
+                       :person/email (:personal-email e)
+                       :person/unit-id (:unit-id empmt)
+                       :person/department-name (:unit-id empmt)
+                       :person/division-name (when-let [cat (:job-category empmt)] (name cat))
+                       :person/role (case (:job-level empmt)
+                                      ("L8" "L7") :admin
+                                      ("L6") :vp
+                                      ("L5") :dept-head
+                                      ("L4") :hiring-manager
+                                      :employee)
+                       :person/job-level (:job-level empmt)
+                       :person/location (:location empmt)
+                       :person/compensation (when view-comp?
+                                              {:salary (:base-salary empmt)
+                                               :currency (:currency empmt "USD")})}))
+                  employees)
+
+            ;; Build workforce-hierarchy and headcounts-by-manager
+            workforce-hierarchy (atom {nil [root-id]})
+            headcounts-by-manager (atom {})]
+
+        (doseq [[parent-nid child-nids] children]
+          (let [emp-children (filterv #(contains? emp-by-nid %) child-nids)
+                hc-children (keep #(get allowed-hc-by-nid %) child-nids)]
+            (when (seq emp-children)
+              (swap! workforce-hierarchy assoc parent-nid emp-children))
+            (when (seq hc-children)
+              (swap! headcounts-by-manager assoc parent-nid
+                     (mapv (fn [hc]
+                             {:headcount/id (:request-id hc)
+                              :headcount/title (:title hc "Open Position")
+                              :headcount/job-level (:job-level hc)
+                              :headcount/location (:location hc)
+                              :headcount/division-id (:division-id hc)
+                              :headcount/dept-id (:unit-id hc)
+                              :headcount/status (name (or (:status hc) :open))})
+                           hc-children)))))
+
+        {:org/id org-id
+         :workforce/list workforce-list
+         :workforce-hierarchy @workforce-hierarchy
+         :headcounts/list (mapv (fn [hc]
+                                  {:headcount/id (:request-id hc)
+                                   :headcount/title (:title hc "Open Position")
+                                   :headcount/job-level (:job-level hc)
+                                   :headcount/location (:location hc)
+                                   :headcount/division-id (:division-id hc)
+                                   :headcount/dept-id (:unit-id hc)
+                                   :headcount/status (name (or (:status hc) :open))})
+                                (vals allowed-hc-by-nid))
+         :headcounts-by-manager @headcounts-by-manager})
+
+      ;; 2. Fallback for dynamic/new orgs in Rama
+      (let [members (list-members deps org-id)
+            headcounts (filterv #(abac-allows-headcount? % abac-policy) (list-headcount-requests deps org-id))
+            owner-id (or (:owner-user-id (find-org-by-id deps org-id)) (-> members first :user-id) "u-owner")
+            workforce-list
+            (mapv (fn [m]
+                    {:person/id (str (:user-id m))
+                     :person/name (or (:name m) (:email m) (str "User " (:user-id m)))
+                     :person/title (if (= (:user-id m) owner-id) "Executive & Owner" (str (:role m "Member")))
+                     :person/email (:email m)
+                     :person/role (keyword (str/lower-case (str (:role m "employee"))))
+                     :person/compensation (when view-comp? {:salary 150000 :currency "USD"})})
+                  members)
+            workforce-hierarchy {nil [owner-id]
+                                 owner-id (mapv #(str (:user-id %)) (remove #(= (:user-id %) owner-id) members))}
+            headcounts-by-mgr (if (seq headcounts) {owner-id headcounts} {})]
+        {:org/id org-id
+         :workforce/list workforce-list
+         :workforce-hierarchy workforce-hierarchy
+         :headcounts/list headcounts
+         :headcounts-by-manager headcounts-by-mgr}))))
