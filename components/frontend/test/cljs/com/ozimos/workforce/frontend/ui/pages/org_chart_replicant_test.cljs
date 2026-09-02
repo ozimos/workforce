@@ -127,9 +127,12 @@
       (is (not (str/includes? html-no-match "ring-2"))))))
 
 (deftest defrc-metadata-preserved
-  (testing "OrgChartReplicant carries :query and :ident for Fulcro denormalization"
-    (is (= [:loading :error :active-org :units :hierarchy :search-term :collapsed-nodes]
-           (:query (meta sut/OrgChartReplicant))))
+  (testing "OrgChartReplicant carries composed :query and :ident for Fulcro denormalization"
+    (let [q (:query (meta sut/OrgChartReplicant))]
+      (is (vector? q))
+      (is (some #{:loading} q))
+      (is (some #{:units} q))
+      (is (some #(and (map? %) (contains? % :org/chart)) q)))
     (is (= :org-chart-replicant/root (:ident (meta sut/OrgChartReplicant)))))
   (testing "view is pure fn props -> hiccup, no React"
     (is (fn? sut/OrgChartReplicant))

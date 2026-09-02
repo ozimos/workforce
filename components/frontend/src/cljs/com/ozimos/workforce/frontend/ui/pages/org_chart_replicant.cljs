@@ -182,11 +182,34 @@
     (swap! state set-search-term-state value)))
 
 ;; -----------------------------------------------------------------------------
-;; Root View (defrc)
+;; Composed Component Queries for Query-Driven Automatic Normalization
 ;; -----------------------------------------------------------------------------
 
+(defrc DivisionItem
+  {:query [:division/id :division/name]
+   :ident :division/id}
+  [props]
+  [:span {:class "font-medium text-purple-700"} (or (:division/name props) (:division/id props))])
+
+(defrc DeptItem
+  {:query [:dept/id :dept/name]
+   :ident :dept/id}
+  [props]
+  [:span {:class "font-medium text-blue-700"} (or (:dept/name props) (:dept/id props))])
+
+(defrc OrgUnit
+  {:query [:unit/id :unit/name :unit/division-id :unit/dept-id :unit/parent-id
+           :unit/budget :unit/filled :unit/open :unit/pending :unit/actors :unit/children
+           {:unit/division (:query (meta DivisionItem))}
+           {:unit/dept (:query (meta DeptItem))}]
+   :ident :unit/id}
+  [props]
+  (render-unit-card props 0 false false))
+
 (defrc OrgChartReplicant
-  {:query [:loading :error :active-org :units :hierarchy :search-term :collapsed-nodes]
+  {:query [:loading :error :active-org :units :hierarchy :search-term :collapsed-nodes
+           {:org/chart [:org/id :org/hierarchy
+                        {:org/units (:query (meta OrgUnit))}]}]
    :ident :org-chart-replicant/root
    :ident-key :org-chart-replicant/root
    :route-segment ["org-chart"]}

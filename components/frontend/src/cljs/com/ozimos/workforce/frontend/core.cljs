@@ -142,17 +142,51 @@
             (.then (fn [{:keys [body]}]
                      (let [chart (get-in body [[:org/id org-id] :org/chart])
                            unit-list (:org/units chart)
-                           unit-map (into {} (map (fn [u] [(:unit/id u) u])) unit-list)
+                           ;; Normalize entities into distinct dimensional tables
+                           div-table (into {}
+                                           (keep (fn [u]
+                                                   (let [div-id (:unit/division-id u)]
+                                                     (when (seq div-id)
+                                                       [div-id {:division/id div-id
+                                                                :division/name (if (nil? (:unit/parent-id u))
+                                                                                 (:unit/name u)
+                                                                                 div-id)}]))))
+                                           unit-list)
+                           dept-table (into {}
+                                            (keep (fn [u]
+                                                    (let [dept-id (:unit/dept-id u)]
+                                                      (when (and (seq dept-id) (not= dept-id "ALL"))
+                                                        [dept-id {:dept/id dept-id
+                                                                  :dept/name (if (some? (:unit/parent-id u))
+                                                                               (:unit/name u)
+                                                                               dept-id)}]))))
+                                            unit-list)
+                           unit-table (into {}
+                                            (map (fn [u]
+                                                   [(:unit/id u)
+                                                    (assoc u
+                                                           :unit/division (when-let [div-id (:unit/division-id u)]
+                                                                            [:division/id div-id])
+                                                           :unit/dept (when-let [dept-id (:unit/dept-id u)]
+                                                                        (when (not= dept-id "ALL")
+                                                                          [:dept/id dept-id])))]))
+                                            unit-list)
                            hier (or (:org/hierarchy chart)
                                     (reduce (fn [acc u]
                                               (let [p (:unit/parent-id u)]
                                                 (update acc p (fnil conj []) (:unit/id u))))
                                             {}
                                             unit-list))]
-                       (swap! state-atom assoc
-                              :units unit-map
-                              :hierarchy hier
-                              :loading false))))
+                       (swap! state-atom
+                              (fn [db]
+                                (-> db
+                                    (assoc :units unit-table
+                                           :hierarchy hier
+                                           :loading false)
+                                    ;; Standard Fulcro Entity Tables
+                                    (update :division/id merge div-table)
+                                    (update :dept/id merge dept-table)
+                                    (update :unit/id merge unit-table)))))))
             (.catch (fn [err]
                       (swap! state-atom assoc
                              :loading false
