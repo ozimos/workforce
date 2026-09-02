@@ -11,6 +11,7 @@
 
 (defn- get-cmgr [deps]
   (or (-> deps :rama :cluster-manager)
+      (-> deps :rama/cluster :cluster-manager)
       (:cluster-manager deps)
       (throw (ex-info "Could not resolve Rama cluster manager from deps"
                       {:deps-keys (keys deps)}))))
