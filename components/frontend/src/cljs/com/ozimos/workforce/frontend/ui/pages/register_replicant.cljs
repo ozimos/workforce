@@ -49,7 +49,9 @@
 
 (defrc RegisterReplicant
   {:query [:email :password :confirm-password :error-msg :field-errors :success :created-username]
-   :ident :register-replicant/root}
+   :ident :register-replicant/root
+   :ident-key :register-replicant/root
+   :route-segment ["register"]}
   [{:keys [email password confirm-password error-msg field-errors success]}]
   [:div {:class "flex min-h-full flex-col justify-center px-6 py-12 lg:px-8"}
    [:div {:class "sm:mx-auto sm:w-full sm:max-w-sm"}

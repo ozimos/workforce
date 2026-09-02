@@ -16,7 +16,9 @@
 
 (defrc PolicySettingsReplicant
   {:query [:loading :error :active-org :permissions :rules]
-   :ident :policy-settings-replicant/root}
+   :ident :policy-settings-replicant/root
+   :ident-key :policy-settings-replicant/root
+   :route-segment ["policies"]}
   [{:keys [loading error active-org permissions rules]}]
   [:div {:class "mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 space-y-8"}
    [:div {:class "border-b border-gray-200 pb-5"}

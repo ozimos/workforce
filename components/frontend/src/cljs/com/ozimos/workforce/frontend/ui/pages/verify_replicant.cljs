@@ -17,7 +17,9 @@
 
 (defrc VerifyReplicant
   {:query [:status :message]
-   :ident :verify-replicant/root}
+   :ident :verify-replicant/root
+   :ident-key :verify-replicant/root
+   :route-segment ["verify"]}
   [{:keys [status message]}]
   [:div {:class "flex min-h-full flex-col justify-center px-6 py-12 lg:px-8"}
    [:div {:class "sm:mx-auto sm:w-full sm:max-w-sm"}

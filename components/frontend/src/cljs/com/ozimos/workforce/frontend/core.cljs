@@ -68,12 +68,58 @@
 
 (declare fetch-org-chart! fetch-user-session!)
 
+(defn- route->target-ident
+  "Maps a route keyword to the normalized Fulcro App DB ident for the page."
+  [route]
+  (case route
+    (:route/login :route/login-replicant)                     [:login-replicant/root :main]
+    (:route/register :route/register-replicant)               [:register-replicant/root :main]
+    (:route/create-org :route/create-org-replicant)           [:create-org-replicant/root :main]
+    (:route/join-org :route/join-org-replicant)               [:join-org-replicant/root :main]
+    (:route/org-dashboard :route/org-dashboard-replicant)     [:org-dashboard-replicant/root :main]
+    (:route/org-chart :route/org-chart-replicant)             [:org-chart-replicant/root :main]
+    (:route/dept-dashboard :route/dept-dashboard-replicant)   [:dept-dashboard-replicant/root :main]
+    (:route/headcount :route/headcount-replicant)             [:headcount-replicant/root :main]
+    (:route/policies :route/policies-replicant)               [:policy-settings-replicant/root :main]
+    (:route/profile :route/profile-replicant)                 [:profile-replicant/root :main]
+    (:route/forgot-password :route/forgot-password-replicant) [:forgot-password-replicant/root :main]
+    (:route/reset-password :route/reset-password-replicant)   [:reset-password-replicant/root :main]
+    (:route/verify :route/verify-replicant)                   [:verify-replicant/root :main]
+    (:route/home :route/home-replicant)                       [:home-replicant/root :main]
+    [:login-replicant/root :main]))
+
+(defn- sync-route-state!
+  "Pure helper to update both flat :route and normalized Dynamic Router ident in App DB."
+  [state-atom route logged-in?]
+  (let [target-ident (route->target-ident route)
+        [ident-table ident-id] target-ident]
+    (swap! state-atom
+           (fn [db]
+             (-> db
+                 (assoc :route route :logged-in? logged-in?)
+                 ;; Update normalized router table in Fulcro App DB
+                 (assoc-in [:root-router/by-id :main-router]
+                           {:router/id :main-router
+                            :router/current-route target-ident})
+                 ;; Ensure target ident table entry exists with current DB state
+                 (assoc-in [ident-table ident-id] (select-keys db [:identifier :password :error-msg :loading :success
+                                                                   :email :confirm-password :field-errors :name
+                                                                   :active-org :units :hierarchy :search-term
+                                                                   :collapsed-nodes :pending-approvals :submitting
+                                                                   :permissions :rules :new-username :mfa-stage
+                                                                   :mfa-secret :mfa-backup-codes :totp-code
+                                                                   :unit-id :dashboard :available-units
+                                                                   :invitations :members :invite-email :invite-role
+                                                                   :status :message]))
+                 ;; Set top-level router pointer
+                 (assoc :root/router [:root-router/by-id :main-router]))))))
+
 (defn- navigate! [path]
   (when (exists? js/window.history)
     (.pushState js/window.history nil "" path)
     (let [route (current-path-route)
           state-atom (::app/state-atom app-inst)]
-      (swap! state-atom assoc :route route :logged-in? (is-logged-in?))
+      (sync-route-state! state-atom route (is-logged-in?))
       (when (is-logged-in?)
         (if (:active-org @state-atom)
           (when (#{:route/org-chart :route/org-chart-replicant :route/dept-dashboard :route/dept-dashboard-replicant} route)
@@ -150,9 +196,9 @@
                      (when-let [u (:user body)]
                        (when (:email u) (.setItem js/localStorage "email" (:email u)))
                        (when (:username u) (.setItem js/localStorage "username" (:username u))))
-                     (swap! state-atom assoc :logged-in? true :route :route/home)
                      (when (exists? js/window.history)
                        (.pushState js/window.history nil "" "/"))
+                     (sync-route-state! state-atom :route/home true)
                      (fetch-user-session!))
 
                    :else
@@ -171,9 +217,9 @@
                      (.setItem js/localStorage "access-token" (:access-token body))
                      (.setItem js/localStorage "refresh-token" (:refresh-token body))
                      (.setItem js/localStorage "mfa-enabled" "true")
-                     (swap! state-atom assoc :logged-in? true :route :route/home)
                      (when (exists? js/window.history)
                        (.pushState js/window.history nil "" "/"))
+                     (sync-route-state! state-atom :route/home true)
                      (fetch-user-session!))
                    (swap! state-atom login/set-error-msg-state
                           (or (-> body :errors :code first) "Invalid 2FA code"))))))))
@@ -193,9 +239,9 @@
                          (when-let [u (get-in body [:user :username])] (.setItem js/localStorage "username" u))
                          (when-let [e (get-in body [:user :email])] (.setItem js/localStorage "email" e)))
                        (swap! state-atom register/set-success-state (get-in body [:user :username]))
-                       (swap! state-atom assoc :logged-in? true :route :route/home)
                        (when (exists? js/window.history)
                          (.pushState js/window.history nil "" "/"))
+                       (sync-route-state! state-atom :route/home true)
                        (fetch-user-session!))
                      (let [err-map (or (get-in body [:errors :errors]) (:errors body) {})
                            field-errs (into {} (filter (comp some? val)
@@ -421,8 +467,12 @@
     (let [state-atom (::app/state-atom app-inst)
           db @state-atom
           query (:query (meta root-rc/RootReplicant))
-          denormalized-tree (denorm/db->tree query db db)]
-      (r/render mount-el (root-rc/RootReplicant denormalized-tree)))))
+          denormalized-tree (denorm/db->tree query db db)
+          route (or (:route db) (current-path-route))
+          [target-ident-key _] (route->target-ident route)
+          router-props {:router/current-route {target-ident-key db}}
+          enriched-tree (assoc denormalized-tree :root/router router-props)]
+      (r/render mount-el (root-rc/RootReplicant enriched-tree)))))
 
 (defn schedule-render! []
   (when-not @render-scheduled?
@@ -442,8 +492,8 @@
     (let [state-atom (::app/state-atom app-inst)
           route (current-path-route)
           logged-in? (is-logged-in?)]
-      ;; Sync initial route and auth status into Fulcro DB
-      (swap! state-atom assoc :route route :logged-in? logged-in?)
+      ;; Sync initial route and auth status into Fulcro DB & dynamic router
+      (sync-route-state! state-atom route logged-in?)
       ;; Add watch on normalized Fulcro state atom for automatic render dispatch
       (remove-watch state-atom ::replicant-root)
       (add-watch state-atom ::replicant-root
@@ -478,7 +528,7 @@
     (fn [_]
       (let [route (current-path-route)
             state-atom (::app/state-atom app-inst)]
-        (swap! state-atom assoc :route route :logged-in? (is-logged-in?))
+        (sync-route-state! state-atom route (is-logged-in?))
         (when (is-logged-in?)
           (fetch-user-session!)))))
 

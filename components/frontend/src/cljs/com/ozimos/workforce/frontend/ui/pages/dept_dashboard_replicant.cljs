@@ -33,7 +33,9 @@
 
 (defrc DeptDashboardReplicant
   {:query [:loading :error :unit-id :dashboard :active-org :available-units]
-   :ident :dept-dashboard-replicant/root}
+   :ident :dept-dashboard-replicant/root
+   :ident-key :dept-dashboard-replicant/root
+   :route-segment ["dept-dashboard"]}
   [{:keys [loading error unit-id dashboard active-org available-units]}]
   (let [available-units (or available-units [])]
     [:div {:class "mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 space-y-6"}

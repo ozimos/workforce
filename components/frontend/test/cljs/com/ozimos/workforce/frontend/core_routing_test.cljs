@@ -3,7 +3,6 @@
   (:require
    [cljs.test :refer [deftest is testing]]
    [clojure.string :as str]
-   [com.ozimos.workforce.frontend.ui.pages.org-chart-replicant :as org-chart]
    [com.ozimos.workforce.frontend.ui.root-replicant :as root-rc]
    [replicant.string :as rs]))
 
@@ -79,3 +78,26 @@
       ;; Crucial regression check: empty state message must NOT appear
       (is (not (str/includes? html "No Organizational Units Found")))
       (is (not (str/includes? html "Get started by creating your first Division"))))))
+
+(deftest dynamic-router-union-query-test
+  (testing "MainRouter metadata defines union query over all target components"
+    (let [m (meta root-rc/MainRouter)
+          query (:query m)
+          target-map (:target-map m)
+          route-segment-map (:route-segment-map m)]
+      (is (= :main-router (:router-id m)))
+      (is (map? (first query)))
+      (is (contains? (first query) :router/current-route))
+      (is (contains? target-map :org-chart-replicant/root))
+      (is (contains? target-map :login-replicant/root))
+      (is (= ["org-chart"] (first (filter #(= % ["org-chart"]) (keys route-segment-map)))))))
+
+  (testing "MainRouter renders active target view when routed"
+    (let [router-props {:router/current-route {:login-replicant/root {:identifier "alice@acme.com"
+                                                                      :password ""
+                                                                      :error-msg nil
+                                                                      :mfa-required false}}}
+          hiccup (root-rc/MainRouter router-props)
+          html (rs/render hiccup)]
+      (is (str/includes? html "Sign in to your account"))
+      (is (str/includes? html "alice@acme.com")))))

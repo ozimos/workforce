@@ -29,7 +29,9 @@
 
 (defrc LoginReplicant
   {:query [:identifier :password :error-msg :mfa-required :mfa-token :mfa-code]
-   :ident :login-replicant/root}
+   :ident :login-replicant/root
+   :ident-key :login-replicant/root
+   :route-segment ["login"]}
   [{:keys [identifier password error-msg mfa-required mfa-code]}]
   [:div {:class "flex min-h-full flex-col justify-center px-6 py-12 lg:px-8"}
    [:div {:class "sm:mx-auto sm:w-full sm:max-w-sm"}

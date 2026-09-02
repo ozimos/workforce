@@ -20,7 +20,9 @@
 
 (defrc ForgotPasswordReplicant
   {:query [:email :sent]
-   :ident :forgot-password-replicant/root}
+   :ident :forgot-password-replicant/root
+   :ident-key :forgot-password-replicant/root
+   :route-segment ["forgot-password"]}
   [{:keys [email sent]}]
   [:div {:class "flex min-h-full flex-col justify-center px-6 py-12 lg:px-8"}
    [:div {:class "sm:mx-auto sm:w-full sm:max-w-sm"}

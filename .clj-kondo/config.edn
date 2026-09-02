@@ -10,7 +10,8 @@
   "imports/taoensso/encore"]
 
  :lint-as
- {com.ozimos.workforce.frontend.defrc/defrc clojure.core/defn}
+ {com.ozimos.workforce.frontend.defrc/defrc clojure.core/defn
+  com.ozimos.workforce.frontend.defrc/defrouter-rc clojure.core/def}
 
  :linters
  {:unused-namespace

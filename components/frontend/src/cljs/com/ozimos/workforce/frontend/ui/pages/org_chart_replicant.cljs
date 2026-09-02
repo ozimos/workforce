@@ -187,7 +187,9 @@
 
 (defrc OrgChartReplicant
   {:query [:loading :error :active-org :units :hierarchy :search-term :collapsed-nodes]
-   :ident :org-chart-replicant/root}
+   :ident :org-chart-replicant/root
+   :ident-key :org-chart-replicant/root
+   :route-segment ["org-chart"]}
   [{:keys [loading error active-org units hierarchy search-term collapsed-nodes]}]
   (let [unit-list (vals (or units {}))
         root-units (or (get hierarchy nil)

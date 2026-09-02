@@ -26,7 +26,9 @@
 
 (defrc ResetPasswordReplicant
   {:query [:password :confirm-password :error-msg :success]
-   :ident :reset-password-replicant/root}
+   :ident :reset-password-replicant/root
+   :ident-key :reset-password-replicant/root
+   :route-segment ["reset-password"]}
   [{:keys [password confirm-password error-msg success]}]
   [:div {:class "flex min-h-full flex-col justify-center px-6 py-12 lg:px-8"}
    [:div {:class "sm:mx-auto sm:w-full sm:max-w-sm"}

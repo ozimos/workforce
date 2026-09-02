@@ -75,7 +75,9 @@
 
 (defrc HomeReplicant
   {:query [:active-org]
-   :ident :home-replicant/root}
+   :ident :home-replicant/root
+   :ident-key :home-replicant/root
+   :route-segment ["home"]}
   [_props]
   [:div {:class "mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8"}
    [:div {:class "border-b border-gray-200 pb-6"}

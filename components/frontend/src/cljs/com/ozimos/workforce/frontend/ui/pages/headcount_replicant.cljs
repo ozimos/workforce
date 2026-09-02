@@ -87,7 +87,9 @@
 (defrc HeadcountReplicant
   {:query [:loading :error :active-org :pending-approvals :submitting :msg
            :form-unit-id :form-title :form-level :form-salary :form-justification]
-   :ident :headcount-replicant/root}
+   :ident :headcount-replicant/root
+   :ident-key :headcount-replicant/root
+   :route-segment ["headcount"]}
   [{:keys [loading error active-org pending-approvals submitting msg
            form-unit-id form-title form-level form-salary form-justification]}]
   (let [pending-approvals (or pending-approvals [])]

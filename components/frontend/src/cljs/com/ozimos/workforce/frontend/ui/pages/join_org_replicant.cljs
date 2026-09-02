@@ -61,7 +61,9 @@
 
 (defrc JoinOrgReplicant
   {:query [:invitations :loading :error-msg :accepting :accepted]
-   :ident :join-org-replicant/root}
+   :ident :join-org-replicant/root
+   :ident-key :join-org-replicant/root
+   :route-segment ["join-org"]}
   [{:keys [invitations loading error-msg accepting accepted]}]
   [:div {:class "flex min-h-full flex-col justify-center px-6 py-12 lg:px-8"}
    [:div {:class "sm:mx-auto sm:w-full sm:max-w-md"}

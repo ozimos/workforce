@@ -18,7 +18,9 @@
 
 (defrc OrgDashboardReplicant
   {:query [:loading :error-msg :active-org :orgs :members :members-loading :members-error :invite-email :invite-role :invite-loading :invite-msg]
-   :ident :org-dashboard-replicant/root}
+   :ident :org-dashboard-replicant/root
+   :ident-key :org-dashboard-replicant/root
+   :route-segment ["org-dashboard"]}
   [{:keys [loading active-org orgs members members-loading members-error invite-email invite-role invite-loading invite-msg]}]
   (let [members (or members []) orgs (or orgs [])]
     [:div {:class "mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8"}
