@@ -530,7 +530,7 @@
 
 (defn ^:export init []
   (try
-    (r/set-dispatch! (bridge/dispatch! event-handlers))
+    (r/set-dispatch! (bridge/dispatch! app-inst event-handlers))
     (let [state-atom (::app/state-atom app-inst)
           route (current-path-route)
           logged-in? (is-logged-in?)]

@@ -78,3 +78,13 @@
           "Handler must receive the payload arguments after the event keyword")
       (is (= "typed-query" (.. (:replicant/js-event @received-event) -target -value))
           "Handler must have access to the raw JS event target value from the event map"))))
+
+(deftest dispatch-auto-transacts-fulcro-mutations
+  (testing "Dispatch adapter automatically transacts mutation expressions without registered handler"
+    (let [app-inst (app/headless-synchronous-app demo-root)
+          state-atom (::app/state-atom app-inst)
+          adapter (bridge/dispatch! app-inst {})
+          mock-event-map {:replicant/trigger :replicant.trigger/dom-event}]
+      (is (nil? (:app/thing @state-atom)))
+      (adapter mock-event-map [(list 'com.ozimos.workforce.frontend.replicant-bridge-test/set-thing {:v 42})])
+      (is (= 42 (:app/thing @state-atom))))))
