@@ -1,6 +1,7 @@
 (ns com.ozimos.workforce.frontend.test-runner
   (:require
    [cljs.test :refer [run-tests]]
+   [com.ozimos.workforce.frontend.core-routing-test]
    [com.ozimos.workforce.frontend.replicant-bridge-test]
    [com.ozimos.workforce.frontend.transit-test]
    [com.ozimos.workforce.frontend.ui.components.nav-replicant-test]
@@ -27,6 +28,7 @@
 
 (defn main []
   (run-tests
+    'com.ozimos.workforce.frontend.core-routing-test
     'com.ozimos.workforce.frontend.transit-test
     'com.ozimos.workforce.frontend.replicant-bridge-test
     'com.ozimos.workforce.frontend.ui.pages.headcount-replicant-test
