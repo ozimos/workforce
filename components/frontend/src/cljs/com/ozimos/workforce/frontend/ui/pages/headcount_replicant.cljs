@@ -81,12 +81,28 @@
     (swap! state clear-form-state)))
 
 ;; -----------------------------------------------------------------------------
+;; Sub-components with Query & Ident
+;; -----------------------------------------------------------------------------
+
+(defrc HeadcountRequisition
+  {:query [:headcount/id :headcount/title :headcount/unit-id :headcount/job-level :headcount/current-step]
+   :ident :headcount/id}
+  [props]
+  [:tr {:replicant/key (str (:headcount/id props))}
+   [:td {:class "px-3 py-2 text-sm text-gray-500"} (str (:headcount/id props))]
+   [:td {:class "px-3 py-2 text-sm font-medium text-gray-900"} (:headcount/title props)]
+   [:td {:class "px-3 py-2 text-sm text-gray-600"} (:headcount/unit-id props)]
+   [:td {:class "px-3 py-2 text-sm text-gray-600"} (:headcount/job-level props)]
+   [:td {:class "px-3 py-2 text-sm text-gray-600"} (str "Step " (:headcount/current-step props))]])
+
+;; -----------------------------------------------------------------------------
 ;; Root View (defrc)
 ;; -----------------------------------------------------------------------------
 
 (defrc HeadcountReplicant
-  {:query [:loading :error :active-org :pending-approvals :submitting :msg
-           :form-unit-id :form-title :form-level :form-salary :form-justification]
+  {:query [:loading :error :active-org :submitting :msg
+           :form-unit-id :form-title :form-level :form-salary :form-justification
+           {:pending-approvals (:query (meta HeadcountRequisition))}]
    :ident :headcount-replicant/root
    :ident-key :headcount-replicant/root
    :route-segment ["headcount"]}

@@ -14,8 +14,25 @@
 (defmutation set-loading [{:keys [v]}] (action [{:keys [state]}] (swap! state set-loading-state v)))
 (defmutation set-error [{:keys [error]}] (action [{:keys [state]}] (swap! state set-error-state error)))
 
+;; -----------------------------------------------------------------------------
+;; Sub-components with Query & Ident
+;; -----------------------------------------------------------------------------
+
+(defrc ApprovalRule
+  {:query [:rule/id :rule/name :rule/priority :rule/trigger :rule/steps]
+   :ident :rule/id}
+  [props]
+  [:tr {:replicant/key (str (or (:rule/id props) (:rule/priority props)))}
+   [:td {:class "px-3 py-2 text-sm"} (str (:rule/priority props))]
+   [:td {:class "px-3 py-2 text-sm"} (or (:rule/name props) (:name props))]])
+
+;; -----------------------------------------------------------------------------
+;; View
+;; -----------------------------------------------------------------------------
+
 (defrc PolicySettingsReplicant
-  {:query [:loading :error :active-org :permissions :rules]
+  {:query [:loading :error :active-org :permissions
+           {:rules (:query (meta ApprovalRule))}]
    :ident :policy-settings-replicant/root
    :ident-key :policy-settings-replicant/root
    :route-segment ["policies"]}

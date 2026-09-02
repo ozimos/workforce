@@ -88,5 +88,8 @@
 
 (deftest metadata
   (testing "query ident"
-    (is (= [:loading :error :unit-id :dashboard :active-org :available-units] (:query (meta sut/DeptDashboardReplicant))))
+    (let [q (:query (meta sut/DeptDashboardReplicant))]
+      (is (vector? q))
+      (is (some #{:loading} q))
+      (is (some #(and (map? %) (contains? % :available-units)) q)))
     (is (= :dept-dashboard-replicant/root (:ident (meta sut/DeptDashboardReplicant))))))

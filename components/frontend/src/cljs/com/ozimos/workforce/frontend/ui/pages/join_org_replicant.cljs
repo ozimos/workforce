@@ -43,12 +43,12 @@
     (swap! state set-accepted-state)))
 
 ;; -----------------------------------------------------------------------------
-;; View
+;; Helpers & Sub-components with Query & Ident
 ;; -----------------------------------------------------------------------------
 
 (defn- render-invitation-card [accepting inv]
   (let [inv-id (:invitation/id inv)]
-    [:div {:key (str inv-id) :class "rounded-lg border border-gray-200 bg-white p-4 shadow-sm"}
+    [:div {:replicant/key (str inv-id) :class "rounded-lg border border-gray-200 bg-white p-4 shadow-sm"}
      [:div {:class "flex items-center justify-between"}
       [:div
        [:p {:class "text-sm font-semibold text-gray-900"} (:invitation/org-name inv)]
@@ -59,8 +59,19 @@
                 :on {:click [::accept-invitation inv-id]}}
        (if (= accepting inv-id) "Accepting..." "Accept")]]]))
 
+(defrc OrgInvitation
+  {:query [:invitation/id :invitation/org-name :invitation/role]
+   :ident :invitation/id}
+  [props]
+  (render-invitation-card nil props))
+
+;; -----------------------------------------------------------------------------
+;; View
+;; -----------------------------------------------------------------------------
+
 (defrc JoinOrgReplicant
-  {:query [:invitations :loading :error-msg :accepting :accepted]
+  {:query [:loading :error-msg :accepting :accepted
+           {:invitations (:query (meta OrgInvitation))}]
    :ident :join-org-replicant/root
    :ident-key :join-org-replicant/root
    :route-segment ["join-org"]}

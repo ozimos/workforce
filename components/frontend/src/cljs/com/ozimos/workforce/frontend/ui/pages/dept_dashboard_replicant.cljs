@@ -5,7 +5,8 @@
    [com.ozimos.workforce.frontend.defrc :refer [defrc]])
   (:require
    [clojure.string :as str]
-   [com.fulcrologic.fulcro.mutations :refer [defmutation]]))
+   [com.fulcrologic.fulcro.mutations :refer [defmutation]]
+   [com.ozimos.workforce.frontend.ui.pages.org-chart-replicant :as org-chart]))
 
 (defn- format-role-name [role-kw]
   (case role-kw
@@ -32,7 +33,8 @@
 (defmutation set-available-units [{:keys [units]}] (action [{:keys [state]}] (swap! state set-available-units-state units)))
 
 (defrc DeptDashboardReplicant
-  {:query [:loading :error :unit-id :dashboard :active-org :available-units]
+  {:query [:loading :error :unit-id :dashboard :active-org
+           {:available-units (:query (meta org-chart/OrgUnit))}]
    :ident :dept-dashboard-replicant/root
    :ident-key :dept-dashboard-replicant/root
    :route-segment ["dept-dashboard"]}

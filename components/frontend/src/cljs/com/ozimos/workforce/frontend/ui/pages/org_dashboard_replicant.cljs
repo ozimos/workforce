@@ -14,10 +14,30 @@
 (defmutation set-invite-role [{:keys [value]}] (action [{:keys [state]}] (swap! state set-invite-role-state value)))
 (defmutation set-invite-msg [{:keys [msg]}] (action [{:keys [state]}] (swap! state set-invite-msg-state msg)))
 (defmutation set-invite-loading [{:keys [v]}] (action [{:keys [state]}] (swap! state set-invite-loading-state v)))
-(defmutation set-members [{:keys [members]}] (action [{:keys [state]}] (swap! state set-members-state members)))
+;; -----------------------------------------------------------------------------
+;; Sub-components with Query & Ident
+;; -----------------------------------------------------------------------------
+
+(defrc OrgSummary
+  {:query [:org/id :org/name :org/role]
+   :ident :org/id}
+  [props]
+  [:span (:org/name props)])
+
+(defrc OrgMember
+  {:query [:member/user-id :member/role :member/status]
+   :ident :member/user-id}
+  [props]
+  [:tr {:replicant/key (str (:member/user-id props))}
+   [:td {:class "px-3 py-2 text-sm text-gray-900"} (str (:member/user-id props))]
+   [:td {:class "px-3 py-2 text-sm text-gray-500"} (str (:member/role props))]
+   [:td {:class "px-3 py-2 text-sm text-gray-500"} (str (or (:member/status props) "active"))]])
 
 (defrc OrgDashboardReplicant
-  {:query [:loading :error-msg :active-org :orgs :members :members-loading :members-error :invite-email :invite-role :invite-loading :invite-msg]
+  {:query [:loading :error-msg :members-loading :members-error :invite-email :invite-role :invite-loading :invite-msg
+           {:active-org (:query (meta OrgSummary))}
+           {:orgs (:query (meta OrgSummary))}
+           {:members (:query (meta OrgMember))}]
    :ident :org-dashboard-replicant/root
    :ident-key :org-dashboard-replicant/root
    :route-segment ["org-dashboard"]}

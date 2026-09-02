@@ -203,14 +203,22 @@
                    (let [data body
                          active-org (:user/active-org data)
                          orgs (:user/orgs data)
+                         org-table (into {}
+                                         (keep (fn [org]
+                                                 (when-let [oid (:org/id org)]
+                                                   [oid org])))
+                                         (concat (when active-org [active-org]) (or orgs [])))
                          state-atom (::app/state-atom app-inst)]
                      (when-let [e (:current-user/email data)]
                        (.setItem js/localStorage "email" e))
                      (when-let [u (:current-user/username data)]
                        (.setItem js/localStorage "username" u))
-                     (swap! state-atom assoc
-                            :active-org active-org
-                            :orgs (or orgs []))
+                     (swap! state-atom
+                            (fn [db]
+                              (-> db
+                                  (assoc :active-org active-org
+                                         :orgs (or orgs []))
+                                  (update :org/id merge org-table))))
                      (fetch-org-chart!))))))))
 
 (defn- handle-login-submit! []
