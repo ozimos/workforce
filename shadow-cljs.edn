@@ -4,6 +4,7 @@
  :builds {:app {:target :browser
                 :output-dir "bases/web/resources/public/js"
                 :compiler {:preloads [shadow.cljs.devtools.client.browser
+                                      com.fulcrologic.devtools.chrome-preload
                                       com.fulcrologic.fulcro.inspect.preload]}
                 :devtools {:after-load com.ozimos.workforce.frontend.core/refresh}
                 :init-fn com.ozimos.workforce.frontend.core/init
