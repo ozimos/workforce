@@ -34,7 +34,7 @@
       (is (str/includes? html "Workforce Dashboard")))))
 
 (deftest org-chart-populated-units-rendering
-  (testing "when org units exist, org-chart page renders hierarchy tree, KPI badges, and NOT empty message"
+  (testing "when org units exist, org-chart-2 page renders hierarchy tree, KPI badges, and NOT empty message"
     (let [units {"org-acme-div-eng"
                  {:unit/id "org-acme-div-eng"
                   :unit/name "Engineering"
@@ -57,7 +57,7 @@
                   :unit/pending 0}}
           hierarchy {nil ["org-acme-div-eng"]
                      "org-acme-div-eng" ["org-acme-dept-eng-frontend"]}
-          props {:route :route/org-chart
+          props {:route :route/org-chart-2
                  :logged-in? true
                  :active-org {:org/id 0 :org/name "Acme Corp" :org/role "ADMIN"}
                  :orgs [{:org/id 0 :org/name "Acme Corp"}]
@@ -69,7 +69,7 @@
                  :error nil}
           hiccup (root-rc/RootReplicant props)
           html (rs/render hiccup)]
-      (is (str/includes? html "Organization Chart"))
+      (is (str/includes? html "Divisions &amp; Departments Chart"))
       (is (str/includes? html "Acme Corp"))
       (is (str/includes? html "Engineering"))
       (is (str/includes? html "Web Platform &amp; Frontend Apps"))
@@ -77,7 +77,23 @@
       (is (str/includes? html "Filled Seats"))
       ;; Crucial regression check: empty state message must NOT appear
       (is (not (str/includes? html "No Organizational Units Found")))
-      (is (not (str/includes? html "Get started by creating your first Division"))))))
+      (is (not (str/includes? html "Get started by creating your first Division")))))
+
+  (testing "org-chart renders people chart by default"
+    (let [props {:route :route/org-chart
+                 :logged-in? true
+                 :active-org {:org/id 0 :org/name "Acme Corp" :org/role "ADMIN"}
+                 :orgs [{:org/id 0 :org/name "Acme Corp"}]
+                 :people {"u-alice" {:person/id "u-alice" :person/name "Alice Smith" :person/title "CEO" :person/role :admin :person/department-name "Exec" :person/compensation {:salary 320000 :currency "USD"}}}
+                 :people-hierarchy {nil ["u-alice"]}
+                 :collapsed-people #{}
+                 :people-search ""
+                 :loading false
+                 :error nil}
+          hiccup (root-rc/RootReplicant props)
+          html (rs/render hiccup)]
+      (is (str/includes? html "People Organization Chart"))
+      (is (str/includes? html "Alice Smith")))))
 
 (deftest dynamic-router-union-query-test
   (testing "MainRouter metadata defines union query over all target components"

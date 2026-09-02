@@ -11,6 +11,7 @@
    [com.ozimos.workforce.frontend.ui.pages.join-org-replicant :as join-org]
    [com.ozimos.workforce.frontend.ui.pages.login-replicant :as login]
    [com.ozimos.workforce.frontend.ui.pages.org-chart-replicant :as org-chart]
+   [com.ozimos.workforce.frontend.ui.pages.people-chart-replicant :as people-chart]
    [com.ozimos.workforce.frontend.ui.pages.org-dashboard-replicant :as org-dashboard]
    [com.ozimos.workforce.frontend.ui.pages.policy-settings-replicant :as policy-settings]
    [com.ozimos.workforce.frontend.ui.pages.profile-replicant :as profile]
@@ -29,6 +30,7 @@
                     create-org/CreateOrgReplicant
                     join-org/JoinOrgReplicant
                     org-dashboard/OrgDashboardReplicant
+                    people-chart/PeopleChartReplicant
                     org-chart/OrgChartReplicant
                     dept-dashboard/DeptDashboardReplicant
                     headcount/HeadcountReplicant
@@ -47,7 +49,8 @@
     (:route/create-org :route/create-org-replicant)             create-org/CreateOrgReplicant
     (:route/join-org :route/join-org-replicant)                 join-org/JoinOrgReplicant
     (:route/org-dashboard :route/org-dashboard-replicant)       org-dashboard/OrgDashboardReplicant
-    (:route/org-chart :route/org-chart-replicant)               org-chart/OrgChartReplicant
+    (:route/org-chart :route/org-chart-replicant)               people-chart/PeopleChartReplicant
+    (:route/org-chart-2 :route/org-chart-2-replicant)           org-chart/OrgChartReplicant
     (:route/dept-dashboard :route/dept-dashboard-replicant)     dept-dashboard/DeptDashboardReplicant
     (:route/headcount :route/headcount-replicant)               headcount/HeadcountReplicant
     (:route/policies :route/policies-replicant)                 policy-settings/PolicySettingsReplicant

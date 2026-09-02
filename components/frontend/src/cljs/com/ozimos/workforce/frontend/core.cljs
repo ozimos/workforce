@@ -15,6 +15,7 @@
    [com.ozimos.workforce.frontend.ui.pages.join-org-replicant :as join-org]
    [com.ozimos.workforce.frontend.ui.pages.login-replicant :as login]
    [com.ozimos.workforce.frontend.ui.pages.org-chart-replicant :as org-chart]
+   [com.ozimos.workforce.frontend.ui.pages.people-chart-replicant :as people-chart]
    [com.ozimos.workforce.frontend.ui.pages.policy-settings-replicant :as policy-settings]
    [com.ozimos.workforce.frontend.ui.pages.profile-replicant :as profile]
    [com.ozimos.workforce.frontend.ui.pages.register-replicant :as register]
@@ -48,6 +49,8 @@
       (= path "/org-dashboard-replicant") :route/org-dashboard-replicant
       (= path "/org-chart") :route/org-chart
       (= path "/org-chart-replicant") :route/org-chart-replicant
+      (= path "/org-chart-2") :route/org-chart-2
+      (= path "/org-chart-2-replicant") :route/org-chart-2-replicant
       (= path "/dept-dashboard") :route/dept-dashboard
       (= path "/dept-dashboard-replicant") :route/dept-dashboard-replicant
       (= path "/headcount") :route/headcount
@@ -77,7 +80,8 @@
     (:route/create-org :route/create-org-replicant)           [:create-org-replicant/root :main]
     (:route/join-org :route/join-org-replicant)               [:join-org-replicant/root :main]
     (:route/org-dashboard :route/org-dashboard-replicant)     [:org-dashboard-replicant/root :main]
-    (:route/org-chart :route/org-chart-replicant)             [:org-chart-replicant/root :main]
+    (:route/org-chart :route/org-chart-replicant)             [:people-chart-replicant/root :main]
+    (:route/org-chart-2 :route/org-chart-2-replicant)         [:org-chart-replicant/root :main]
     (:route/dept-dashboard :route/dept-dashboard-replicant)   [:dept-dashboard-replicant/root :main]
     (:route/headcount :route/headcount-replicant)             [:headcount-replicant/root :main]
     (:route/policies :route/policies-replicant)               [:policy-settings-replicant/root :main]
@@ -110,7 +114,8 @@
                                                                    :mfa-secret :mfa-backup-codes :totp-code
                                                                    :unit-id :dashboard :available-units
                                                                    :invitations :members :invite-email :invite-role
-                                                                   :status :message]))
+                                                                   :status :message :people :people-hierarchy
+                                                                   :people-search :collapsed-people]))
                  ;; Set top-level router pointer
                  (assoc :root/router [:root-router/by-id :main-router]))))))
 
@@ -122,7 +127,9 @@
       (sync-route-state! state-atom route (is-logged-in?))
       (when (is-logged-in?)
         (if (:active-org @state-atom)
-          (when (#{:route/org-chart :route/org-chart-replicant :route/dept-dashboard :route/dept-dashboard-replicant} route)
+          (when (#{:route/org-chart :route/org-chart-replicant
+                   :route/org-chart-2 :route/org-chart-2-replicant
+                   :route/dept-dashboard :route/dept-dashboard-replicant} route)
             (fetch-org-chart!))
           (fetch-user-session!))))))
 
@@ -370,6 +377,12 @@
        (comp/transact! app-inst [(org-chart/set-search-term {:value v})])))
    ::org-chart/refresh
    (fn [_] (fetch-org-chart!))
+
+   ;; People Chart Search
+   ::people-chart/set-people-search
+   (fn [ev]
+     (when-let [v (some-> (:replicant/js-event ev) .-target .-value)]
+       (comp/transact! app-inst [(people-chart/set-people-search {:value v})])))
 
    ;; Dept Dashboard
    ::dept-dashboard/set-tab
