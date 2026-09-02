@@ -1,9 +1,12 @@
 (ns com.ozimos.workforce.frontend.core
   (:require
+   [com.fulcrologic.devtools.chrome.target :as chrome-devtools]
    [com.fulcrologic.fulcro.algorithms.denormalize :as denorm]
    [com.fulcrologic.fulcro.application :as app]
    [com.fulcrologic.fulcro.components :as comp]
+   [com.ozimos.workforce.frontend.json :as json]
    [com.ozimos.workforce.frontend.replicant-bridge :as bridge]
+   [com.ozimos.workforce.frontend.transit :as transit]
    [com.ozimos.workforce.frontend.ui.components.nav-replicant :as nav]
    [com.ozimos.workforce.frontend.ui.pages.create-org-replicant :as create-org]
    [com.ozimos.workforce.frontend.ui.pages.dept-dashboard-replicant :as dept-dashboard]
@@ -17,6 +20,7 @@
    [com.ozimos.workforce.frontend.ui.pages.register-replicant :as register]
    [com.ozimos.workforce.frontend.ui.pages.reset-password-replicant :as reset-password]
    [com.ozimos.workforce.frontend.ui.root-replicant :as root-rc]
+   [fulcro.inspect.tool :as inspect]
    [goog.dom :as gdom]
    [replicant.dom :as r]))
 
@@ -26,6 +30,10 @@
 ;; -----------------------------------------------------------------------------
 
 (defonce app-inst (app/fulcro-app {}))
+
+(defn- is-logged-in? []
+  (and (exists? js/localStorage)
+       (some? (.getItem js/localStorage "access-token"))))
 
 (defn- current-path-route []
   (let [path (if (exists? js/window.location.pathname) js/window.location.pathname "/")]
@@ -55,19 +63,167 @@
       (= path "/login") :route/login
       (= path "/login-replicant") :route/login-replicant
       (= path "/home-replicant") :route/home-replicant
-      (= path "/") :route/home
+      (= path "/") (if (is-logged-in?) :route/home :route/login)
       :else :route/login)))
 
-(defn- is-logged-in? []
-  (and (exists? js/localStorage)
-       (some? (.getItem js/localStorage "access-token"))))
+(declare fetch-org-chart! fetch-user-session!)
 
 (defn- navigate! [path]
   (when (exists? js/window.history)
     (.pushState js/window.history nil "" path)
     (let [route (current-path-route)
           state-atom (::app/state-atom app-inst)]
-      (swap! state-atom assoc :route route :logged-in? (is-logged-in?)))))
+      (swap! state-atom assoc :route route :logged-in? (is-logged-in?))
+      (when (is-logged-in?)
+        (if (:active-org @state-atom)
+          (when (#{:route/org-chart :route/org-chart-replicant :route/dept-dashboard :route/dept-dashboard-replicant} route)
+            (fetch-org-chart!))
+          (fetch-user-session!))))))
+
+(defn- fetch-org-chart! []
+  (when (is-logged-in?)
+    (let [state-atom (::app/state-atom app-inst)
+          active-org (:active-org @state-atom)]
+      (when-let [org-id (:org/id active-org)]
+        (swap! state-atom assoc :loading true :error nil)
+        (-> (transit/fetch-transit "/api/query"
+              [{[:org/id org-id]
+                [{:org/chart [:org/id :org/hierarchy
+                              {:org/units [:unit/id :unit/name :unit/division-id
+                                           :unit/dept-id :unit/parent-id :unit/budget
+                                           :unit/filled :unit/open :unit/pending
+                                           :unit/actors :unit/children]}]}]}])
+            (.then (fn [{:keys [body]}]
+                     (let [chart (get-in body [[:org/id org-id] :org/chart])
+                           unit-list (:org/units chart)
+                           unit-map (into {} (map (fn [u] [(:unit/id u) u])) unit-list)
+                           hier (or (:org/hierarchy chart)
+                                    (reduce (fn [acc u]
+                                              (let [p (:unit/parent-id u)]
+                                                (update acc p (fnil conj []) (:unit/id u))))
+                                            {}
+                                            unit-list))]
+                       (swap! state-atom assoc
+                              :units unit-map
+                              :hierarchy hier
+                              :loading false))))
+            (.catch (fn [err]
+                      (swap! state-atom assoc
+                             :loading false
+                             :error (str "Failed to load org chart: " err)))))))))
+
+(defn- fetch-user-session! []
+  (when (is-logged-in?)
+    (-> (transit/fetch-transit "/api/query"
+          [:current-user/email :current-user/username :current-user/verified
+           {:user/active-org [:org/id :org/name :org/role]}
+           {:user/orgs [:org/id :org/name]}])
+        (.then (fn [{:keys [status body]}]
+                 (when (= 200 status)
+                   (let [data body
+                         active-org (:user/active-org data)
+                         orgs (:user/orgs data)
+                         state-atom (::app/state-atom app-inst)]
+                     (when-let [e (:current-user/email data)]
+                       (.setItem js/localStorage "email" e))
+                     (when-let [u (:current-user/username data)]
+                       (.setItem js/localStorage "username" u))
+                     (swap! state-atom assoc
+                            :active-org active-org
+                            :orgs (or orgs []))
+                     (fetch-org-chart!))))))))
+
+(defn- handle-login-submit! []
+  (let [state-atom (::app/state-atom app-inst)
+        {:keys [identifier password]} @state-atom]
+    (swap! state-atom assoc :error-msg nil)
+    (-> (json/fetch-json "/api/auth/login" "POST" {:identifier identifier :password password})
+        (.then (fn [{:keys [status body]}]
+                 (cond
+                   (and (= 200 status) (:mfa-required body))
+                   (swap! state-atom login/set-mfa-required-state (:mfa-token body))
+
+                   (= 200 status)
+                   (do
+                     (.setItem js/localStorage "access-token" (:access-token body))
+                     (.setItem js/localStorage "refresh-token" (:refresh-token body))
+                     (when-let [u (:user body)]
+                       (when (:email u) (.setItem js/localStorage "email" (:email u)))
+                       (when (:username u) (.setItem js/localStorage "username" (:username u))))
+                     (swap! state-atom assoc :logged-in? true :route :route/home)
+                     (when (exists? js/window.history)
+                       (.pushState js/window.history nil "" "/"))
+                     (fetch-user-session!))
+
+                   :else
+                   (swap! state-atom login/set-error-msg-state
+                          (or (-> body :errors :credentials first)
+                              "Invalid email/username or password"))))))))
+
+(defn- handle-mfa-submit! []
+  (let [state-atom (::app/state-atom app-inst)
+        {:keys [mfa-token mfa-code]} @state-atom]
+    (swap! state-atom assoc :error-msg nil)
+    (-> (json/fetch-json "/api/auth/mfa/login" "POST" {:mfa-token mfa-token :code mfa-code})
+        (.then (fn [{:keys [status body]}]
+                 (if (= 200 status)
+                   (do
+                     (.setItem js/localStorage "access-token" (:access-token body))
+                     (.setItem js/localStorage "refresh-token" (:refresh-token body))
+                     (.setItem js/localStorage "mfa-enabled" "true")
+                     (swap! state-atom assoc :logged-in? true :route :route/home)
+                     (when (exists? js/window.history)
+                       (.pushState js/window.history nil "" "/"))
+                     (fetch-user-session!))
+                   (swap! state-atom login/set-error-msg-state
+                          (or (-> body :errors :code first) "Invalid 2FA code"))))))))
+
+(defn- handle-register-submit! []
+  (let [state-atom (::app/state-atom app-inst)
+        {:keys [email password confirm-password]} @state-atom]
+    (if (not= password confirm-password)
+      (swap! state-atom register/set-field-errors-state {:confirm-password "Passwords do not match"})
+      (-> (json/fetch-json "/api/auth/register" "POST" {:email email :password password})
+          (.then (fn [{:keys [status body]}]
+                   (if (= 201 status)
+                     (do
+                       (when (exists? js/localStorage)
+                         (when-let [at (:access-token body)] (.setItem js/localStorage "access-token" at))
+                         (when-let [rt (:refresh-token body)] (.setItem js/localStorage "refresh-token" rt))
+                         (when-let [u (get-in body [:user :username])] (.setItem js/localStorage "username" u))
+                         (when-let [e (get-in body [:user :email])] (.setItem js/localStorage "email" e)))
+                       (swap! state-atom register/set-success-state (get-in body [:user :username]))
+                       (swap! state-atom assoc :logged-in? true :route :route/home)
+                       (when (exists? js/window.history)
+                         (.pushState js/window.history nil "" "/"))
+                       (fetch-user-session!))
+                     (let [err-map (or (get-in body [:errors :errors]) (:errors body) {})
+                           field-errs (into {} (filter (comp some? val)
+                                                 {:email    (first (:email err-map))
+                                                  :password (first (:password err-map))
+                                                  :username (first (:username err-map))}))]
+                       (swap! state-atom register/set-field-errors-state field-errs)
+                       (when (empty? field-errs)
+                         (swap! state-atom register/set-error-msg-state "Registration failed"))))))))))
+
+(defn- handle-create-org-submit! []
+  (let [state-atom (::app/state-atom app-inst)
+        org-name   (:name @state-atom)]
+    (swap! state-atom create-org/set-loading-state true)
+    (let [query [(list 'org/create {:org/name org-name})]]
+      (-> (transit/fetch-transit "/api/query" query)
+          (.then (fn [{:keys [body]}]
+                   (let [org-data (get body 'org/create)]
+                     (if (or (:org/errors org-data) (get body :errors))
+                       (swap! state-atom create-org/set-error-msg-state
+                              (or (-> org-data :org/errors :name first)
+                                  (-> body :errors :auth first)
+                                  "Failed to create organization"))
+                       (do
+                         (swap! state-atom create-org/set-success-state (:org/name org-data))
+                         (fetch-user-session!))))))
+          (.catch (fn [_]
+                    (swap! state-atom create-org/set-error-msg-state "Network error")))))))
 
 ;; -----------------------------------------------------------------------------
 ;; Global Replicant Event Dispatcher -> Fulcro Mutations & State Updates
@@ -106,13 +262,22 @@
    ::nav/toggle-dropdown
    (fn [_] (comp/transact! app-inst [(nav/toggle-dropdown {})]))
    ::nav/switch-org
-   (fn [_ org-id] (js/console.log "Switch org:" org-id))
+   (fn [_ org-id]
+     (let [state-atom (::app/state-atom app-inst)]
+       (swap! state-atom assoc :dropdown-open false)
+       (-> (transit/fetch-transit "/api/query" [(list 'org/switch {:org/id org-id})])
+           (.then (fn []
+                    (fetch-user-session!))))))
    ::nav/logout
    (fn [_]
      (when (exists? js/localStorage)
        (.removeItem js/localStorage "access-token")
        (.removeItem js/localStorage "refresh-token")
-       (.removeItem js/localStorage "user-info"))
+       (.removeItem js/localStorage "user-info")
+       (.removeItem js/localStorage "username")
+       (.removeItem js/localStorage "email"))
+     (let [state-atom (::app/state-atom app-inst)]
+       (swap! state-atom assoc :logged-in? false :active-org nil :orgs []))
      (navigate! "/login"))
 
    ;; Org Chart Mutations
@@ -126,6 +291,8 @@
    (fn [ev]
      (when-let [v (some-> (:replicant/js-event ev) .-target .-value)]
        (comp/transact! app-inst [(org-chart/set-search-term {:value v})])))
+   ::org-chart/refresh
+   (fn [_] (fetch-org-chart!))
 
    ;; Dept Dashboard
    ::dept-dashboard/set-tab
@@ -167,6 +334,16 @@
      (when-let [v (some-> (:replicant/js-event ev) .-target .-value)]
        (let [state-atom (::app/state-atom app-inst)]
          (swap! state-atom login/set-mfa-code-state v))))
+   ::login/submit-login
+   (fn [ev]
+     (when-let [js-ev (:replicant/js-event ev)]
+       (.preventDefault js-ev))
+     (handle-login-submit!))
+   ::login/submit-mfa
+   (fn [ev]
+     (when-let [js-ev (:replicant/js-event ev)]
+       (.preventDefault js-ev))
+     (handle-mfa-submit!))
 
    ;; Register Form
    ::register/set-email
@@ -184,6 +361,11 @@
      (when-let [v (some-> (:replicant/js-event ev) .-target .-value)]
        (let [state-atom (::app/state-atom app-inst)]
          (swap! state-atom register/set-confirm-password-state v))))
+   ::register/submit
+   (fn [ev]
+     (when-let [js-ev (:replicant/js-event ev)]
+       (.preventDefault js-ev))
+     (handle-register-submit!))
 
    ;; Create Org Form
    ::create-org/set-name
@@ -191,6 +373,11 @@
      (when-let [v (some-> (:replicant/js-event ev) .-target .-value)]
        (let [state-atom (::app/state-atom app-inst)]
          (swap! state-atom create-org/set-name-state v))))
+   ::create-org/submit
+   (fn [ev]
+     (when-let [js-ev (:replicant/js-event ev)]
+       (.preventDefault js-ev))
+     (handle-create-org-submit!))
 
    ;; Join Org Form
    ::join-org/accept-invitation
@@ -263,8 +450,20 @@
         (fn [_ _ old-state new-state]
           (when-not (identical? old-state new-state)
             (schedule-render!))))
+      ;; Connect Fulcro Inspect DevTools
+      (try
+        (chrome-devtools/install!)
+        (inspect/add-fulcro-inspect! app-inst)
+        (catch :default e
+          (js/console.warn "Fulcro inspect registration skipped:" e)))
+      (when (exists? js/window)
+        (set! (.-fulcro_app js/window) app-inst))
+
       ;; Initial render
-      (render!))
+      (render!)
+      ;; Fetch user session if logged in
+      (when logged-in?
+        (fetch-user-session!)))
     (catch :default e
       (js/console.error "Replicant Direct Mount failed:" e))))
 
@@ -279,7 +478,9 @@
     (fn [_]
       (let [route (current-path-route)
             state-atom (::app/state-atom app-inst)]
-        (swap! state-atom assoc :route route :logged-in? (is-logged-in?)))))
+        (swap! state-atom assoc :route route :logged-in? (is-logged-in?))
+        (when (is-logged-in?)
+          (fetch-user-session!)))))
 
   (.addEventListener js/window "error"
     (fn [e] (js/console.error "Uncaught error:" (.-error e) (.-message e))))
