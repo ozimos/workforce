@@ -38,7 +38,6 @@ Instead, `workforce` unifies data from these disparate systems of record into a 
 - **Burden Load Factors & Employee Types**: Location/Category/Level load multipliers (taxes, pension, benefits) and custom employee type annualization multipliers (`:full-time`, `:part-time`, `:intern`).
 - **Tenant-Defined Custom Attributes**: Extensible attribute schemas for Employees and Headcounts supporting both display-only metadata (equity grants, previous pay) and active financial cost modifiers (bonuses, health plans, overhead) rolled up into payroll totals.
 - **Schema-Driven Dynamic CSV Ingestion**: Auto-generated import templates reflecting each tenant's custom schema with client/server pre-flight validation.
-- **Pipeline-to-Budget Synchronization**: Reconciles open ATS interview pipelines and pending offers against department budget allocations in real time.
 - **Event-Sourced Hierarchy & Scoped RBAC**: Rama module topologies managing multi-tenant Organizations, Recursive Org Units (Divisions, Departments, Teams), Scoped Actors, and Dynamic Approval Rules.
 - **Zero-React DOM Rendering**: Replicant-driven UI rendering with seamless Fulcro normalized graph state management and zero React runtime overhead.
 - **Transactional Email System**: MJML responsive email templates (verification, password reset, org invitations) delivered via HTTP Send APIs with provider presets (`:mailpit`, `:resend`, `:postmark`, `:sendgrid`).
@@ -110,7 +109,7 @@ When developing in Git worktrees:
 |---|---|---|---|
 | `bb test-fast` | Warm Dev REPL / JVM | Runs backend test suites (Org, Resolvers, Auth, Web, RBAC) | **< 1.0s** (Warm) |
 | `bb test-fast <ns>` | Warm Dev REPL | Runs a single test namespace | **~ 50ms** |
-| `bb fe-test` | Node.js (`shadow-cljs`) | Headless ClojureScript Replicant page & component tests (93 tests, 341 assertions) | **~ 5s** |
+| `bb fe-test` | Node.js (`shadow-cljs`) | Headless ClojureScript Replicant page & component tests | **~ 5s** |
 | `bb lint` | `clj-kondo` | Lints entire codebase (workforce + omni-auth components) | **< 1s** (0 errors, 0 warnings) |
 | `bb fmt-check` | `standard-clj` | Code style and formatting validator | **< 1s** |
 | `bb test` | Standalone JVM | Cold Polylith test runner (`poly test`) | **~ 35s** |
@@ -134,7 +133,7 @@ workforce/
 │   └── frontend/                    # Replicant UI pages, components, and Fulcro state graph
 │
 ├── bases/
-│   └── web/                         # Ring HTTP API, Reitit routes, Jetty 12 adapter, SSR bridge
+│   └── web/                         # Ring HTTP API, Reitit routes, Jetty 12 adapter, static assets & SPA fallback
 │       └── resources/config.edn     # System configuration (HTTP email presets, auth policies, ports)
 │
 ├── development/
