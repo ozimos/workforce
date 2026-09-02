@@ -331,32 +331,8 @@
 ;; -----------------------------------------------------------------------------
 
 (def event-handlers
-  {;; Global Navigation
-   :com.ozimos.workforce.frontend.ui.pages.home-replicant/navigate
-   (fn [_ path] (navigate! path))
-   :com.ozimos.workforce.frontend.ui.components.nav-replicant/navigate
-   (fn [_ path] (navigate! path))
-   :com.ozimos.workforce.frontend.ui.pages.login-replicant/navigate
-   (fn [_ path] (navigate! path))
-   :com.ozimos.workforce.frontend.ui.pages.register-replicant/navigate
-   (fn [_ path] (navigate! path))
-   :com.ozimos.workforce.frontend.ui.pages.create-org-replicant/navigate
-   (fn [_ path] (navigate! path))
-   :com.ozimos.workforce.frontend.ui.pages.join-org-replicant/navigate
-   (fn [_ path] (navigate! path))
-   :com.ozimos.workforce.frontend.ui.pages.org-chart-replicant/navigate
-   (fn [_ path] (navigate! path))
-   :com.ozimos.workforce.frontend.ui.pages.dept-dashboard-replicant/navigate
-   (fn [_ path] (navigate! path))
-   :com.ozimos.workforce.frontend.ui.pages.headcount-replicant/navigate
-   (fn [_ path] (navigate! path))
-   :com.ozimos.workforce.frontend.ui.pages.policy-settings-replicant/navigate
-   (fn [_ path] (navigate! path))
-   :com.ozimos.workforce.frontend.ui.pages.org-dashboard-replicant/navigate
-   (fn [_ path] (navigate! path))
-   :com.ozimos.workforce.frontend.ui.pages.profile-replicant/navigate
-   (fn [_ path] (navigate! path))
-   :com.ozimos.workforce.frontend.ui.pages.verify-replicant/navigate
+  {;; Global Generic Navigation
+   :navigate
    (fn [_ path] (navigate! path))
 
    ;; Navigation Bar Mutations

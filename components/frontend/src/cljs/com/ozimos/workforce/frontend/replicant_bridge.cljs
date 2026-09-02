@@ -45,7 +45,10 @@
      (cond
        ;; Standard [::action-key & args]
        (and (vector? handler-data) (keyword? (first handler-data)))
-       (let [handler (get handlers (first handler-data))]
+       (let [k (first handler-data)
+             handler (or (get handlers k)
+                         (when (= "navigate" (name k))
+                           (get handlers :navigate)))]
          (if handler
            (apply handler event-map (rest handler-data))
            (js/console.warn "[replicant-bridge] no handler for" (pr-str handler-data))))
