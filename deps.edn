@@ -18,6 +18,10 @@
                      thheller/shadow-cljs     {:mvn/version "3.4.11"}
                      com.fulcrologic/fulcro   {:mvn/version "3.9.5"}
                      com.fulcrologic/statecharts {:mvn/version "1.4.0-RC19"}
+                     ;; pathom3 brings in funcool/promesa 8.0.450 which is too old;
+                     ;; statecharts 1.4.0-RC19 requires >= 10.0.570 on the macro JVM
+                     ;; classpath. Pin it here to override the transitive version.
+                     funcool/promesa          {:mvn/version "11.0.678"}
                      no.cjohansen/replicant   {:mvn/version "2026.07.1"}}
         ;; JNA (transitive dep, likely via Rama) calls
         ;; java.lang.System::load on Java 25+. Suppresses

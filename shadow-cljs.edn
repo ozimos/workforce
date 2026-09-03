@@ -1,6 +1,8 @@
 {:source-paths ["components/frontend/src/clj" "components/frontend/src/cljs" "components/frontend/src/cljc" "components/frontend/test/cljs" "components/frontend/test/cljc"]
  :dependencies [[com.fulcrologic/fulcro "3.9.5"]
                 [com.fulcrologic/statecharts "1.4.0-RC19"]
+                ;; Override pathom3's old funcool/promesa 8.0.450
+                [funcool/promesa "11.0.678"]
                 [no.cjohansen/replicant "2026.07.1"]]
  :builds {:app {:target :browser
                 :output-dir "bases/web/resources/public/js"
