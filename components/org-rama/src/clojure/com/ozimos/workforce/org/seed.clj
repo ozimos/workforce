@@ -342,8 +342,31 @@
       (:cluster-manager deps)
       (throw (ex-info "Could not resolve Rama cluster manager from deps" {:deps-keys (keys deps)}))))
 
+(def seed-append-batch-size
+  "Maximum depot records queued before waiting for Rama to finish processing a batch.
+
+   `foreign-append!` defaults to `:ack`, which waits for the append, replication,
+   and every colocated stream topology. Doing that for each seed record turns
+   20,000 records into 20,000 serialized round-trips. Instead, the first N-1
+   records in a batch are fire-and-forget and the last uses `:ack` as a barrier.
+   Depot ordering makes that final ack cover all earlier records in the batch."
+  1000)
+
+(defn- pipelined-append-all!
+  "Append `records` in order, waiting once per `seed-append-batch-size` records.
+
+   A final `:ack` is always sent, including for a short final batch. This keeps
+   load-seed-data!'s completion contract unchanged: once it returns, every seed
+   topology update is visible."
+  [depot records]
+  (doseq [batch (partition-all seed-append-batch-size records)]
+    (let [last-idx (dec (count batch))]
+      (doseq [[idx record] (map-indexed vector batch)]
+        (ramaapi/foreign-append! depot record (when (= idx last-idx) :ack)))))
+  nil)
+
 (defn load-seed-data!
-  "Fast batch-appends seed data into Rama depots and omni-auth user stores."
+  "Pipelined batch-appends seed data into Rama depots and omni-auth user stores."
   [deps dataset]
   (let [cmgr (get-cmgr deps)
         mod-name (rama/module-name)
@@ -433,21 +456,26 @@
               (rec/->LoadFactorRuleSet org-id loc (name cat) "*" (:multiplier lf) now)
               :ack)))
 
-        ;; 6. Employees & Employments Batch Appends
-        (let [emp-map (into {} (map (fn [empmt] [(:employee-id empmt) empmt])) (:employments org))]
-          (doseq [e (:employees org)]
-            (let [empmt (get emp-map (:employee-id e))]
-              (ramaapi/foreign-append! employee-depot
-                (rec/->EmployeeHire (:employee-id e) org-id owner-resolved-id
-                                    (:first-name e) (:last-name e) (:personal-email e)
-                                    (:hire-date e) :active
-                                    (:employment-id empmt) (:unit-id empmt)
-                                    (:job-title empmt) (:job-category empmt) (:job-level empmt)
-                                    (:employee-type empmt) (:location empmt)
-                                    (:base-salary empmt) (:currency empmt)
-                                    (:bonus-target empmt) (:custom-attributes empmt)
-                                    (:hire-date e) now (str "seed-" (:employee-id e)))
-                :ack))))
+        ;; 6. Employees & Employments — pipelined in bounded batches. The final
+        ;; append in each batch is the visibility barrier for the preceding 999.
+        (let [emp-map (into {} (map (fn [empmt] [(:employee-id empmt) empmt])) (:employments org))
+              employee-records
+              (map (fn [e]
+                     (let [empmt (get emp-map (:employee-id e))]
+              (rec/map->EmployeeHire
+               (assoc empmt
+                 :org-id org-id
+                 :user-id owner-resolved-id
+                 :first-name (:first-name e)
+                 :last-name (:last-name e)
+                 :personal-email (:personal-email e)
+                 :hire-date (:hire-date e)
+                 :status :active
+                 :start-date (:hire-date e)
+                 :created-at now
+                 :idempotency-key (str "seed-" (:employee-id e))))))
+                   (:employees org))]
+          (pipelined-append-all! employee-depot employee-records))
 
         ;; 7. Headcount Requisitions Lifecycle & Appends
         (doseq [req (:requisitions org)]
@@ -495,15 +523,16 @@
                                                           :hired-user-id cand-resolved-id
                                                           :idempotency-key (str "seed-hire-" req-id)})))))
 
-        ;; 8. Additional Generated Headcounts (if any)
-        (doseq [hc (:headcounts org)]
-          (ramaapi/foreign-append! headcount-depot
-            (rec/->HeadcountCreate (:request-id hc) org-id (:unit-id hc) (:division-id hc) nil
-                                   (:location hc) (:job-level hc) (:employee-type hc)
-                                   owner-resolved-id (:title hc) "10k Seed Headcount"
-                                   "Requisition Description" (:salary-band hc) (:bonus-target hc)
-                                   (:status hc) 1 [] now (str "seed-" (:request-id hc)))
-            :ack))))
+        ;; 8. Additional Generated Headcounts — same bounded pipeline as hires.
+        (pipelined-append-all!
+         headcount-depot
+         (map (fn [hc]
+                (rec/->HeadcountCreate (:request-id hc) org-id (:unit-id hc) (:division-id hc) nil
+                                       (:location hc) (:job-level hc) (:employee-type hc)
+                                       owner-resolved-id (:title hc) "10k Seed Headcount"
+                                       "Requisition Description" (:salary-band hc) (:bonus-target hc)
+                                       (:status hc) 1 [] now (str "seed-" (:request-id hc))))
+              (:headcounts org)))))
 
     {:ok true
      :users-seeded (count (:users dataset))
@@ -526,8 +555,10 @@
          (do
            (println (str "Rama cluster is already seeded (found " first-org-name "). Skipping seed."))
            {:ok true :status :already-seeded})
-         (do
-           (println (str "Seeding Rama cluster from " path "..."))
-           (let [res (load-seed-data! deps data)]
-             (println (str "Successfully seeded " (:organizations-seeded res) " organizations and " (:users-seeded res) " users."))
-             res)))))))
+        (let [started (System/nanoTime)]
+          (println (str "Seeding Rama cluster from " path "..."))
+          (let [res (load-seed-data! deps data)
+                elapsed-s (/ (double (- (System/nanoTime) started)) 1e9)]
+            (println (format "Successfully seeded %d organizations and %d users in %.2f seconds."
+                             (:organizations-seeded res) (:users-seeded res) elapsed-s))
+            (assoc res :elapsed-seconds elapsed-s))))))))

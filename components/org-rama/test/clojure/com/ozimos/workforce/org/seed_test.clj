@@ -5,6 +5,7 @@
    [com.ozimos.omni-auth.user.interface :as user]
    [com.ozimos.workforce.org.interface :as org]
    [com.ozimos.workforce.org.seed :as seed]
+   [com.rpl.rama :as ramaapi]
    [com.ozimos.workforce.web.test-system :as ts]))
 
 (def ^:dynamic *deps* nil)
@@ -17,6 +18,26 @@
       (tests))))
 
 (use-fixtures :once system-fixture)
+
+(deftest pipelined-append-all-test
+  (testing "only the final append in each bounded batch waits for a full topology ack"
+    (let [calls (atom [])
+          records (range 2505)]
+      (with-redefs [seed/seed-append-batch-size 1000
+                    ramaapi/foreign-append! (fn [depot record ack-level]
+                                              (swap! calls conj [depot record ack-level]))]
+        (#'seed/pipelined-append-all! :test-depot records))
+      (is (= 2505 (count @calls)))
+      (is (= [:ack :ack :ack]
+             (keep #(nth % 2) @calls)))
+      (is (= [999 1999 2504]
+             (map second (filter #(= :ack (nth % 2)) @calls))))))
+
+  (testing "an empty collection does not append a synthetic barrier record"
+    (let [calls (atom [])]
+      (with-redefs [ramaapi/foreign-append! (fn [& args] (swap! calls conj args))]
+        (#'seed/pipelined-append-all! :test-depot []))
+      (is (empty? @calls)))))
 
 (deftest seed-data-structure-and-serialization-test
   (testing "generate-seed-data produces complete dataset"
