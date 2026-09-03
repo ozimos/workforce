@@ -164,8 +164,8 @@
           _ (org/assign-org-actor! *deps* {:org-id org-id :unit-id dept-id :user-id (:id user) :role :hiring-manager})
           env (build-env-with-org {:user-id (:id user)})
           result (p.eql/process env {:org/id org-id}
-                   [{:org/chart [:org/id :org/hierarchy
-                                 {:org/units [:unit/id :unit/name :unit/parent-id :unit/budget :unit/actors :unit/children]}]}])
+                                [{:org/chart [:org/id :org/hierarchy
+                                              {:org/units [:unit/id :unit/name :unit/parent-id :unit/budget :unit/actors :unit/children]}]}])
           chart (:org/chart result)
           units (:org/units chart)
           hierarchy (:org/hierarchy chart)]
@@ -225,7 +225,7 @@
 
           ;; 3. Resolve Dept Dashboard
           dash-res (p.eql/process env {:unit/id dept-id}
-                     [{:dept/dashboard [:unit/id :unit/budget :unit/filled :unit/open :unit/pending :unit/avg-sla-ms]}])
+                                  [{:dept/dashboard [:unit/id :unit/budget :unit/filled :unit/open :unit/pending :unit/avg-sla-ms]}])
           dash (:dept/dashboard dash-res)]
       (is (= dept-id (:unit/id dash)))
       (is (= 8 (:unit/budget dash)))
@@ -258,15 +258,15 @@
           ;; 1. Admin creates headcount request
           chain [{:step 1 :role :hiring-manager}]
           create-res (pathom/process admin-env
-                       [(list 'headcount/create
-                          {:headcount/org-id org-id
-                           :headcount/unit-id dept-id
-                           :headcount/title "Staff AI Engineer"
-                           :headcount/job-level "L6"
-                           :headcount/employee-type :full-time
-                           :headcount/salary-band "$180k - $220k"
-                           :headcount/bonus-target "20%"
-                           :headcount/chain-snapshot chain})])
+                                     [(list 'headcount/create
+                                            {:headcount/org-id org-id
+                                             :headcount/unit-id dept-id
+                                             :headcount/title "Staff AI Engineer"
+                                             :headcount/job-level "L6"
+                                             :headcount/employee-type :full-time
+                                             :headcount/salary-band "$180k - $220k"
+                                             :headcount/bonus-target "20%"
+                                             :headcount/chain-snapshot chain})])
           create-data (first (vals create-res))
           req-id (:headcount/id create-data)
           _ (is (some? req-id))
@@ -274,34 +274,34 @@
 
           ;; 2. Capability Advertisement for Approver (Manager)
           mgr-actions-res (p.eql/process mgr-env {:headcount/id req-id}
-                            [:headcount/available-actions])
+                                         [:headcount/available-actions])
           mgr-actions (:headcount/available-actions mgr-actions-res)
           _ (is (contains? (set mgr-actions) :headcount/approve))
           _ (is (contains? (set mgr-actions) :headcount/reject))
 
           ;; 3. Approver (Manager) approves step 1
           approve-res (pathom/process mgr-env
-                        [(list 'headcount/approve-step
-                           {:headcount/org-id org-id
-                            :headcount/request-id req-id})])
+                                      [(list 'headcount/approve-step
+                                             {:headcount/org-id org-id
+                                              :headcount/request-id req-id})])
           approve-data (first (vals approve-res))
           _ (is (= :approved (:headcount/result approve-data)))
 
           ;; 4. Check capability advertisement after full approval
           after-appr-actions (p.eql/process admin-env {:headcount/id req-id}
-                               [:headcount/available-actions])
+                                            [:headcount/available-actions])
           admin-actions (:headcount/available-actions after-appr-actions)
           _ (is (contains? (set admin-actions) :headcount/transition-hire))
 
           ;; 5. Headcount Request Resolver with RBAC masking
           req-res (p.eql/process admin-env {:headcount/id req-id}
-                    [:headcount/id :headcount/title :headcount/status :headcount/salary-band])
+                                 [:headcount/id :headcount/title :headcount/status :headcount/salary-band])
           _ (is (= req-id (:headcount/id req-res)))
           _ (is (= :approved (:headcount/status req-res)))
 
           ;; 6. Headcount Timeline Resolver
           timeline-res (p.eql/process admin-env {:headcount/id req-id}
-                         [{:headcount/timeline [:event :actor :timestamp]}])
+                                      [{:headcount/timeline [:event :actor :timestamp]}])
           timeline (:headcount/timeline timeline-res)
           _ (is (>= (count timeline) 2))
 
@@ -309,14 +309,48 @@
           cand (register-user)
           cand-id (:id cand)
           hire-res (pathom/process admin-env
-                     [(list 'headcount/transition-hire
-                        {:headcount/org-id org-id
-                         :headcount/request-id req-id
-                         :headcount/hired-user-id cand-id
-                         :headcount/role "ENGINEER"})])
+                                   [(list 'headcount/transition-hire
+                                          {:headcount/org-id org-id
+                                           :headcount/request-id req-id
+                                           :headcount/hired-user-id cand-id
+                                           :headcount/role "ENGINEER"})])
           hire-data (first (vals hire-res))]
       (is (= :filled (:headcount/status hire-data)))
       (is (= cand-id (:headcount/hired-user-id hire-data))))))
+
+(defn- error-messages-of
+  "Collects candidate rejection messages from a Pathom op outcome, whether it
+   is a thrown ExceptionInfo (p.eql/process) or a {:error ...} map
+   (pathom/process). Walks the ExceptionInfo cause chain."
+  [res]
+  (cond
+    (instance? clojure.lang.ExceptionInfo res)
+    (let [msg (ex-message res)
+          cause (ex-cause res)]
+      (into []
+            (remove nil?
+                    (concat (when cause (error-messages-of cause))
+                            (when msg [msg])))))
+    (map? res)
+    (let [ex (or (:error res)
+                 (when (sequential? res) (some :error res)))]
+      (when ex (error-messages-of ex)))
+    (sequential? res)
+    (let [ex (some :error res)]
+      (when ex (error-messages-of ex)))))
+
+(defn- assert-rejected
+  "Asserts a Pathom op was rejected with a message matching pattern."
+  [op-thunk pattern]
+  (let [res (try (op-thunk)
+                 (catch clojure.lang.ExceptionInfo e e))]
+    (is (or (instance? clojure.lang.ExceptionInfo res)
+            (and (map? res) (or (:error res) (some :error res))))
+        (str "expected an error result, got: " res))
+    (let [msg (some #(re-find pattern %) (error-messages-of res))]
+      (is msg
+          (str "unexpected error message(s): " (error-messages-of res)
+               " (result: " res ")")))))
 
 (deftest ^:integration org-scoped-resolvers-require-membership-test
   (testing "org-scoped resolvers and headcount/create reject unauthenticated and non-member viewers"
@@ -329,34 +363,34 @@
           outsider-env (build-env-with-org {:user-id (:id outsider)})
           anon-env (build-env-with-org nil)]
       (testing "unauthenticated viewers are rejected"
-        (is (thrown-with-msg? clojure.lang.ExceptionInfo "Not authenticated"
-              (p.eql/process anon-env {:org/id org-id} [{:org/approval-rules [:rule-id]}]))))
+        (assert-rejected #(p.eql/process anon-env {:org/id org-id} [{:org/approval-rules [:rule-id]}])
+                         #"Not authenticated"))
       (testing "org/approval-rules rejects non-members"
-        (is (thrown-with-msg? clojure.lang.ExceptionInfo "Not a member of this org"
-              (p.eql/process outsider-env {:org/id org-id} [{:org/approval-rules [:rule-id]}]))))
+        (assert-rejected #(p.eql/process outsider-env {:org/id org-id} [{:org/approval-rules [:rule-id]}])
+                         #"Not a member of this org"))
       (testing "org/role-permissions rejects non-members"
-        (is (thrown-with-msg? clojure.lang.ExceptionInfo "Not a member of this org"
-              (p.eql/process outsider-env {:org/id org-id} [:org/role-permissions]))))
+        (assert-rejected #(p.eql/process outsider-env {:org/id org-id} [:org/role-permissions])
+                         #"Not a member of this org"))
       (testing "dept/dashboard rejects non-members of the unit's org"
         (let [unit-id (str "dept-gate-" (short-suffix))]
           (org/create-org-unit! *deps* {:unit-id unit-id :org-id org-id :name "Gated" :parent-id nil :budget 3})
-          (is (thrown-with-msg? clojure.lang.ExceptionInfo "Not a member of this org"
-                                (p.eql/process outsider-env {:unit/id unit-id} [{:dept/dashboard [:unit/id]}])))))
+          (assert-rejected #(p.eql/process outsider-env {:unit/id unit-id} [{:dept/dashboard [:unit/id]}])
+                           #"Not a member of this org")))
       (testing "headcount/timeline rejects non-members"
         (let [create-res (pathom/process owner-env
-                         [(list 'headcount/create
-                            {:headcount/org-id org-id
-                             :headcount/title "Gated Req"
-                             :headcount/job-level "L6"})])
+                                         [(list 'headcount/create
+                                                {:headcount/org-id org-id
+                                                 :headcount/title "Gated Req"
+                                                 :headcount/job-level "L6"})])
               req-id (:headcount/id (first (vals create-res)))]
           (is (some? req-id))
-          (is (thrown-with-msg? clojure.lang.ExceptionInfo "Not a member of this org"
-                                (p.eql/process outsider-env {:headcount/id req-id} [{:headcount/timeline [:event]}])))))
+          (assert-rejected #(p.eql/process outsider-env {:headcount/id req-id} [{:headcount/timeline [:event]}])
+                           #"Not a member of this org")))
       (testing "headcount/create rejects non-members"
-        (is (thrown-with-msg? clojure.lang.ExceptionInfo "Not a member of this org"
-              (pathom/process outsider-env
-                     [(list 'headcount/create
-                        {:headcount/org-id org-id :headcount/title "Nope"})])))))))
+(assert-rejected #(pathom/process outsider-env
+                                    [(list 'headcount/create
+                                           {:headcount/org-id org-id :headcount/title "Nope"})])
+                         #"Not a member of this org")))))
 
 (deftest ^:integration routing-rules-match-on-create-test
   (testing "create-headcount-mutation derives bare-key facts so seeded routing rules match"
@@ -366,16 +400,16 @@
           org-id (:id o)
           owner-env (build-env-with-org {:user-id (:id owner)})
           _ (org/set-approval-rules! *deps* org-id
-                [{:rule-id "r-l6-vp"
-                  :priority 100
-                  :name "L6 direct-to-VP rule"
-                  :conditions [:= :job-level "L6"]
-                  :chain [{:step 1 :role :vp}]}])
+                                     [{:rule-id "r-l6-vp"
+                                       :priority 100
+                                       :name "L6 direct-to-VP rule"
+                                       :conditions [:= :job-level "L6"]
+                                       :chain [{:step 1 :role :vp}]}])
           create-res (pathom/process owner-env
-                          [(list 'headcount/create
-                                {:headcount/org-id org-id
-                                 :headcount/title "Routed Req"
-                                 :headcount/job-level "L6"})])
+                                     [(list 'headcount/create
+                                            {:headcount/org-id org-id
+                                             :headcount/title "Routed Req"
+                                             :headcount/job-level "L6"})])
           create-data (first (vals create-res))
           req-id (:headcount/id create-data)
           _ (is (some? req-id))
@@ -398,29 +432,29 @@
                   :conditions [:= :job-level "L6"]
                   :chain [{:step 1 :role :director}]}]
           rules-res (pathom/process env
-                      [(list 'policy/set-approval-rules
-                         {:org/id org-id
-                          :rules rules})])
+                                    [(list 'policy/set-approval-rules
+                                           {:org/id org-id
+                                            :rules rules})])
           _ (is (= 1 (:count (first (vals rules-res)))))
 
           ;; Resolve approval rules
           resolved-rules (p.eql/process env {:org/id org-id}
-                           [{:org/approval-rules [:rule-id :name :priority]}])
+                                        [{:org/approval-rules [:rule-id :name :priority]}])
           _ (is (= 1 (count (:org/approval-rules resolved-rules))))
 
           ;; 2. Set role permissions
           perms-res (pathom/process env
-                      [(list 'policy/set-role-permissions
-                         {:org/id org-id
-                          :role :dept-head
-                          :permissions {:view-headcount :view-tree
-                                        :view-comp true
-                                        :view-bonus false}})])
+                                    [(list 'policy/set-role-permissions
+                                           {:org/id org-id
+                                            :role :dept-head
+                                            :permissions {:view-headcount :view-tree
+                                                          :view-comp true
+                                                          :view-bonus false}})])
           _ (is (= :dept-head (:role (first (vals perms-res)))))
 
           ;; Resolve role permissions
           resolved-perms (p.eql/process env {:org/id org-id}
-                           [:org/role-permissions])]
+                                        [:org/role-permissions])]
       (is (= {:view-headcount :view-tree :view-comp true :view-bonus false}
              (get-in resolved-perms [:org/role-permissions :dept-head]))))))
 
