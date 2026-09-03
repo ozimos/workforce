@@ -96,7 +96,7 @@ projects/auth-service/ # Production uberjar packaging
 6. **Global Multi-Currency & Loaded Cost Engine** — org base currency, FX rate matrix, employee-type annualization multipliers, location/category/level load factors, tenant-defined custom attributes with active cost modifiers, rolled up into `$$unit-cost-stats`.
 7. **Schema-Driven CSV Ingestion** — template generation from tenant schema, dry-run validation, atomic batch ingestion.
 8. **Federated Auth** — OAuth2/OIDC provider authorize/callback and SAML SP-initiated authenticate/ACS.
-9. **Replicant Frontend** — 14 pages plus nav and root, rendered without React, driven by a headless Fulcro normalized DB.
+9. **Replicant Frontend** — 15 pages plus nav and root, rendered without React, driven by a headless Fulcro normalized DB and a `defrouter-rc` union-query router.
 10. **MJML Transactional Email** — verification, password reset, org invitation; Mailpit in dev.
 11. **MCP Endpoint & Escapement Agent Tooling** — `/api/mcp` plus a behavior-tree hiring-approval chart runnable headless or with a live debugger.
 
@@ -194,6 +194,13 @@ Security is **Buddy**-based; there is no Spring/Jakarta filter chain in this cod
    - FIDO2 / Passkey credentials via `/api/auth/passkeys/*`.
 4. **Federation** — OAuth2/OIDC and SAML, handled by the `omni-auth` `oauth` and `saml`
    components and exchanged for the application's own JWT on success.
+5. **Tenant authorization at the resolver layer** — authentication is not sufficient to
+   read an org. Pathom resolvers call `require-org-member`, which rejects the request
+   unless `org/get-membership` returns a row for the caller in the target org. This is
+   enforced on org metadata, dept-dashboard, and headcount-timeline resolvers, and on the
+   `headcount/create` mutation — so a valid JWT for org A cannot read or write org B.
+6. **Attribute-based masking** — the people chart applies RBAC compensation masking
+   client-side, hiding pay fields the viewer is not cleared to see.
 
 ---
 
@@ -239,22 +246,47 @@ Non-`/api` 404s fall back to `public/index.html` (SPA fallback).
 ## 7. Frontend Architecture
 
 **Headless Fulcro + Replicant DOM.** Fulcro is used for its normalized client DB, EQL
-queries, and mutations — but never for rendering. There are zero React components.
+queries, and mutations — but never for rendering. There are zero React components on the
+`core.cljs` render path.
 
 - `com.ozimos.workforce.frontend.core` creates a single `(app/fulcro-app {})` instance.
-- A `defrc` macro (`components/frontend/src/cljc/.../defrc.cljc`, mirrored under
-  `src/clj/` for JVM consumption) produces a **plain function** `props -> hiccup` carrying
-  `:query` and `:ident` as metadata (not a React component).
-- `com.ozimos.workforce.frontend.replicant-bridge/install-replicant-root!` watches
-  `::app/state-atom`, denormalizes with `denorm/db->tree`, and calls `replicant.dom/render`.
+- Two macros in `components/frontend/src/cljc/.../defrc.cljc` (mirrored under `src/clj/`
+  for JVM consumption) generate the view layer:
+  - `defrc` produces a **plain function** `props -> hiccup` carrying `:query` and `:ident`
+    as metadata (not a React component).
+  - `defrouter-rc` produces a data-driven dynamic router: a render fn that resolves
+    `{:router/current-route {<ident-key> props}}` against a target map, carrying a Fulcro
+    EQL **union query** built from each target's `:query`/`:ident`. `MainRouter` in
+    `ui/root_replicant.cljs` registers all 15 page targets under `:router-id :main-router`.
+- **Routing is state, not a routing library.** `current-path-route` maps
+  `window.location` to a `:route/*` keyword, `route->target-ident` maps that to a Fulcro
+  ident, and `sync-route-state!` writes both the flat `:route` key and the normalized
+  `[:root-router/by-id :main-router]` entry. `pushState` (`navigate!`) and `popstate`
+  both funnel through it.
+- `load-rc!` is the headless data loader: given a component (or an explicit query) it
+  posts EQL to `/api/query` via `transit/fetch-transit`, managing `:loading`/`:error`
+  around the request with optional `:on-success`/`:on-error` hooks.
+- **Rendering is driven from `core.cljs`.** `render!` denormalizes `RootReplicant`'s query
+  with `denorm/db->tree`, enriches the tree with router props, and calls
+  `replicant.dom/render`; `schedule-render!` coalesces state changes behind a
+  `requestAnimationFrame` guard so a burst of `transact!` calls paints once.
 - `bridge/dispatch!` adapts Replicant's 2-arg `*dispatch*` contract
-  `(fn [event-map handler-data])` to a keyword-keyed handler map.
-- Network I/O uses `transit/fetch-transit` for EQL (`/api/query`) and `json/fetch-json`
-  for REST auth routes. Tokens live in `localStorage`.
+  `(fn [event-map handler-data])`. Given the app instance it also recognises Fulcro
+  mutation expressions — `:on {:click [(my-mutation {:id 1})]}` is forwarded straight to
+  `comp/transact!` — so mutation-style events need no entry in the `event-handlers` table.
+- Network I/O uses `transit/fetch-transit` for EQL (`/api/query`, both queries and
+  mutations) and `json/fetch-json` for REST auth routes. Tokens live in `localStorage`.
 
-**Pages (14):** home, login, register, verify, forgot-password, reset-password, profile,
-create-org, join-org, org-dashboard, org-chart, dept-dashboard, headcount, policy-settings —
-plus `nav` and `root`. Every page has a `*-replicant` (pure `defrc`) implementation.
+**Pages (15):** home, login, register, verify, forgot-password, reset-password, profile,
+create-org, join-org, org-dashboard, org-chart, people-chart, dept-dashboard, headcount,
+policy-settings — plus `nav` and `root`. 26 `defrc` views and one `defrouter-rc` in total.
+Every page has a `*-replicant` implementation; all but `people-chart` also retain a legacy
+`defsc` twin plus a `*_replicant_host.cljs` React bridge (14 of them) used for standalone
+per-page mounting via `bridge/install-replicant-root!`. `people-chart` is Replicant-only.
+
+Route-to-view names are deliberately crossed: `/org-chart` renders
+`people-chart/PeopleChartReplicant` (the people chart with RBAC compensation masking),
+while `/org-chart-2` renders `org-chart/OrgChartReplicant` (the unit/department hierarchy).
 
 **Builds** (`shadow-cljs.edn`): `:app` (browser), `:ssr` (node-library → `ssr-output/ssr.js`),
 `:test` (node-test → `target/frontend-test.js`).
@@ -263,8 +295,8 @@ plus `nav` and `root`. Every page has a `*-replicant` (pure `defrc`) implementat
 `:ssr` bundle and reverse-proxies `/api/*` to the Jetty backend. `bases/web` itself serves
 static assets and an SPA fallback; it does not render server-side.
 
-**Tests** — 25 CLJS test namespaces under `components/frontend/test/cljs` (95 `deftest`
-forms, 361 assertions), run via `bb fe-test`. Each page test covers render states, pure
+**Tests** — 25 CLJS test namespaces under `components/frontend/test/cljs` (104 `deftest`
+forms, 426 assertions), run via `bb fe-test`. Each page test covers render states, pure
 state transitions, hiccup well-formedness (guards against raw `[:div` leaking into the
 DOM), event purity, and headless Fulcro denormalization + transact cycles.
 
