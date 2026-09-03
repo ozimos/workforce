@@ -42,6 +42,16 @@
       (throw (ex-info "Not authorized: admin role required" {:type :forbidden})))
     user-id))
 
+(defn- require-org-member
+  "Returns user-id if the current user is a member of the given org.
+   Throws if not authenticated or not a member."
+  [env deps org-id]
+  (let [user-id (require-auth env)
+        store (get-store deps)]
+    (when (nil? (org/get-membership store user-id org-id))
+      (throw (ex-info "Not a member of this org" {:type :forbidden})))
+    user-id))
+
 (defn- get-viewer-context
   "Constructs viewer context map {:user-id ... :role ... :unit-id ...} for RBAC evaluation."
   [env store org-id]
@@ -259,25 +269,28 @@
 
 (pco/defresolver dept-dashboard-resolver
   "Resolve department analytics dashboard: budget, filled, open, pending, avg SLA."
-  [{:keys [deps] :as _env} params]
+  [{:keys [deps] :as env} params]
   {::pco/input [:unit/id]
    ::pco/output [{:dept/dashboard [:unit/id :unit/budget :unit/filled :unit/open
                                    :unit/pending :unit/avg-sla-ms :unit/actors]}]}
-  (let [store (get-store deps)
+  (let [user-id (require-auth env)
+        store (get-store deps)
         unit-id (:unit/id params)
-        stats (or (org/get-unit-headcount-stats store unit-id)
-                  {:budget 0 :filled 0 :open 0 :pending 0})
-        sla-list (org/get-approval-sla-latencies store unit-id)
-        avg-sla (if (seq sla-list) (quot (reduce + sla-list) (count sla-list)) 0)
-        actors (org/get-unit-actors store unit-id)]
-    {:dept/dashboard
-     {:unit/id unit-id
-      :unit/budget (:budget stats 0)
-      :unit/filled (:filled stats 0)
-      :unit/open (:open stats 0)
-      :unit/pending (:pending stats 0)
-      :unit/avg-sla-ms avg-sla
-      :unit/actors actors}}))
+        unit (org/get-org-unit store unit-id)]
+    (require-org-member env deps (:org-id unit))
+    (let [stats (or (org/get-unit-headcount-stats store unit-id)
+                    {:budget 0 :filled 0 :open 0 :pending 0})
+          sla-list (org/get-approval-sla-latencies store unit-id)
+          avg-sla (if (seq sla-list) (quot (reduce + sla-list) (count sla-list)) 0)
+          actors (org/get-unit-actors store unit-id)]
+      {:dept/dashboard
+       {:unit/id unit-id
+        :unit/budget (:budget stats 0)
+        :unit/filled (:filled stats 0)
+        :unit/open (:open stats 0)
+        :unit/pending (:pending stats 0)
+        :unit/avg-sla-ms avg-sla
+        :unit/actors actors}})))
 
 ;; -----------------------------------------------------------------------------
 ;; Headcount Requisitions & Timeline Resolvers
