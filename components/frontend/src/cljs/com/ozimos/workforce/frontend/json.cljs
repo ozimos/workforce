@@ -8,6 +8,16 @@
 (defn generate [data]
   (js/JSON.stringify (clj->js data)))
 
+;; Registered at startup by core.cljs to break circular dependency:
+;; json.cljs <- core.cljs (core requires json, so json can't require core).
+(defonce ^:private on-auth-failure-fn (atom nil))
+
+(defn register-auth-failure-handler!
+  "Register a zero-arg callback invoked whenever an unauthenticated 401 is
+   encountered and token refresh fails. Call from core.cljs during init."
+  [f]
+  (reset! on-auth-failure-fn f))
+
 (defonce ^:private refresh-promise* (atom nil))
 
 (defn- clear-tokens! []
@@ -95,9 +105,11 @@
                                          retried-headers (assoc final-headers "Authorization" (str "Bearer " new-token))]
                                      (raw-fetch-json url method body retried-headers))
                                    (do
-                                     (when (and (exists? js/window)
-                                                (not= (.-pathname js/window.location) "/login")
-                                                (not= (.-pathname js/window.location) "/register"))
-                                       (set! js/window.location.pathname "/login"))
+                                     (if-let [f @on-auth-failure-fn]
+                                       (f)
+                                       (when (and (exists? js/window)
+                                                  (not= (.-pathname js/window.location) "/login")
+                                                  (not= (.-pathname js/window.location) "/register"))
+                                         (set! js/window.location.pathname "/login")))
                                      result)))))
                     result)))))))

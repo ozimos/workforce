@@ -42,6 +42,13 @@ if (process.env.SSR_AUTHENTICATED === "true") {
   globalThis.localStorage.setItem("username", "ssr-user");
 }
 
+if (process.env.SSR_VERIFIED === "true") {
+  globalThis.localStorage.setItem("verified", "true");
+} else if (process.env.SSR_AUTHENTICATED === "true" && process.env.SSR_VERIFIED !== "true") {
+  // Default authenticated but unverified unless explicitly verified
+  // leave verified as null/false to allow /verify to render when !verified
+}
+
 // Shim React.useLayoutEffect to React.useEffect in SSR to suppress React DOM Server warning
 try {
   const React = require("react");

@@ -5,8 +5,12 @@
    [com.fulcrologic.fulcro.algorithms.denormalize :as denorm]
    [com.fulcrologic.fulcro.application :as app]
    [com.fulcrologic.fulcro.components :as comp]
+   [com.fulcrologic.statecharts.integration.fulcro :as scf]
+   [com.ozimos.workforce.frontend.abac :as abac]
+   [com.ozimos.workforce.frontend.auth-statechart :as auth-sc]
    [com.ozimos.workforce.frontend.json :as json]
    [com.ozimos.workforce.frontend.replicant-bridge :as bridge]
+   [com.ozimos.workforce.frontend.routing :as routing]
    [com.ozimos.workforce.frontend.transit :as transit]
    [com.ozimos.workforce.frontend.ui.components.nav-replicant :as nav]
    [com.ozimos.workforce.frontend.ui.pages.create-org-replicant :as create-org]
@@ -15,16 +19,13 @@
    [com.ozimos.workforce.frontend.ui.pages.headcount-replicant :as headcount]
    [com.ozimos.workforce.frontend.ui.pages.join-org-replicant :as join-org]
    [com.ozimos.workforce.frontend.ui.pages.login-replicant :as login]
-   [com.ozimos.workforce.frontend.abac :as abac]
    [com.ozimos.workforce.frontend.ui.pages.org-chart-replicant :as org-chart]
-   [com.ozimos.workforce.frontend.ui.pages.workforce-chart :as workforce-chart]
    [com.ozimos.workforce.frontend.ui.pages.policy-settings-replicant :as policy-settings]
    [com.ozimos.workforce.frontend.ui.pages.profile-replicant :as profile]
    [com.ozimos.workforce.frontend.ui.pages.register-replicant :as register]
    [com.ozimos.workforce.frontend.ui.pages.reset-password-replicant :as reset-password]
+   [com.ozimos.workforce.frontend.ui.pages.workforce-chart :as workforce-chart]
    [com.ozimos.workforce.frontend.ui.root-replicant :as root-rc]
-   [com.ozimos.workforce.frontend.auth-statechart :as auth-sc]
-   [com.fulcrologic.statecharts.integration.fulcro :as scf]
    [fulcro.inspect.tool :as inspect]
    [goog.dom :as gdom]
    [replicant.dom :as r]))
@@ -41,39 +42,15 @@
        (some? (.getItem js/localStorage "access-token"))))
 
 (defn- current-path-route
+  "Delegates to routing/path->route (SSOT) but preserves \"/\" auth-sensitive semantics.
+   Keep in sync with routing/path->route."
   ([] (current-path-route (if (and (exists? js/window) (exists? js/window.location)) js/window.location.pathname "/")))
   ([path]
-   (let [p (or path "/")]
-     (cond
-       (= p "/register") :route/register
-       (= p "/register-replicant") :route/register-replicant
-       (= p "/create-org") :route/create-org
-       (= p "/create-org-replicant") :route/create-org-replicant
-       (= p "/join-org") :route/join-org
-       (= p "/join-org-replicant") :route/join-org-replicant
-       (= p "/org-dashboard") :route/org-dashboard
-       (= p "/org-dashboard-replicant") :route/org-dashboard-replicant
-       (= p "/org-chart") :route/org-chart
-       (= p "/org-chart-replicant") :route/org-chart-replicant
-       (= p "/org-chart-2") :route/org-chart-2
-       (= p "/org-chart-2-replicant") :route/org-chart-2-replicant
-       (= p "/dept-dashboard") :route/dept-dashboard
-       (= p "/dept-dashboard-replicant") :route/dept-dashboard-replicant
-       (= p "/headcount") :route/headcount
-       (= p "/headcount-replicant") :route/headcount-replicant
-       (= p "/policies") :route/policies
-       (= p "/policies-replicant") :route/policies-replicant
-       (= p "/profile") :route/profile
-       (= p "/profile-replicant") :route/profile-replicant
-       (= p "/forgot-password") :route/forgot-password
-       (= p "/forgot-password-replicant") :route/forgot-password-replicant
-       (.startsWith p "/reset-password") :route/reset-password
-       (.startsWith p "/verify") :route/verify
-       (= p "/login") :route/login
-       (= p "/login-replicant") :route/login-replicant
-       (= p "/home-replicant") :route/home-replicant
-       (= p "/") (if (is-logged-in?) :route/home :route/login)
-       :else :route/login))))
+   (let [p (or path "/")
+         pathname (first (str/split p #"\?" 2))]
+     (if (= pathname "/")
+       (if (is-logged-in?) :route/home :route/login)
+       (routing/path->route p)))))
 
 (declare fetch-org-chart! fetch-workforce-chart! fetch-user-session!)
 
@@ -144,7 +121,18 @@
 
 (defn- handle-statechart-sync-route! [path logged-in?]
   (let [state-atom (::app/state-atom app-inst)
-        route (current-path-route path)]
+        route (current-path-route path)
+        ;; Ensure browser URL matches the synced route — fixes login-success
+        ;; return-to case where DB was updated but history still at /login.
+        ;; Path may contain query string (e.g. /dept-dashboard?unit-id=123).
+        full-path (or path "/")
+        current-url (when (and (exists? js/window) (exists? js/window.location))
+                      (str js/window.location.pathname js/window.location.search))]
+    (when (and (exists? js/window) (exists? js/window.history)
+               (not= current-url full-path))
+      ;; Use replaceState for sync (idempotent, no extra history entry).
+      ;; Runtime navigate! already did push/replace, so this is no-op in that case.
+      (.replaceState js/window.history nil "" full-path))
     (sync-route-state! state-atom route logged-in?)))
 
 (defn- handle-statechart-fetch-page-data! [path]
@@ -265,7 +253,7 @@
         (.then (fn [{:keys [body status]}]
                  (if (and status (>= status 400))
                    (swap! state-atom (fn [s] (-> s (update :loading-branches disj manager-id)
-                                                  (assoc :error "Failed to load direct reports"))))
+                                               (assoc :error "Failed to load direct reports"))))
                    (let [res (or (get body 'org/fetch-workforce-branch)
                                  (first (vals body)))
                          workforce-list (:workforce/list res)
@@ -286,7 +274,7 @@
                                   (update :headcounts-by-manager merge hcs-by-mgr))))))))
         (.catch (fn [err]
                   (swap! state-atom (fn [s] (-> s (update :loading-branches disj manager-id)
-                                                 (assoc :error (str err))))))))))
+                                              (assoc :error (str err))))))))))
 
 (defonce ^:private search-debounce-timer (atom nil))
 
@@ -300,16 +288,16 @@
       (swap! state-atom assoc :server-search-results nil :searching? false)
       (reset! search-debounce-timer
               (js/setTimeout
-               (fn []
-                 (swap! state-atom assoc :searching? true)
-                 (-> (transit/fetch-transit "/api/query" [(list 'org/search-workforce {:org/id org-id :term term-clean})])
-                     (.then (fn [{:keys [body]}]
-                              (let [res (or (get body 'org/search-workforce) (first (vals body)))
-                                    results (:results res)]
-                                (swap! state-atom assoc :server-search-results results :searching? false))))
-                     (.catch (fn [_]
-                               (swap! state-atom assoc :searching? false)))))
-               250)))))
+                (fn []
+                  (swap! state-atom assoc :searching? true)
+                  (-> (transit/fetch-transit "/api/query" [(list 'org/search-workforce {:org/id org-id :term term-clean})])
+                      (.then (fn [{:keys [body]}]
+                               (let [res (or (get body 'org/search-workforce) (first (vals body)))
+                                     results (:results res)]
+                                 (swap! state-atom assoc :server-search-results results :searching? false))))
+                      (.catch (fn [_]
+                                (swap! state-atom assoc :searching? false)))))
+                250)))))
 
 (defn- select-search-result! [result]
   (let [state-atom (::app/state-atom app-inst)
@@ -776,31 +764,66 @@
     (r/set-dispatch! (bridge/dispatch! app-inst event-handlers))
     (let [state-atom (::app/state-atom app-inst)
           current-path (if (and (exists? js/window) (exists? js/window.location))
-                         js/window.location.pathname
+                         (str js/window.location.pathname js/window.location.search)
                          "/")
-          logged-in? (is-logged-in?)]
+          logged-in? (is-logged-in?)
+          verified? (boolean
+                      (or (:current-user/verified @state-atom)
+                          (when (and (exists? js/localStorage)
+                                     (= "true" (.getItem js/localStorage "verified")))
+                            true)))
+          should-redirect? (and logged-in?
+                                (routing/should-redirect-public? current-path verified?)
+                                (not= (first (str/split current-path #"\?" 2)) "/"))]
 
       ;; ------------------------------------------------------------------
-      ;; Install and start the Fulcro Statechart for auth & routing.
-      ;; Side-effect callbacks are injected via :extra-env so the machine
-      ;; never needs to import core.cljs (avoids circular deps).
+      ;; Synchronous boot guard — must run BEFORE render! to prevent
+      ;; the protected page from flashing while the statechart event queue
+      ;; processes asynchronously (core.async in CLJS is always async).
       ;; ------------------------------------------------------------------
-      (scf/install-fulcro-statecharts! app-inst {:event-loop? :immediate
-                                                  :extra-env {:current-path current-path
-                                                              :clear-tokens-fn clear-stored-tokens!
-                                                              :redirect-fn handle-statechart-redirect!
-                                                              :sync-route-fn handle-statechart-sync-route!
-                                                              :fetch-session-fn fetch-user-session!
-                                                              :fetch-page-data-fn handle-statechart-fetch-page-data!}})
+      (if logged-in?
+        ;; Authenticated: redirect public (verify only when verified) to home.
+        (if should-redirect?
+          (do
+            (when (and (exists? js/window) (exists? js/window.history))
+              (.replaceState js/window.history nil "" "/"))
+            (sync-route-state! state-atom :route/home true)
+            (fetch-user-session!))
+          (do (sync-route-state! state-atom (current-path-route current-path) true)
+              (fetch-user-session!)))
+        ;; Unauthenticated: if on a protected path redirect to /login now,
+        ;; storing return-to so the statechart can restore it after login.
+        (if (auth-sc/protected-path? current-path)
+          (do
+            (swap! state-atom assoc :auth/return-to current-path)
+            (when (and (exists? js/window) (exists? js/window.history))
+              (.replaceState js/window.history nil "" "/login"))
+            (sync-route-state! state-atom :route/login false))
+          (sync-route-state! state-atom (current-path-route current-path) false)))
+
+      ;; ------------------------------------------------------------------
+      ;; Install the Fulcro Statechart — governs ALL subsequent navigations,
+      ;; login/logout, and 401 auth failures.
+      ;; ------------------------------------------------------------------
+      (scf/install-fulcro-statecharts! app-inst {:extra-env {:current-path current-path
+                                                             :clear-tokens-fn clear-stored-tokens!
+                                                             :redirect-fn handle-statechart-redirect!
+                                                             :sync-route-fn handle-statechart-sync-route!
+                                                             :fetch-session-fn fetch-user-session!
+                                                             :fetch-page-data-fn handle-statechart-fetch-page-data!
+                                                             :verified verified?
+                                                             :verified? verified?}})
       (scf/register-statechart! app-inst auth-sc/machine-id auth-sc/auth-routing-chart)
       (scf/start! app-inst {:machine auth-sc/machine-id
                             :session-id auth-sc/default-session-id})
-      ;; Boot the machine: tell it whether we have a valid token
+      ;; Inform the statechart of the boot state (it manages future transitions).
       (if logged-in?
         (scf/send! app-inst auth-sc/default-session-id :event/token-valid {:path current-path})
         (scf/send! app-inst auth-sc/default-session-id :event/no-token {:path current-path}))
-      ;; Wire transit 401 -> statechart :event/auth-failure
+      ;; Wire 401 -> statechart :event/auth-failure (both transit and json)
       (transit/register-auth-failure-handler!
+        (fn [] (scf/send! app-inst auth-sc/default-session-id :event/auth-failure)))
+      (json/register-auth-failure-handler!
         (fn [] (scf/send! app-inst auth-sc/default-session-id :event/auth-failure)))
 
       ;; Add watch on normalized Fulcro state atom for automatic render dispatch
@@ -818,7 +841,7 @@
       (when (exists? js/window)
         (set! (.-fulcro_app js/window) app-inst))
 
-      ;; Initial render
+      ;; Initial render — route is already in the correct state from the sync guard above
       (render!))
     (catch :default e
       (js/console.error "Replicant Direct Mount failed:" e))))
@@ -832,7 +855,9 @@
 (when (exists? js/window)
   (.addEventListener js/window "popstate"
     (fn [_]
-      (let [path (if (exists? js/window.location) js/window.location.pathname "/")]
+      (let [path (if (exists? js/window.location)
+                   (str js/window.location.pathname js/window.location.search)
+                   "/")]
         (scf/send! app-inst auth-sc/default-session-id :event/navigate {:path path}))))
 
   (.addEventListener js/window "error"

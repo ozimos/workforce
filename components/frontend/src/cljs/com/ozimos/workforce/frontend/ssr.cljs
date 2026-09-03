@@ -2,6 +2,7 @@
   (:require
    [com.fulcrologic.fulcro.algorithms.denormalize :as denorm]
    [com.fulcrologic.fulcro.application :as app]
+   [com.ozimos.workforce.frontend.routing :as routing]
    [com.ozimos.workforce.frontend.ui.root-replicant :as root-rc]
    [replicant.string :as rstr]))
 
@@ -15,6 +16,13 @@
 
 (defn- authenticated? []
   (= js/process.env.SSR_AUTHENTICATED "true"))
+
+(defn- ssr-verified? []
+  (boolean
+    (or (= js/process.env.SSR_VERIFIED "true")
+        (when (and (exists? js/localStorage)
+                   (= "true" (.getItem js/localStorage "verified")))
+          true))))
 
 (defn- setup-ssr-globals [path search]
   (set! (.-pathname (.-location js/window)) path)
@@ -84,35 +92,10 @@
     (= path "/")                 "Dashboard - Best Auth"
     :else                        "Best Auth - Authentication Template"))
 
-(defn- current-path-route [path]
-  (cond
-    (= path "/register") :route/register
-    (= path "/register-replicant") :route/register-replicant
-    (= path "/create-org") :route/create-org
-    (= path "/create-org-replicant") :route/create-org-replicant
-    (= path "/join-org") :route/join-org
-    (= path "/join-org-replicant") :route/join-org-replicant
-    (= path "/org-dashboard") :route/org-dashboard
-    (= path "/org-dashboard-replicant") :route/org-dashboard-replicant
-    (= path "/org-chart") :route/org-chart
-    (= path "/org-chart-replicant") :route/org-chart-replicant
-    (= path "/dept-dashboard") :route/dept-dashboard
-    (= path "/dept-dashboard-replicant") :route/dept-dashboard-replicant
-    (= path "/headcount") :route/headcount
-    (= path "/headcount-replicant") :route/headcount-replicant
-    (= path "/policies") :route/policies
-    (= path "/policies-replicant") :route/policies-replicant
-    (= path "/profile") :route/profile
-    (= path "/profile-replicant") :route/profile-replicant
-    (= path "/forgot-password") :route/forgot-password
-    (= path "/forgot-password-replicant") :route/forgot-password-replicant
-    (.startsWith path "/reset-password") :route/reset-password
-    (.startsWith path "/verify") :route/verify
-    (= path "/login") :route/login
-    (= path "/login-replicant") :route/login-replicant
-    (= path "/home-replicant") :route/home-replicant
-    (= path "/") :route/home
-    :else :route/login))
+(defn- current-path-route
+  "Delegates to routing/path->route (SSOT)."
+  [path]
+  (routing/path->route path))
 
 (defn ^:export render-page-html
   ([path] (render-page-html path "" "" ""))
@@ -120,13 +103,27 @@
   ([path search initial-data-json] (render-page-html path search initial-data-json ""))
   ([path search initial-data-json initial-data-nonce]
    (setup-ssr-globals path search)
-   (let [title (str "Best Auth - " (page-title path))
-         description (page-description path)
+   ;; SSR auth guard — mirrors client boot guard in core.cljs
+   ;; Unauth protected -> /login, auth public -> / (verify only when verified)
+   (let [verified? (ssr-verified?)
+         effective-path (cond
+                          (and (not (authenticated?))
+                               (or (= path "/") (routing/protected-path? path)))
+                          "/login"
+
+                          (and (authenticated?)
+                               (not= path "/")
+                               (routing/should-redirect-public? path verified?))
+                          "/"
+
+                          :else path)
+         title (str "Best Auth - " (page-title effective-path))
+         description (page-description effective-path)
          {:keys [status html error-message]}
          (try
            (let [app-inst (app/fulcro-app {})
                  state-atom (::app/state-atom app-inst)
-                 route (current-path-route path)
+                 route (current-path-route effective-path)
                  logged-in? (authenticated?)]
              (swap! state-atom assoc :route route :logged-in? logged-in?)
              (let [db @state-atom
@@ -148,6 +145,18 @@
           "<meta name=\"ssr-status\" content=\"" (name status) "\">"
           (when (authenticated?)
             "<meta name=\"ssr-authenticated\" content=\"true\">")
+          (when (ssr-verified?)
+            "<meta name=\"ssr-verified\" content=\"true\">")
+          (when (cond
+                  (and (not (authenticated?))
+                       (or (= path "/") (routing/protected-path? path))) true
+                  (and (authenticated?)
+                       (not= path "/")
+                       (routing/should-redirect-public? path (ssr-verified?))) true
+                  :else false)
+            (if (authenticated?)
+              "<meta name=\"ssr-redirect\" content=\"/\">"
+              "<meta name=\"ssr-redirect\" content=\"/login\">"))
           "<link href=\"/css/app.css\" rel=\"stylesheet\">"
           (when (seq initial-data-json)
             (str "<script"

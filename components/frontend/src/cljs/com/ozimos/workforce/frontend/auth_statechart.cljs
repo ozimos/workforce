@@ -2,30 +2,23 @@
   "Fulcro Statechart governing user authentication lifecycle, route protection,
    and unauthenticated redirection for the Workforce pure-Replicant frontend."
   (:require
-   [clojure.string :as str]
    [com.fulcrologic.statecharts.chart :as chart]
-   [com.fulcrologic.statecharts.elements :refer [on-entry script state transition]]))
+   [com.fulcrologic.statecharts.elements :refer [on-entry script state transition]]
+   [com.ozimos.workforce.frontend.routing :as routing]))
 
 (def machine-id :auth-routing-machine)
 (def default-session-id :auth-routing)
 
 (defn public-path?
-  "Returns true if the URL path does not require authentication."
+  "Returns true if the URL path does not require authentication.
+   Delegates to routing/public-path? (SSOT)."
   [path]
-  (let [p (or path "/")]
-    (or (= p "/")
-        (= p "/login")
-        (= p "/login-replicant")
-        (= p "/register")
-        (= p "/register-replicant")
-        (= p "/forgot-password")
-        (= p "/forgot-password-replicant")
-        (str/starts-with? p "/reset-password")
-        (str/starts-with? p "/verify"))))
+  (routing/public-path? path))
 
 (def protected-path?
-  "Returns true if the URL path requires an active authenticated session."
-  (complement public-path?))
+  "Returns true if the URL path requires an active authenticated session.
+   Delegates to routing/protected-path? (SSOT)."
+  routing/protected-path?)
 
 (defn- script-action
   "Helper to create a script element with a 2/4-arity function."
@@ -63,7 +56,7 @@
                   path (or (:path e-data)
                            (:current-path env)
                            (when (and (exists? js/window) (exists? js/window.location))
-                             js/window.location.pathname)
+                             (str js/window.location.pathname js/window.location.search))
                            "/")]
               (when clear-fn (clear-fn))
               (when (and redirect-fn (protected-path? path))
@@ -102,23 +95,39 @@
                   fetch-session (:fetch-session-fn env)
                   fetch-data (:fetch-page-data-fn env)
                   return-to (:return-to e-data)
-                  path (or return-to
-                           (:path e-data)
-                           (when (and (exists? js/window) (exists? js/window.location))
-                             js/window.location.pathname)
-                           "/")]
+                  raw-path (or return-to
+                               (:path e-data)
+                               (when (and (exists? js/window) (exists? js/window.location))
+                                 (str js/window.location.pathname js/window.location.search))
+                               "/")
+                  verified? (or (:verified env)
+                                (:verified? env)
+                                (when (and (exists? js/localStorage)
+                                           (= "true" (.getItem js/localStorage "verified")))
+                                  true))
+                  ;; If no return-to and current public should redirect (verify only when verified)
+                  path (if (and (nil? return-to)
+                                (routing/should-redirect-public? raw-path verified?))
+                         "/"
+                         raw-path)]
               (when fetch-session (fetch-session))
               (when sync-fn (sync-fn path true))
               (when fetch-data (fetch-data path))))))
 
-      ;; Navigating while authenticated
+      ;; Navigating while authenticated - public routes bounce to home (verify only when verified)
       (transition {:event :event/navigate
-                   :cond (fn [_ _ _ e-data] (public-path? (:path e-data)))
+                   :cond (fn [env _ _ e-data]
+                           (let [verified? (or (:verified env)
+                                               (:verified? env)
+                                               (when (and (exists? js/localStorage)
+                                                          (= "true" (.getItem js/localStorage "verified")))
+                                                 true))]
+                             (routing/should-redirect-public? (:path e-data) verified?)))
                    :target :state/authenticated
                    :content [(script-action
                                (fn [env _ _ _]
-                                 (when-let [redirect-fn (:redirect-fn env)]
-                                   (redirect-fn "/"))))]})
+                                 (when-let [sync-fn (:sync-route-fn env)]
+                                   (sync-fn "/" true))))]})
 
       (transition {:event :event/navigate
                    :cond (fn [_ _ _ e-data] (not (public-path? (:path e-data))))
