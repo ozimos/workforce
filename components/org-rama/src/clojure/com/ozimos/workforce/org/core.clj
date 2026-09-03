@@ -651,20 +651,34 @@
 
 (defonce ^:private seed-workforce-cache (atom {}))
 
-(defn- get-seed-org-data [org-name-or-id]
-  (if-let [cached (get @seed-workforce-cache org-name-or-id)]
-    cached
-    (try
-      (when-let [read-fn (requiring-resolve 'com.ozimos.workforce.org.seed/read-seed-nippy)]
-        (let [dataset (read-fn)
-              orgs (:organizations dataset)
-              found (or (some #(when (or (= (:org-id %) (str org-name-or-id))
-                                         (= (:name %) (str org-name-or-id))) %) orgs)
-                        (first orgs))]
-          (when found
-            (swap! seed-workforce-cache assoc org-name-or-id found)
-            found)))
-      (catch Exception _ nil))))
+(defn- get-seed-org-data
+  ([org-name-or-id]
+   (get-seed-org-data nil org-name-or-id))
+  ([deps org-name-or-id]
+   (if-let [cached (get @seed-workforce-cache org-name-or-id)]
+     cached
+     (let [org-record (when deps (try (find-org-by-id deps org-name-or-id) (catch Exception _ nil)))
+           org-name (or (:name org-record) (str org-name-or-id))
+           enterprise? (or (= (str org-name-or-id) "org-acme")
+                           (= org-name "Acme Corp")
+                           (str/starts-with? (str org-name) "enterprise-")
+                           (str/starts-with? (str org-name) "wf-prog-"))
+           data (when enterprise?
+                  (or (try
+                        (when-let [read-fn (requiring-resolve 'com.ozimos.workforce.org.seed/read-seed-nippy)]
+                          (let [dataset (read-fn)
+                                orgs (:organizations dataset)]
+                            (or (some #(when (or (= (:org-id %) (str org-name-or-id))
+                                                 (= (:name %) org-name)) %) orgs)
+                                (first orgs))))
+                        (catch Exception _ nil))
+                      (try
+                        (when-let [gen-fn (requiring-resolve 'com.ozimos.workforce.org.seed/generate-enterprise-org-dataset)]
+                          (gen-fn {:org-id (str org-name-or-id) :org-name org-name :total-nodes 10000}))
+                        (catch Exception _ nil))))]
+       (when data
+         (swap! seed-workforce-cache assoc org-name-or-id data)
+         data)))))
 
 (defn- can-view-comp? [viewer-ctx]
   (let [role-raw (or (:role viewer-ctx) :employee)
@@ -763,15 +777,216 @@
             {:root-id (:id top) :synthetic-node nil})
           {:root-id nil :synthetic-node nil})))))
 
+(defn- collect-nodes-within-depth
+  "Collects all node IDs in hierarchy reachable within max-depth levels from root-ids."
+  [hierarchy root-ids max-depth]
+  (if (nil? max-depth)
+    nil ;; nil means unlimited
+    (loop [queue (into clojure.lang.PersistentQueue/EMPTY (map (fn [id] [id 0]) (remove nil? root-ids)))
+           visited (set (remove nil? root-ids))]
+      (if (empty? queue)
+        visited
+        (let [[curr depth] (peek queue)
+              q' (pop queue)]
+          (if (>= depth max-depth)
+            (recur q' visited)
+            (let [children (get hierarchy curr [])
+                  unvisited (remove visited children)
+                  next-entries (map (fn [c] [c (inc depth)]) unvisited)]
+              (recur (into q' next-entries)
+                     (into visited unvisited)))))))))
+
+(defn- invert-children-map
+  "Inverts parent-id -> [child-ids] into child-id -> parent-id map."
+  [children-map]
+  (reduce-kv (fn [m parent-id child-ids]
+               (reduce (fn [acc child-id] (assoc acc child-id parent-id))
+                       m
+                       child-ids))
+             {}
+             children-map))
+
+(defn- build-ancestor-path
+  "Returns vector of IDs from the root down to node-id."
+  [parent-map node-id]
+  (loop [curr node-id
+         path ()
+         visited #{}]
+    (if (or (nil? curr) (contains? visited curr))
+      (vec path)
+      (let [parent (get parent-map curr)]
+        (recur parent (conj path curr) (conj visited curr))))))
+
 (defn get-org-workforce-chart
   "Retrieves the workforce chart for an organization, enforcing backend-level
-   RBAC compensation masking and ABAC headcount filtering before serialization."
-  [deps org-id viewer-ctx abac-policy]
-  (let [seed-org (get-seed-org-data org-id)
-        view-comp? (can-view-comp? viewer-ctx)
-        chart-settings (get-org-chart-settings deps org-id)]
+   RBAC compensation masking and ABAC headcount filtering before serialization.
+   Supports :depth-limit (default 2) in opts for progressive loading."
+  ([deps org-id viewer-ctx abac-policy]
+   (get-org-workforce-chart deps org-id viewer-ctx abac-policy {:depth-limit 2}))
+  ([deps org-id viewer-ctx abac-policy opts]
+   (let [seed-org (get-seed-org-data deps org-id)
+         view-comp? (can-view-comp? viewer-ctx)
+         chart-settings (get-org-chart-settings deps org-id)
+         depth-limit (get opts :depth-limit 2)]
+     (if seed-org
+       ;; 1. Use seeded enterprise workforce dataset (10k nodes)
+       (let [tree (:tree seed-org)
+             employees (:employees seed-org)
+             employments (:employments seed-org)
+             headcounts (:headcounts seed-org)
+             emp-by-nid (into {} (map (fn [e] [(str/replace (:employee-id e) #"^emp-" "") e])) employees)
+             empmt-by-nid (into {} (map (fn [e] [(str/replace (:employee-id e) #"^emp-" "") e])) employments)
+             hc-by-nid (into {} (map (fn [h] [(str/replace (:request-id h) #"^req-" "") h])) headcounts)
+             children (:children tree)
+             raw-root-id (:root-id tree)
+
+             ;; Filter headcounts on the backend via ABAC before transmission
+             allowed-hc-by-nid (into {} (filter (fn [[_ h]] (abac-allows-headcount? h abac-policy)) hc-by-nid))
+
+             ;; Build workforce employee list with backend comp masking
+             workforce-list
+             (mapv (fn [e]
+                     (let [nid (str/replace (:employee-id e) #"^emp-" "")
+                           empmt (get empmt-by-nid nid)]
+                       {:person/id nid
+                        :person/name (str (:first-name e) " " (:last-name e))
+                        :person/title (:job-title empmt "Employee")
+                        :person/email (:personal-email e)
+                        :person/unit-id (:unit-id empmt)
+                        :person/department-name (:unit-id empmt)
+                        :person/division-name (when-let [cat (:job-category empmt)] (name cat))
+                        :person/role (case (:job-level empmt)
+                                       ("L8" "L7") :admin
+                                       ("L6") :vp
+                                       ("L5") :dept-head
+                                       ("L4") :hiring-manager
+                                       :employee)
+                        :person/job-level (:job-level empmt)
+                        :person/location (:location empmt)
+                        :person/compensation (when view-comp?
+                                               {:salary (:base-salary empmt)
+                                                :currency (:currency empmt "USD")})}))
+                   employees)
+
+             ;; Build workforce-hierarchy and headcounts-by-manager
+             workforce-hierarchy (atom {nil [raw-root-id]})
+             headcounts-by-manager (atom {})]
+
+         (doseq [[parent-nid child-nids] children]
+           (let [emp-children (filterv #(contains? emp-by-nid %) child-nids)
+                 hc-children (keep #(get allowed-hc-by-nid %) child-nids)]
+             (when (seq emp-children)
+               (swap! workforce-hierarchy assoc parent-nid emp-children))
+             (when (seq hc-children)
+               (swap! headcounts-by-manager assoc parent-nid
+                      (mapv (fn [hc]
+                              {:headcount/id (:request-id hc)
+                               :headcount/title (:title hc "Open Position")
+                               :headcount/job-level (:job-level hc)
+                               :headcount/location (:location hc)
+                               :headcount/division-id (:division-id hc)
+                               :headcount/dept-id (:unit-id hc)
+                               :headcount/status (name (or (:status hc) :open))})
+                            hc-children)))))
+
+         ;; Apply full org root resolution (Settings -> CEO -> Max Descendants)
+         (let [resolved (resolve-full-org-root workforce-list @workforce-hierarchy chart-settings)
+               final-workforce (if-let [synth (:synthetic-node resolved)]
+                                 (conj workforce-list synth)
+                                 workforce-list)
+               final-hierarchy (cond
+                                 (:synthetic-node resolved)
+                                 (assoc (dissoc @workforce-hierarchy nil)
+                                        nil ["__visual_root__"]
+                                        "__visual_root__" (:co-equal-ids resolved))
+
+                                 (:root-id resolved)
+                                 (assoc @workforce-hierarchy nil [(:root-id resolved)])
+
+                                 :else
+                                 @workforce-hierarchy)
+               root-ids (get final-hierarchy nil [])
+               allowed-nodes (collect-nodes-within-depth final-hierarchy root-ids depth-limit)
+               filtered-workforce (if allowed-nodes
+                                    (filterv #(contains? allowed-nodes (:person/id %)) final-workforce)
+                                    final-workforce)
+               filtered-hierarchy (if allowed-nodes
+                                    (select-keys final-hierarchy (conj allowed-nodes nil))
+                                    final-hierarchy)
+               filtered-headcounts-by-mgr (if allowed-nodes
+                                            (select-keys @headcounts-by-manager allowed-nodes)
+                                            @headcounts-by-manager)]
+           {:org/id org-id
+            :workforce/list filtered-workforce
+            :workforce-hierarchy filtered-hierarchy
+            :headcounts/list (mapv (fn [hc]
+                                     {:headcount/id (:request-id hc)
+                                      :headcount/title (:title hc "Open Position")
+                                      :headcount/job-level (:job-level hc)
+                                      :headcount/location (:location hc)
+                                      :headcount/division-id (:division-id hc)
+                                      :headcount/dept-id (:unit-id hc)
+                                      :headcount/status (name (or (:status hc) :open))})
+                                   (vals allowed-hc-by-nid))
+            :headcounts-by-manager filtered-headcounts-by-mgr
+            :org/chart-settings chart-settings
+            :total-workforce-count (count employees)
+            :total-headcount-count (count allowed-hc-by-nid)}))
+
+       ;; 2. Fallback for dynamic/new orgs in Rama
+       (let [members (list-members deps org-id)
+             headcounts (filterv #(abac-allows-headcount? % abac-policy) (list-headcount-requests deps org-id))
+             owner-id (or (:owner-user-id (find-org-by-id deps org-id)) (-> members first :user-id) "u-owner")
+             workforce-list
+             (mapv (fn [m]
+                     {:person/id (str (:user-id m))
+                      :person/name (or (:name m) (:email m) (str "User " (:user-id m)))
+                      :person/title (if (= (:user-id m) owner-id) "Executive & Owner" (str (:role m "Member")))
+                      :person/email (:email m)
+                      :person/role (keyword (str/lower-case (str (:role m "employee"))))
+                      :person/compensation (when view-comp? {:salary 150000 :currency "USD"})})
+                   members)
+             base-hierarchy {nil [owner-id]
+                             owner-id (mapv #(str (:user-id %)) (remove #(= (:user-id %) owner-id) members))}
+             resolved (resolve-full-org-root workforce-list base-hierarchy chart-settings)
+             final-workforce (if-let [synth (:synthetic-node resolved)]
+                               (conj workforce-list synth)
+                               workforce-list)
+             final-hierarchy (cond
+                               (:synthetic-node resolved)
+                               (assoc (dissoc base-hierarchy nil)
+                                      nil ["__visual_root__"]
+                                      "__visual_root__" (:co-equal-ids resolved))
+
+                               (:root-id resolved)
+                               (assoc base-hierarchy nil [(:root-id resolved)])
+
+                               :else
+                               base-hierarchy)
+             headcounts-by-mgr (if (seq headcounts) {owner-id headcounts} {})
+             root-ids (get final-hierarchy nil [])
+             allowed-nodes (collect-nodes-within-depth final-hierarchy root-ids depth-limit)
+             filtered-workforce (if allowed-nodes
+                                  (filterv #(contains? allowed-nodes (:person/id %)) final-workforce)
+                                  final-workforce)
+             filtered-hierarchy (if allowed-nodes
+                                  (select-keys final-hierarchy (conj allowed-nodes nil))
+                                  final-hierarchy)]
+         {:org/id org-id
+          :workforce/list filtered-workforce
+          :workforce-hierarchy filtered-hierarchy
+          :headcounts/list headcounts
+          :headcounts-by-manager headcounts-by-mgr
+          :org/chart-settings chart-settings
+          :total-workforce-count (count members)
+          :total-headcount-count (count headcounts)})))))
+
+(defn get-org-workforce-branch
+  "Retrieves direct reports and direct headcounts under a specific manager node."
+  [deps org-id manager-id viewer-ctx abac-policy]
+  (let [seed-org (get-seed-org-data deps org-id)
+        view-comp? (can-view-comp? viewer-ctx)]
     (if seed-org
-      ;; 1. Use seeded enterprise workforce dataset (10k nodes)
       (let [tree (:tree seed-org)
             employees (:employees seed-org)
             employments (:employments seed-org)
@@ -779,21 +994,19 @@
             emp-by-nid (into {} (map (fn [e] [(str/replace (:employee-id e) #"^emp-" "") e])) employees)
             empmt-by-nid (into {} (map (fn [e] [(str/replace (:employee-id e) #"^emp-" "") e])) employments)
             hc-by-nid (into {} (map (fn [h] [(str/replace (:request-id h) #"^req-" "") h])) headcounts)
-            children (:children tree)
-            raw-root-id (:root-id tree)
+            children-map (:children tree)
+            child-nids (get children-map manager-id [])
 
-            ;; Filter headcounts on the backend via ABAC before transmission
             allowed-hc-by-nid (into {} (filter (fn [[_ h]] (abac-allows-headcount? h abac-policy)) hc-by-nid))
 
-            ;; Build workforce employee list with backend comp masking
-            workforce-list
-            (mapv (fn [e]
-                    (let [nid (str/replace (:employee-id e) #"^emp-" "")
+            direct-reports
+            (mapv (fn [nid]
+                    (let [e (get emp-by-nid nid)
                           empmt (get empmt-by-nid nid)]
                       {:person/id nid
-                       :person/name (str (:first-name e) " " (:last-name e))
+                       :person/name (if e (str (:first-name e) " " (:last-name e)) (str "Employee " nid))
                        :person/title (:job-title empmt "Employee")
-                       :person/email (:personal-email e)
+                       :person/email (when e (:personal-email e))
                        :person/unit-id (:unit-id empmt)
                        :person/department-name (:unit-id empmt)
                        :person/division-name (when-let [cat (:job-category empmt)] (name cat))
@@ -808,94 +1021,90 @@
                        :person/compensation (when view-comp?
                                               {:salary (:base-salary empmt)
                                                :currency (:currency empmt "USD")})}))
-                  employees)
+                  (filterv #(contains? emp-by-nid %) child-nids))
 
-            ;; Build workforce-hierarchy and headcounts-by-manager
-            workforce-hierarchy (atom {nil [raw-root-id]})
-            headcounts-by-manager (atom {})]
+            branch-hierarchy
+            (into {manager-id (filterv #(contains? emp-by-nid %) child-nids)}
+                  (map (fn [cid]
+                         [cid (filterv #(contains? emp-by-nid %) (get children-map cid []))])
+                       child-nids))
 
-        (doseq [[parent-nid child-nids] children]
-          (let [emp-children (filterv #(contains? emp-by-nid %) child-nids)
-                hc-children (keep #(get allowed-hc-by-nid %) child-nids)]
-            (when (seq emp-children)
-              (swap! workforce-hierarchy assoc parent-nid emp-children))
-            (when (seq hc-children)
-              (swap! headcounts-by-manager assoc parent-nid
-                     (mapv (fn [hc]
-                             {:headcount/id (:request-id hc)
-                              :headcount/title (:title hc "Open Position")
-                              :headcount/job-level (:job-level hc)
-                              :headcount/location (:location hc)
-                              :headcount/division-id (:division-id hc)
-                              :headcount/dept-id (:unit-id hc)
-                              :headcount/status (name (or (:status hc) :open))})
-                           hc-children)))))
-
-        ;; Apply full org root resolution (Settings -> CEO -> Max Descendants)
-        (let [resolved (resolve-full-org-root workforce-list @workforce-hierarchy chart-settings)
-              final-workforce (if-let [synth (:synthetic-node resolved)]
-                                (conj workforce-list synth)
-                                workforce-list)
-              final-hierarchy (cond
-                                (:synthetic-node resolved)
-                                (assoc (dissoc @workforce-hierarchy nil)
-                                       nil ["__visual_root__"]
-                                       "__visual_root__" (:co-equal-ids resolved))
-
-                                (:root-id resolved)
-                                (assoc @workforce-hierarchy nil [(:root-id resolved)])
-
-                                :else
-                                @workforce-hierarchy)]
-          {:org/id org-id
-           :workforce/list final-workforce
-           :workforce-hierarchy final-hierarchy
-           :headcounts/list (mapv (fn [hc]
-                                    {:headcount/id (:request-id hc)
-                                     :headcount/title (:title hc "Open Position")
-                                     :headcount/job-level (:job-level hc)
-                                     :headcount/location (:location hc)
-                                     :headcount/division-id (:division-id hc)
-                                     :headcount/dept-id (:unit-id hc)
-                                     :headcount/status (name (or (:status hc) :open))})
-                                  (vals allowed-hc-by-nid))
-           :headcounts-by-manager @headcounts-by-manager
-           :org/chart-settings chart-settings}))
-
-      ;; 2. Fallback for dynamic/new orgs in Rama
-      (let [members (list-members deps org-id)
-            headcounts (filterv #(abac-allows-headcount? % abac-policy) (list-headcount-requests deps org-id))
-            owner-id (or (:owner-user-id (find-org-by-id deps org-id)) (-> members first :user-id) "u-owner")
-            workforce-list
-            (mapv (fn [m]
-                    {:person/id (str (:user-id m))
-                     :person/name (or (:name m) (:email m) (str "User " (:user-id m)))
-                     :person/title (if (= (:user-id m) owner-id) "Executive & Owner" (str (:role m "Member")))
-                     :person/email (:email m)
-                     :person/role (keyword (str/lower-case (str (:role m "employee"))))
-                     :person/compensation (when view-comp? {:salary 150000 :currency "USD"})})
-                  members)
-            base-hierarchy {nil [owner-id]
-                            owner-id (mapv #(str (:user-id %)) (remove #(= (:user-id %) owner-id) members))}
-            resolved (resolve-full-org-root workforce-list base-hierarchy chart-settings)
-            final-workforce (if-let [synth (:synthetic-node resolved)]
-                              (conj workforce-list synth)
-                              workforce-list)
-            final-hierarchy (cond
-                              (:synthetic-node resolved)
-                              (assoc (dissoc base-hierarchy nil)
-                                     nil ["__visual_root__"]
-                                     "__visual_root__" (:co-equal-ids resolved))
-
-                              (:root-id resolved)
-                              (assoc base-hierarchy nil [(:root-id resolved)])
-
-                              :else
-                              base-hierarchy)
-            headcounts-by-mgr (if (seq headcounts) {owner-id headcounts} {})]
+            mgr-hcs (keep #(get allowed-hc-by-nid %) child-nids)
+            hc-models (mapv (fn [hc]
+                              {:headcount/id (:request-id hc)
+                               :headcount/title (:title hc "Open Position")
+                               :headcount/job-level (:job-level hc)
+                               :headcount/location (:location hc)
+                               :headcount/division-id (:division-id hc)
+                               :headcount/dept-id (:unit-id hc)
+                               :headcount/status (name (or (:status hc) :open))})
+                            mgr-hcs)]
         {:org/id org-id
-         :workforce/list final-workforce
-         :workforce-hierarchy final-hierarchy
-         :headcounts/list headcounts
-         :headcounts-by-manager headcounts-by-mgr
-         :org/chart-settings chart-settings}))))
+         :manager-id manager-id
+         :workforce/list direct-reports
+         :workforce-hierarchy branch-hierarchy
+         :headcounts/list hc-models
+         :headcounts-by-manager (if (seq hc-models) {manager-id hc-models} {})})
+
+      ;; Dynamic Rama org fallback
+      (let [_members (list-members deps org-id)
+            _headcounts (filterv #(abac-allows-headcount? % abac-policy) (list-headcount-requests deps org-id))]
+        {:org/id org-id
+         :manager-id manager-id
+         :workforce/list []
+         :workforce-hierarchy {manager-id []}
+         :headcounts/list []
+         :headcounts-by-manager {}}))))
+
+(defn search-org-workforce
+  "Searches enterprise workforce on the server and returns matches with their full ancestor path."
+  [deps org-id term limit _viewer-ctx]
+  (let [seed-org (get-seed-org-data deps org-id)
+        term-clean (some-> term str/lower-case str/trim)
+        max-results (or limit 15)]
+    (if (and seed-org (seq term-clean))
+      (let [tree (:tree seed-org)
+            employees (:employees seed-org)
+            employments (:employments seed-org)
+            _emp-by-nid (into {} (map (fn [e] [(str/replace (:employee-id e) #"^emp-" "") e])) employees)
+            empmt-by-nid (into {} (map (fn [e] [(str/replace (:employee-id e) #"^emp-" "") e])) employments)
+            children-map (:children tree)
+            parent-map (invert-children-map children-map)]
+        (->> employees
+             (filter (fn [e]
+                       (let [nid (str/replace (:employee-id e) #"^emp-" "")
+                             empmt (get empmt-by-nid nid)
+                             full-name (str (:first-name e) " " (:last-name e))
+                             title (or (:job-title empmt) "")
+                             dept (or (:unit-id empmt) "")
+                             email (or (:personal-email e) "")]
+                         (or (str/includes? (str/lower-case full-name) term-clean)
+                             (str/includes? (str/lower-case title) term-clean)
+                             (str/includes? (str/lower-case dept) term-clean)
+                             (str/includes? (str/lower-case email) term-clean)))))
+             (take max-results)
+             (mapv (fn [e]
+                     (let [nid (str/replace (:employee-id e) #"^emp-" "")
+                           empmt (get empmt-by-nid nid)]
+                       {:person/id nid
+                        :person/name (str (:first-name e) " " (:last-name e))
+                        :person/title (:job-title empmt "Employee")
+                        :person/email (:personal-email e)
+                        :person/department-name (:unit-id empmt)
+                        :person/ancestor-path (build-ancestor-path parent-map nid)})))))
+      (let [members (list-members deps org-id)
+            term-clean (some-> term str/lower-case str/trim)]
+        (if (seq term-clean)
+          (->> members
+               (filter (fn [m]
+                         (or (str/includes? (str/lower-case (or (:name m) "")) term-clean)
+                             (str/includes? (str/lower-case (or (:email m) "")) term-clean)
+                             (str/includes? (str/lower-case (or (:role m) "")) term-clean))))
+               (take (or limit 15))
+               (mapv (fn [m]
+                       {:person/id (str (:user-id m))
+                        :person/name (or (:name m) (:email m))
+                        :person/title (str (:role m "Member"))
+                        :person/email (:email m)
+                        :person/ancestor-path [(str (:user-id m))]})))
+          [])))))

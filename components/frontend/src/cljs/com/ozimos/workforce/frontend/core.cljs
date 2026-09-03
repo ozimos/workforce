@@ -1,5 +1,6 @@
 (ns com.ozimos.workforce.frontend.core
   (:require
+   [clojure.string :as str]
    [com.fulcrologic.devtools.chrome.target :as chrome-devtools]
    [com.fulcrologic.fulcro.algorithms.denormalize :as denorm]
    [com.fulcrologic.fulcro.application :as app]
@@ -223,6 +224,77 @@
                                     (update :dept/id merge dept-table)
                                     (update :unit/id merge unit-table))))))})))))
 
+(defn- fetch-workforce-branch! [manager-id]
+  (let [state-atom (::app/state-atom app-inst)
+        org-id (get-in @state-atom [:active-org :org/id])
+        mutation-expr [(list 'org/fetch-workforce-branch {:org/id org-id :manager/id manager-id})]]
+    (swap! state-atom update :loading-branches (fnil conj #{}) manager-id)
+    (-> (transit/fetch-transit "/api/query" mutation-expr)
+        (.then (fn [{:keys [body status]}]
+                 (if (and status (>= status 400))
+                   (swap! state-atom (fn [s] (-> s (update :loading-branches disj manager-id)
+                                                  (assoc :error "Failed to load direct reports"))))
+                   (let [res (or (get body 'org/fetch-workforce-branch)
+                                 (first (vals body)))
+                         workforce-list (:workforce/list res)
+                         branch-hier (:workforce-hierarchy res)
+                         hcs-list (:headcounts/list res)
+                         hcs-by-mgr (:headcounts-by-manager res)
+                         person-table (into {} (map (fn [p] [(:person/id p) p])) workforce-list)
+                         hc-table (into {} (map (fn [h] [(:headcount/id h) h])) hcs-list)]
+                     (swap! state-atom
+                            (fn [s]
+                              (-> s
+                                  (update :loading-branches disj manager-id)
+                                  (update :collapsed-workforce disj manager-id)
+                                  (assoc-in [:person/id] (merge (get s :person/id {}) person-table))
+                                  (assoc-in [:headcount/id] (merge (get s :headcount/id {}) hc-table))
+                                  (update :workforce merge person-table)
+                                  (update :workforce-hierarchy merge branch-hier)
+                                  (update :headcounts-by-manager merge hcs-by-mgr))))))))
+        (.catch (fn [err]
+                  (swap! state-atom (fn [s] (-> s (update :loading-branches disj manager-id)
+                                                 (assoc :error (str err))))))))))
+
+(defonce ^:private search-debounce-timer (atom nil))
+
+(defn- search-workforce! [term]
+  (let [state-atom (::app/state-atom app-inst)
+        org-id (get-in @state-atom [:active-org :org/id])
+        term-clean (some-> term str/trim)]
+    (when @search-debounce-timer
+      (js/clearTimeout @search-debounce-timer))
+    (if (empty? term-clean)
+      (swap! state-atom assoc :server-search-results nil :searching? false)
+      (reset! search-debounce-timer
+              (js/setTimeout
+               (fn []
+                 (swap! state-atom assoc :searching? true)
+                 (-> (transit/fetch-transit "/api/query" [(list 'org/search-workforce {:org/id org-id :term term-clean})])
+                     (.then (fn [{:keys [body]}]
+                              (let [res (or (get body 'org/search-workforce) (first (vals body)))
+                                    results (:results res)]
+                                (swap! state-atom assoc :server-search-results results :searching? false))))
+                     (.catch (fn [_]
+                               (swap! state-atom assoc :searching? false)))))
+               250)))))
+
+(defn- select-search-result! [result]
+  (let [state-atom (::app/state-atom app-inst)
+        path (:person/ancestor-path result)
+        ancestor-mgrs (vec (butlast path))]
+    (swap! state-atom (fn [s]
+                        (-> s
+                            (update :collapsed-workforce (fn [c] (apply disj (or c #{}) (or ancestor-mgrs []))))
+                            (assoc :workforce-search (:person/name result)
+                                   :server-search-results nil))))
+    (doseq [mgr-id ancestor-mgrs]
+      (let [s @state-atom
+            children (get-in s [:workforce-hierarchy mgr-id] [])
+            loaded? (every? #(contains? (:workforce s) %) children)]
+        (when-not loaded?
+          (fetch-workforce-branch! mgr-id))))))
+
 (defn- fetch-workforce-chart! []
   (when (is-logged-in?)
     (let [state-atom (::app/state-atom app-inst)
@@ -231,11 +303,13 @@
         (load-rc! workforce-chart/WorkforceChart
                   [{[:org/id org-id]
                     [{:org/workforce-chart [:org/id
-                                           :workforce/list
-                                           :workforce-hierarchy
-                                           :headcounts/list
-                                           :headcounts-by-manager
-                                           :org/chart-settings]}]}]
+                                            :workforce/list
+                                            :workforce-hierarchy
+                                            :headcounts/list
+                                            :headcounts-by-manager
+                                            :org/chart-settings
+                                            :total-workforce-count
+                                            :total-headcount-count]}]}]
                   {:on-success
                    (fn [body]
                      (let [chart (or (get-in body [[:org/id org-id] :org/workforce-chart])
@@ -245,22 +319,20 @@
                            headcounts-list (:headcounts/list chart)
                            headcounts-by-mgr (:headcounts-by-manager chart)
                            chart-settings (:org/chart-settings chart)
+                           total-wf-count (:total-workforce-count chart)
                            saved-custom-root (when (exists? js/localStorage)
                                                (.getItem js/localStorage (str "workforce-custom-root:" org-id)))
 
                            ;; Query-Driven DB Normalization:
-                           ;; Normalize workforce nodes into [:person/id id] entity table
                            person-table (into {}
                                               (map (fn [p] [(:person/id p) p]))
                                               workforce-list)
 
-                           ;; Normalize headcounts into [:headcount/id id] entity table
                            headcount-table (into {}
                                                  (map (fn [h] [(:headcount/id h) h]))
                                                  headcounts-list)
 
                            ;; Compute initial collapsed nodes:
-                           ;; Expand root and its direct reports (depth <= 1), collapse deeper branches for instant rendering
                            root-id (first (get hierarchy nil []))
                            all-managers (set (keys (dissoc hierarchy nil)))
                            initial-collapsed (disj all-managers root-id)]
@@ -274,6 +346,9 @@
                                            :workforce-hierarchy hierarchy
                                            :headcounts-by-manager headcounts-by-mgr
                                            :org/chart-settings chart-settings
+                                           :total-workforce-count total-wf-count
+                                           :loading-branches #{}
+                                           :server-search-results nil
                                            :custom-root-id (or saved-custom-root (:custom-root-id s))
                                            :active-chart-tab (or (:active-chart-tab s) :tab/full-org)
                                            :collapsed-workforce initial-collapsed
@@ -456,7 +531,23 @@
    (fn [data]
      (let [term (if (map? data) (:term data) data)
            state-atom (::app/state-atom app-inst)]
-       (swap! state-atom assoc :workforce-search term)))
+       (swap! state-atom assoc :workforce-search term)
+       (search-workforce! term)))
+
+   :com.ozimos.workforce.frontend.ui.pages.workforce-chart/select-search-result
+   (fn [{:keys [result]}]
+     (select-search-result! result))
+
+   :com.ozimos.workforce.frontend.ui.pages.workforce-chart/expand-or-fetch
+   (fn [{:keys [id all-loaded?]}]
+     (let [state-atom (::app/state-atom app-inst)
+           s @state-atom
+           collapsed? (contains? (:collapsed-workforce s) id)]
+       (if (not collapsed?)
+         (swap! state-atom update :collapsed-workforce conj id)
+         (if all-loaded?
+           (swap! state-atom update :collapsed-workforce disj id)
+           (fetch-workforce-branch! id)))))
 
    :com.ozimos.workforce.frontend.ui.pages.workforce-chart/toggle-collapse
    (fn [{:keys [id]}]

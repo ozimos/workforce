@@ -180,7 +180,8 @@
                          units)}})))
 
 (pco/defresolver workforce-chart-resolver
-  "Resolve full workforce organization chart hierarchy, employees, and ABAC-filtered headcounts."
+  "Resolve workforce organization chart hierarchy, employees, and ABAC-filtered headcounts.
+   Supports optional depth-limit parameter (default 2)."
   [{:keys [deps] :as env} params]
   {::pco/input [:org/id]
    ::pco/output [{:org/workforce-chart [:org/id
@@ -188,10 +189,13 @@
                                        :workforce-hierarchy
                                        :headcounts/list
                                        :headcounts-by-manager
-                                       :org/chart-settings]}]}
+                                       :org/chart-settings
+                                       :total-workforce-count
+                                       :total-headcount-count]}]}
   (let [user-id (require-auth env)
         store (get-store deps)
-        org-id (:org/id params)]
+        org-id (:org/id params)
+        depth-limit (get params :depth-limit 2)]
     (when (nil? (org/get-membership store user-id org-id))
       (throw (ex-info "Not a member of this org" {:type :forbidden})))
     (let [viewer (get-viewer-context env store org-id)
@@ -199,8 +203,59 @@
                           (get-in env [:request :abac-policy])
                           (get-in env [:abac-policy])
                           nil)
-          result (org/get-org-workforce-chart store org-id viewer abac-policy)]
+          result (org/get-org-workforce-chart store org-id viewer abac-policy {:depth-limit depth-limit})]
       {:org/workforce-chart result})))
+
+(pco/defresolver workforce-branch-resolver
+  "Resolve on-demand direct reports branch under a specific manager node."
+  [{:keys [deps] :as env} params]
+  {::pco/input [:org/id :manager/id]
+   ::pco/output [{:manager/branch [:org/id
+                                   :manager-id
+                                   :workforce/list
+                                   :workforce-hierarchy
+                                   :headcounts/list
+                                   :headcounts-by-manager]}]}
+  (let [user-id (require-auth env)
+        store (get-store deps)
+        org-id (or (:org/id params) (:org-id params))
+        manager-id (or (:manager/id params) (:manager-id params))]
+    (when (nil? (org/get-membership store user-id org-id))
+      (throw (ex-info "Not a member of this org" {:type :forbidden})))
+    (let [viewer (get-viewer-context env store org-id)
+          abac-policy (or (get-in env [:auth :abac-policy])
+                          (get-in env [:request :abac-policy])
+                          (get-in env [:abac-policy])
+                          nil)
+          branch (org/get-org-workforce-branch store org-id manager-id viewer abac-policy)]
+      {:manager/branch branch})))
+
+(pco/defresolver workforce-search-resolver
+  "Search workforce employees on the backend, returning matches with ancestor paths."
+  [{:keys [deps] :as env} params]
+  {::pco/input [:org/id]
+   ::pco/output [{:workforce/search-results [:person/id
+                                            :person/name
+                                            :person/title
+                                            :person/email
+                                            :person/department-name
+                                            :person/ancestor-path]}]}
+  (let [user-id (require-auth env)
+        store (get-store deps)
+        org-id (:org/id params)
+        p (try (pco/params env) (catch Exception _ {}))
+        term (or (:term p)
+                 (:search/term p)
+                 (get-in env [:request :params :term])
+                 (:search/term env)
+                 (:term env)
+                 (:term params)
+                 (:search/term params))]
+    (when (nil? (org/get-membership store user-id org-id))
+      (throw (ex-info "Not a member of this org" {:type :forbidden})))
+    (let [viewer (get-viewer-context env store org-id)
+          results (org/search-org-workforce store org-id term 15 viewer)]
+      {:workforce/search-results results})))
 
 (pco/defresolver dept-dashboard-resolver
   "Resolve department analytics dashboard: budget, filled, open, pending, avg SLA."
@@ -718,6 +773,42 @@
       {:org/id org-id
        :org/chart-settings saved})))
 
+(pco/defmutation fetch-workforce-branch-mutation
+  "Fetch on-demand direct reports for a manager node."
+  [env params]
+  {::pco/op-name 'org/fetch-workforce-branch
+   ::pco/params [:org/id :manager/id]
+   ::pco/output [:org/id :manager-id :workforce/list :workforce-hierarchy :headcounts/list :headcounts-by-manager]}
+  (let [user-id (require-auth env)
+        store (get-store (:deps env))
+        org-id (or (:org/id params) (:org-id params))
+        manager-id (or (:manager/id params) (:manager-id params))]
+    (when (nil? (org/get-membership store user-id org-id))
+      (throw (ex-info "Not a member of this org" {:type :forbidden})))
+    (let [viewer (get-viewer-context env store org-id)
+          abac-policy (or (get-in env [:auth :abac-policy])
+                          (get-in env [:request :abac-policy])
+                          (get-in env [:abac-policy])
+                          nil)]
+      (org/get-org-workforce-branch store org-id manager-id viewer abac-policy))))
+
+(pco/defmutation search-workforce-mutation
+  "Search workforce employees on the backend, returning matches with ancestor paths."
+  [env params]
+  {::pco/op-name 'org/search-workforce
+   ::pco/params [:org/id :term]
+   ::pco/output [:org/id :results]}
+  (let [user-id (require-auth env)
+        store (get-store (:deps env))
+        org-id (or (:org/id params) (:org-id params))
+        term (or (:term params) (:search/term params))]
+    (when (nil? (org/get-membership store user-id org-id))
+      (throw (ex-info "Not a member of this org" {:type :forbidden})))
+    (let [viewer (get-viewer-context env store org-id)
+          results (org/search-org-workforce store org-id term 15 viewer)]
+      {:org/id org-id
+       :results results})))
+
 ;; -----------------------------------------------------------------------------
 ;; Full Resolvers Index & Integrant Method
 ;; -----------------------------------------------------------------------------
@@ -738,6 +829,8 @@
    org-role-permissions-resolver
    headcount-available-actions-resolver
    workforce-chart-resolver
+   workforce-branch-resolver
+   workforce-search-resolver
 
    ;; Mutations
    create-org-mutation
@@ -758,7 +851,9 @@
    reject-headcount-mutation
    edit-headcount-field-mutation
    transition-hire-mutation
-   update-chart-settings-mutation])
+   update-chart-settings-mutation
+   fetch-workforce-branch-mutation
+   search-workforce-mutation])
 
 (defmethod ig/init-key :workforce/org-resolvers [_ _]
   resolvers)

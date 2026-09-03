@@ -184,7 +184,17 @@
 
 (defn get-org-workforce-chart
   ([deps org-id viewer-ctx abac-policy]
-   (core/get-org-workforce-chart deps org-id viewer-ctx abac-policy)))
+   (core/get-org-workforce-chart deps org-id viewer-ctx abac-policy))
+  ([deps org-id viewer-ctx abac-policy opts]
+   (core/get-org-workforce-chart deps org-id viewer-ctx abac-policy opts)))
+
+(defn get-org-workforce-branch
+  ([deps org-id manager-id viewer-ctx abac-policy]
+   (core/get-org-workforce-branch deps org-id manager-id viewer-ctx abac-policy)))
+
+(defn search-org-workforce
+  ([deps org-id term limit viewer-ctx]
+   (core/search-org-workforce deps org-id term limit viewer-ctx)))
 
 (defn get-org-chart-settings [deps org-id]
   (core/get-org-chart-settings deps org-id))

@@ -512,3 +512,43 @@
         (is (= [(str (:id admin)) (str (:id emp-user))] (get co-hier "__visual_root__")))
         (is (some? synth))
         (is (= "Executive Co-Chairs" (:person/name synth)))))))
+
+(deftest ^:integration workforce-chart-progressive-loading-test
+  (testing "progressive loading: bounded depth query, branch resolver, and workforce search"
+    (let [admin (register-user)
+          [ok o] (org/create-org! *deps* {:name (str "enterprise-prog-" (short-suffix)) :owner-user-id (:id admin)})
+          _ (is ok)
+          org-id (:id o)
+          admin-env (build-env-with-org {:user-id (:id admin)})
+
+          ;; 1. Bounded initial query: depth <= 2
+          chart-res (p.eql/process admin-env {:org/id org-id}
+                      [{:org/workforce-chart [:org/id
+                                             :workforce/list
+                                             :workforce-hierarchy
+                                             :total-workforce-count]}])
+          chart-data (:org/workforce-chart chart-res)
+          initial-nodes (:workforce/list chart-data)
+          total-count (:total-workforce-count chart-data)]
+      (is (>= total-count 7000) "Enterprise dataset contains ~8,000 employees + 2,000 headcounts")
+      ;; With depth 2, payload should be ~80-100 nodes, NOT 10,000 nodes
+      (is (< (count initial-nodes) 500) "Initial depth-bounded query must not load all 10,000 nodes")
+      (is (> (count initial-nodes) 10) "Initial depth 2 query must contain root and direct reports")
+
+      ;; 2. On-demand branch resolver: fetch direct reports of first manager
+      (let [mgr-id (:person/id (first initial-nodes))
+            branch-res (p.eql/process admin-env {:org/id org-id :manager/id mgr-id}
+                         [{:manager/branch [:org/id :manager-id :workforce/list :workforce-hierarchy]}])
+            branch (:manager/branch branch-res)]
+        (is (some? branch))
+        (is (= mgr-id (:manager-id branch)))
+        (is (vector? (:workforce/list branch))))
+
+      ;; 3. Workforce server search: finds matches with ancestor paths
+      (let [search-res (pathom/process admin-env
+                         [(list 'org/search-workforce {:org-id org-id :term "a"})])
+            r (first (vals search-res))
+            results (:results r)]
+        (is (seq results) "Search mutation must find matching employees")
+        (when-let [first-match (first results)]
+          (is (seq (:person/ancestor-path first-match)) "Match must include ancestor path from root"))))))

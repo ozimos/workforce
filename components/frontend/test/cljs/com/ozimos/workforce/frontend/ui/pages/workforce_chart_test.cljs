@@ -160,9 +160,9 @@
 
     (testing "My org tab is visible when current user email matches an employee"
       (let [hiccup (wf/WorkforceChart {:workforce extended-workforce
-                                      :workforce-hierarchy extended-hierarchy
-                                      :current-user/email "bob@acme.com"
-                                      :custom-root-id nil})]
+                                       :workforce-hierarchy extended-hierarchy
+                                       :current-user/email "bob@acme.com"
+                                       :custom-root-id nil})]
         (is (str/includes? (pr-str hiccup) "Full org"))
         (is (str/includes? (pr-str hiccup) "👤 My org"))))
 
@@ -199,3 +199,43 @@
         (is (str/includes? rendered "Bob Jones"))
         (is (str/includes? rendered "Carol Danvers"))
         (is (not (str/includes? rendered "Alice Smith")))))))
+
+(deftest workforce-chart-progressive-loading-ui-test
+  (let [extended-workforce {"emp-alice" {:person/id "emp-alice" :person/name "Alice Smith" :person/title "CEO" :person/email "alice@acme.com"}
+                            "emp-bob" {:person/id "emp-bob" :person/name "Bob Jones" :person/title "VP Eng" :person/email "bob@acme.com"}
+                            "emp-carol" {:person/id "emp-carol" :person/name "Carol Danvers" :person/title "Eng Manager" :person/email "carol@acme.com"}}
+        extended-hierarchy {nil ["emp-alice"]
+                            "emp-alice" ["emp-bob"]
+                            "emp-bob" ["emp-carol"]}]
+    (testing "Card shows '⌛ Loading...' when branch is in-flight"
+      (let [hiccup (wf/WorkforceChart {:workforce extended-workforce
+                                      :workforce-hierarchy extended-hierarchy
+                                      :loading-branches #{"emp-alice"}
+                                      :collapsed-workforce #{"emp-alice"}
+                                      :active-chart-tab :tab/full-org})
+            rendered (pr-str hiccup)]
+        (is (str/includes? rendered "⌛ Loading..."))))
+
+    (testing "Search autocomplete dropdown renders matching employees"
+      (let [hiccup (wf/WorkforceChart {:workforce extended-workforce
+                                      :workforce-hierarchy extended-hierarchy
+                                      :workforce-search "Dave"
+                                      :server-search-results [{:person/id "emp-dave"
+                                                              :person/name "Dave Wilson"
+                                                              :person/title "Staff Engineer"
+                                                              :person/department-name "Backend"
+                                                              :person/ancestor-path ["emp-alice" "emp-bob" "emp-dave"]}]
+                                      :active-chart-tab :tab/full-org})
+            rendered (pr-str hiccup)]
+        (is (str/includes? rendered "Dave Wilson"))
+        (is (str/includes? rendered "Staff Engineer"))
+        (is (str/includes? rendered "Jump ➔"))))
+
+    (testing "Total workforce badge reflects total vs loaded counts"
+      (let [hiccup (wf/WorkforceChart {:workforce extended-workforce
+                                      :workforce-hierarchy extended-hierarchy
+                                      :total-workforce-count 10000
+                                      :active-chart-tab :tab/full-org})
+            rendered (pr-str hiccup)]
+        (is (str/includes? rendered "10000"))
+        (is (str/includes? rendered "loaded"))))))

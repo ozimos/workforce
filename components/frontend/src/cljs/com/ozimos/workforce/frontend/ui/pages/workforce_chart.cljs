@@ -37,6 +37,12 @@
 (defn reset-custom-root []
   [:com.ozimos.workforce.frontend.ui.pages.workforce-chart/reset-custom-root {}])
 
+(defn expand-or-fetch-branch [data]
+  [:com.ozimos.workforce.frontend.ui.pages.workforce-chart/expand-or-fetch data])
+
+(defn select-search-result [data]
+  [:com.ozimos.workforce.frontend.ui.pages.workforce-chart/select-search-result data])
+
 ;; -----------------------------------------------------------------------------
 ;; Full Org Root Resolution Algorithm
 ;; -----------------------------------------------------------------------------
@@ -187,101 +193,111 @@
 ;; -----------------------------------------------------------------------------
 
 (defn- render-workforce-tree-node
-  [person-id workforce-map hierarchy collapsed-nodes search-term can-view-comp?
-   headcounts-by-manager abac-policy custom-root-id]
-  (let [person (get workforce-map person-id {:person/id person-id :person/name (str person-id)})
-        children (get hierarchy person-id [])
-        has-children? (pos? (count children))
-        collapsed? (contains? collapsed-nodes person-id)
-        name (or (:person/name person) (str person-id))
-        title (or (:person/title person) "Employee")
-        dept (or (:person/department-name person) (:person/division-name person) (:person/unit-id person))
-        comp (:person/compensation person)
-        role (:person/role person)
-        synthetic? (true? (:person/is-synthetic? person))
-        search-term (some-> search-term str/lower-case str/trim)
-        matches-search? (and (seq search-term)
-                             (or (str/includes? (str/lower-case name) search-term)
-                                 (str/includes? (str/lower-case title) search-term)
-                                 (when dept (str/includes? (str/lower-case (str dept)) search-term))))
-        ;; ABAC-filtered headcounts for this manager
-        raw-hcs (get headcounts-by-manager person-id [])
-        visible-hcs (abac/filter-accessible-headcounts raw-hcs abac-policy)]
-    [:div {:replicant/key (str person-id)
-           :class "flex flex-col items-center"}
-     ;; Person Card Node
-     [:div {:class (str "w-72 bg-white rounded-xl border p-4 shadow-sm transition-all duration-200 hover:shadow-md relative "
-                        (cond
-                          synthetic? "border-purple-300 bg-purple-50/20 ring-1 ring-purple-200"
-                          matches-search? "border-indigo-500 ring-2 ring-indigo-400 bg-indigo-50/20"
-                          :else "border-gray-200 hover:border-indigo-300"))}
-      [:div {:class "flex items-start gap-3"}
-       (avatar-badge name role)
-       [:div {:class "flex-1 min-w-0"}
-        [:div {:class "flex items-center justify-between"}
-         [:h4 {:class "font-bold text-sm text-gray-900 truncate"} name]
-         (when role
-           [:span {:class "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-gray-100 text-gray-700"}
-            (str/upper-case (clojure.core/name role))])]
-        [:p {:class "text-xs font-medium text-gray-600 truncate mt-0.5"} title]
-        (when dept
-          [:p {:class "text-[11px] text-indigo-600 truncate font-mono mt-0.5"} (str "📁 " dept)])
+  ([person-id workforce-map hierarchy collapsed-nodes search-term can-view-comp?
+    headcounts-by-manager abac-policy custom-root-id]
+   (render-workforce-tree-node person-id workforce-map hierarchy collapsed-nodes search-term can-view-comp?
+                              headcounts-by-manager abac-policy custom-root-id #{}))
+  ([person-id workforce-map hierarchy collapsed-nodes search-term can-view-comp?
+    headcounts-by-manager abac-policy custom-root-id loading-branches]
+   (let [person (get workforce-map person-id {:person/id person-id :person/name (str person-id)})
+         children (get hierarchy person-id [])
+         has-children? (pos? (count children))
+         collapsed? (contains? collapsed-nodes person-id)
+         loading? (contains? (or loading-branches #{}) person-id)
+         all-loaded? (every? #(contains? workforce-map %) (remove nil? children))
+         name (or (:person/name person) (str person-id))
+         title (or (:person/title person) "Employee")
+         dept (or (:person/department-name person) (:person/division-name person) (:person/unit-id person))
+         comp (:person/compensation person)
+         role (:person/role person)
+         synthetic? (true? (:person/is-synthetic? person))
+         search-term (some-> search-term str/lower-case str/trim)
+         matches-search? (and (seq search-term)
+                              (or (str/includes? (str/lower-case name) search-term)
+                                  (str/includes? (str/lower-case title) search-term)
+                                  (when dept (str/includes? (str/lower-case (str dept)) search-term))))
+         ;; ABAC-filtered headcounts for this manager
+         raw-hcs (get headcounts-by-manager person-id [])
+         visible-hcs (abac/filter-accessible-headcounts raw-hcs abac-policy)]
+     [:div {:replicant/key (str person-id)
+            :class "flex flex-col items-center"}
+      ;; Person Card Node
+      [:div {:class (str "w-72 bg-white rounded-xl border p-4 shadow-sm transition-all duration-200 hover:shadow-md relative "
+                         (cond
+                           synthetic? "border-purple-300 bg-purple-50/20 ring-1 ring-purple-200"
+                           matches-search? "border-indigo-500 ring-2 ring-indigo-400 bg-indigo-50/20"
+                           :else "border-gray-200 hover:border-indigo-300"))}
+       [:div {:class "flex items-start gap-3"}
+        (avatar-badge name role)
+        [:div {:class "flex-1 min-w-0"}
+         [:div {:class "flex items-center justify-between"}
+          [:h4 {:class "font-bold text-sm text-gray-900 truncate"} name]
+          (when role
+            [:span {:class "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-gray-100 text-gray-700"}
+             (str/upper-case (clojure.core/name role))])]
+         [:p {:class "text-xs font-medium text-gray-600 truncate mt-0.5"} title]
+         (when dept
+           [:p {:class "text-[11px] text-indigo-600 truncate font-mono mt-0.5"} (str "📁 " dept)])
 
-        ;; Compensation details (Field-Level RBAC Protected)
-        (if can-view-comp?
-          (if comp
-            [:div {:class "mt-2 pt-2 border-t border-gray-100 flex items-center justify-between text-[11px] text-gray-500"}
-             [:span "Base Comp:"]
-             [:span {:class "font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded ring-1 ring-emerald-600/20"}
-              (format-currency (:salary comp) (:currency comp "USD"))]]
-            [:div {:class "mt-2 pt-2 border-t border-gray-100 text-[11px] text-gray-400 italic"} "Comp: Not configured"])
-          [:div {:class "mt-2 pt-2 border-t border-gray-100 flex items-center gap-1 text-[11px] text-gray-400"}
-           [:span "🔒 Comp restricted"]])]]
+         ;; Compensation details (Field-Level RBAC Protected)
+         (if can-view-comp?
+           (if comp
+             [:div {:class "mt-2 pt-2 border-t border-gray-100 flex items-center justify-between text-[11px] text-gray-500"}
+              [:span "Base Comp:"]
+              [:span {:class "font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded ring-1 ring-emerald-600/20"}
+               (format-currency (:salary comp) (:currency comp "USD"))]]
+             [:div {:class "mt-2 pt-2 border-t border-gray-100 text-[11px] text-gray-400 italic"} "Comp: Not configured"])
+           [:div {:class "mt-2 pt-2 border-t border-gray-100 flex items-center gap-1 text-[11px] text-gray-400"}
+            [:span "🔒 Comp restricted"]])]]
 
-      ;; ABAC-Filtered Headcounts for this manager
-      (when (seq visible-hcs)
-        [:div {:class "mt-3 pt-2 border-t border-amber-100"}
-         [:p {:class "text-[10px] font-semibold text-amber-700 mb-1.5 uppercase tracking-wide"} "Open Headcounts"]
-         (into [:div {:class "flex flex-col gap-1"}]
-               (map headcount-badge visible-hcs))])
+       ;; ABAC-Filtered Headcounts for this manager
+       (when (seq visible-hcs)
+         [:div {:class "mt-3 pt-2 border-t border-amber-100"}
+          [:p {:class "text-[10px] font-semibold text-amber-700 mb-1.5 uppercase tracking-wide"} "Open Headcounts"]
+          (into [:div {:class "flex flex-col gap-1"}]
+                (map headcount-badge visible-hcs))])
 
-      ;; Action Buttons: Set as Root in My Org + Expand / Collapse Toggle
-      [:div {:class "mt-3 pt-2 border-t border-gray-100 flex items-center justify-between gap-2"}
-       (if (not synthetic?)
-         (if (= person-id custom-root-id)
-           [:span {:class "inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded ring-1 ring-inset ring-indigo-700/20"}
-            "⭐ Current Root"]
-           [:button {:class "inline-flex items-center gap-1 rounded bg-gray-50 px-2 py-0.5 text-xs font-medium text-gray-700 hover:bg-indigo-50 hover:text-indigo-600 transition ring-1 ring-inset ring-gray-200 hover:ring-indigo-300 shadow-2xs"
-                     :title "Set this employee as the root node in My Org"
-                     :on {:click [(set-custom-root {:id person-id})]}}
-            "🎯 Set as Root"])
-         [:span {:class "text-[11px] text-purple-600 font-semibold italic"} "Co-Equal Leadership"])
+       ;; Action Buttons: Set as Root in My Org + Expand / Collapse Toggle
+       [:div {:class "mt-3 pt-2 border-t border-gray-100 flex items-center justify-between gap-2"}
+        (if (not synthetic?)
+          (if (= person-id custom-root-id)
+            [:span {:class "inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded ring-1 ring-inset ring-indigo-700/20"}
+             "⭐ Current Root"]
+            [:button {:class "inline-flex items-center gap-1 rounded bg-gray-50 px-2 py-0.5 text-xs font-medium text-gray-700 hover:bg-indigo-50 hover:text-indigo-600 transition ring-1 ring-inset ring-gray-200 hover:ring-indigo-300 shadow-2xs"
+                      :title "Set this employee as the root node in My Org"
+                      :on {:click [(set-custom-root {:id person-id})]}}
+             "🎯 Set as Root"])
+          [:span {:class "text-[11px] text-purple-600 font-semibold italic"} "Co-Equal Leadership"])
 
+        (when has-children?
+          [:button {:class "inline-flex items-center gap-1 rounded bg-gray-50 px-2 py-0.5 text-xs font-medium text-gray-700 hover:bg-indigo-50 hover:text-indigo-600 transition disabled:opacity-50"
+                    :disabled loading?
+                    :on {:click [(expand-or-fetch-branch {:id person-id :all-loaded? all-loaded?})]}}
+           (cond
+             loading? "⌛ Loading..."
+             collapsed? "▼ Expand"
+             :else "▲ Collapse")])]
+
+       ;; Child count helper
        (when has-children?
-         [:button {:class "inline-flex items-center gap-1 rounded bg-gray-50 px-2 py-0.5 text-xs font-medium text-gray-700 hover:bg-indigo-50 hover:text-indigo-600 transition"
-                   :on {:click [(toggle-workforce-collapse {:id person-id})]}}
-          (if collapsed? "▼ Expand" "▲ Collapse")])]
+         [:div {:class "mt-1.5 text-right"}
+          [:span {:class "text-[10px] text-gray-400 font-medium"}
+           (str (count children) " Direct Report" (when (> (count children) 1) "s"))]])]
 
-      ;; Child count helper
-      (when has-children?
-        [:div {:class "mt-1.5 text-right"}
-         [:span {:class "text-[10px] text-gray-400 font-medium"}
-          (str (count children) " Direct Report" (when (> (count children) 1) "s"))]])]
-
-     ;; Connecting Vertical Line & Children Branch
-     (when (and has-children? (not collapsed?))
-       [:div {:class "flex flex-col items-center w-full mt-2"}
-        ;; Stem connector
-        [:div {:class "h-5 w-0.5 bg-gray-300"}]
-        ;; Child nodes row with crossbar
-        (into [:div {:class "flex justify-center gap-8 relative pt-2"}]
-              (concat
-               (when (> (count children) 1)
-                 [[:div {:class "absolute top-0 left-12 right-12 h-0.5 bg-gray-300"}]])
-               (map (fn [cid]
-                      (render-workforce-tree-node cid workforce-map hierarchy collapsed-nodes search-term can-view-comp?
-                                                 headcounts-by-manager abac-policy custom-root-id))
-                    children)))])]))
+      ;; Connecting Vertical Line & Children Branch
+      (when (and has-children? (not collapsed?))
+        [:div {:class "flex flex-col items-center w-full mt-2"}
+         ;; Stem connector
+         [:div {:class "h-5 w-0.5 bg-gray-300"}]
+         ;; Child nodes row with crossbar
+         (into [:div {:class "flex justify-center gap-8 relative pt-2"}]
+               (concat
+                (when (> (count children) 1)
+                  [[:div {:class "absolute top-0 left-12 right-12 h-0.5 bg-gray-300"}]])
+                (map (fn [cid]
+                       (render-workforce-tree-node cid workforce-map hierarchy collapsed-nodes search-term can-view-comp?
+                                                  headcounts-by-manager abac-policy custom-root-id loading-branches))
+                     children)))])])))
 
 ;; -----------------------------------------------------------------------------
 ;; Root Workforce Org Chart View
@@ -291,6 +307,7 @@
   {:query [:loading :error :active-org :workforce :workforce-hierarchy :workforce-search
            :collapsed-workforce :permissions :headcounts-by-manager :abac/policy
            :active-chart-tab :custom-root-id :current-user/email :org/chart-settings
+           :loading-branches :server-search-results :searching? :total-workforce-count
            {:workforce/list (:query (meta WorkforceNode))}
            {:headcounts/list (:query (meta HeadcountCard))}]
    :ident :workforce-chart/root
@@ -298,7 +315,7 @@
    :route-segment ["org-chart"]}
   [{:keys [loading error active-org workforce workforce-hierarchy workforce-search
            collapsed-workforce permissions headcounts-by-manager active-chart-tab
-           custom-root-id] :as props}]
+           custom-root-id loading-branches server-search-results total-workforce-count] :as props}]
   (let [abac-policy (get props :abac/policy)
         chart-settings (or (get props :org/chart-settings) (get props :chart-settings) {})
         current-user-email (or (get props :current-user/email)
@@ -350,17 +367,18 @@
                           (if my-org-root-id [my-org-root-id] [])
                           (if full-org-root-id [full-org-root-id] (get hierarchy nil [])))
 
-        total-members (count (remove :person/is-synthetic? (vals workforce-map)))
+        total-workforce-nodes (or total-workforce-count (count (remove :person/is-synthetic? (vals workforce-map))))
+        loaded-members (count (remove :person/is-synthetic? (vals workforce-map)))
         total-headcounts (count (abac/filter-accessible-headcounts
                                  (apply concat (vals (or headcounts-by-manager {})))
                                  abac-policy))]
-    [:div {:class "min-h-screen bg-slate-50 flex flex-col"}
-     ;; Header & Controls
-     [:header {:class "sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-gray-200 px-6 py-4 shadow-xs"}
-      [:div {:class "max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4"}
+    [:div {:class "min-h-screen bg-gray-50 flex flex-col font-sans"}
+     ;; Top Header Bar
+     [:header {:class "bg-white border-b border-gray-200 sticky top-0 z-30 shadow-2xs"}
+      [:div {:class "max-w-7xl mx-auto px-6 py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4"}
        [:div {:class "flex items-center gap-3"}
-        [:div {:class "p-2 bg-indigo-600 text-white rounded-xl shadow-xs"}
-         [:svg {:class "w-6 h-6" :fill "none" :stroke "currentColor" :viewBox "0 0 24 24"}
+        [:div {:class "w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-xs"}
+         [:svg {:class "w-5 h-5" :fill "none" :stroke "currentColor" :viewBox "0 0 24 24"}
           [:path {:stroke-linecap "round" :stroke-linejoin "round" :stroke-width "2"
                   :d "M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"}]]]
         [:div
@@ -371,12 +389,24 @@
 
        ;; Search, Filter & Action Buttons
        [:div {:class "flex flex-wrap items-center gap-3 w-full md:w-auto justify-end"}
-        [:div {:class "relative w-full sm:w-64"}
+        [:div {:class "relative w-full sm:w-72"}
          [:input {:type "text"
                   :value (or workforce-search "")
-                  :placeholder "Search workforce by name or title..."
+                  :placeholder "Search 10k workforce by name, title..."
                   :class "w-full pl-9 pr-3 py-1.5 text-xs bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition"
-                  :on {:input [(set-workforce-search {:term :event.target/value})]}}]]
+                  :on {:input [(set-workforce-search {:term :event.target/value})]}}]
+         (when (seq server-search-results)
+           [:div {:class "absolute left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl z-50 max-h-60 overflow-y-auto divide-y divide-gray-100"}
+            (map (fn [res]
+                   [:div {:class "px-3 py-2 hover:bg-indigo-50 cursor-pointer flex items-center justify-between transition text-xs"
+                          :on {:click [(select-search-result {:result res})]}}
+                    [:div {:class "flex flex-col min-w-0 pr-2"}
+                     [:span {:class "font-bold text-gray-900 truncate"} (:person/name res)]
+                     [:span {:class "text-[11px] text-gray-500 truncate"}
+                      (str (:person/title res) (when-let [d (:person/department-name res)] (str " • " d)))]]
+                    [:span {:class "shrink-0 text-[10px] text-indigo-600 font-semibold bg-indigo-50 px-1.5 py-0.5 rounded ring-1 ring-indigo-200"}
+                     "Jump ➔"]])
+                 server-search-results)])]
 
         [:button {:class "inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 transition shadow-xs"
                   :on {:click [(expand-all-workforce)]}}
@@ -434,7 +464,10 @@
       [:div {:class "flex flex-wrap gap-4"}
        [:div {:class "flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 rounded-lg shadow-xs text-xs"}
         [:span {:class "font-medium text-gray-500"} "👥 Total Workforce:"]
-        [:span {:class "font-bold text-gray-900 font-mono"} total-members]]
+        [:span {:class "font-bold text-gray-900 font-mono"}
+         (if (> total-workforce-nodes loaded-members)
+           (str total-workforce-nodes " (" loaded-members " loaded)")
+           total-workforce-nodes)]]
 
        [:div {:class "flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 rounded-lg shadow-xs text-xs"}
         [:span {:class "font-medium text-amber-600"} "📋 Open Headcounts:"]
@@ -471,5 +504,5 @@
               (map (fn [rid]
                      (render-workforce-tree-node rid workforce-map hierarchy collapsed-nodes
                                                 workforce-search can-view-comp?
-                                                headcounts-by-manager abac-policy custom-root-id))
+                                                headcounts-by-manager abac-policy custom-root-id loading-branches))
                    active-root-ids)))]]))
