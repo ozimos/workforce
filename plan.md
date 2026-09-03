@@ -410,9 +410,9 @@ without code changes.
 
 **Uberjar** — `build.clj` defines `clean` and `uber`, producing
 `target/auth-service-0.1.0-SNAPSHOT-standalone.jar` with
-`com.ozimos.workforce.web.main` as the main class. There is no `bb uber` task yet;
-invoke it directly with `clojure -T:build uber`. Expect roughly 295 MB and several
-minutes, almost all of it Rama.
+`com.ozimos.workforce.web.main` as the main class. Run it with `bb uber`
+(`clojure -T:build uber`); `bb uber-clean` empties `target/`. Expect roughly 295 MB and
+several minutes, almost all of it Rama.
 
 The basis is built from the workspace root using the `:uberjar` alias, which supplies
 the same bricks as `:+default` without its `:extra-paths`. Two things constrain that

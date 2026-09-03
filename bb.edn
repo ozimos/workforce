@@ -211,6 +211,10 @@
   build        (do (shell "pnpm" "exec" "tailwindcss" "-i" "components/frontend/src/css/tailwind.css" "-o" "bases/web/resources/public/css/app.css")
                    (shell "pnpm" "exec" "shadow-cljs" "compile" "app")
                    (shell "pnpm" "exec" "shadow-cljs" "compile" "ssr"))
+  uber         {:doc "Build the standalone uberjar. Takes several minutes; expect a ~295MB jar, nearly all Rama."
+                :task (shell "clojure" "-T:build" "uber")}
+  uber-clean   {:doc "Delete the target/ build output."
+                :task (shell "clojure" "-T:build" "clean")}
   agent        {:doc "Run an Escapement autonomous workflow chart."
                 :task (let [chart (or (first *command-line-args*) "com.ozimos.workforce.org.workflows.headcount/hiring-approval-chart")]
                         (apply shell "escapement" "run" chart (rest *command-line-args*)))}
