@@ -659,9 +659,10 @@
                  :headcount/idempotency-key]
    ::pco/output [:headcount/id :headcount/status :headcount/current-step :error]}
   (let [user-id (require-auth env)
-        store (get-store (:deps env))
-        org-id (:headcount/org-id params)
-        chain (or (:headcount/chain-snapshot params)
+         store (get-store (:deps env))
+         org-id (:headcount/org-id params)
+         _ (require-org-member env (:deps env) org-id)
+         chain (or (:headcount/chain-snapshot params)
                   (let [rules (org/get-approval-rules store org-id)
                         matching-rule (re/find-routing-rule rules params)]
                     (or (:chain matching-rule)
