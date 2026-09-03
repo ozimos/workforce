@@ -1,0 +1,277 @@
+-- allium: 3
+-- auth-routing.allium
+
+-- Scope: Authenticated routing and protected-route redirection for Workforce SPA
+-- Includes: Public/protected route classification, verify-aware redirect (verify stays when !verified), return-to deep linking, authenticated refresh handling, SSR guard
+-- Excludes:
+--   - Token issuance/refresh mechanics (omni-auth token component)
+--   - MFA/WebAuthn/OAuth/SAML flows (separate specs)
+--   - Persistence of tokens (localStorage vs session) and Fulcro/Replicant rendering
+--   - Styling, layout, and non-routing UI
+-- Dependencies: User entity from omni-auth core (user-id, email, verified)
+
+------------------------------------------------------------
+-- External Entities
+------------------------------------------------------------
+
+external entity User {
+    email: String
+    verified: Boolean
+    -- governed by omni-auth core User; this spec reads verified via :current-user/verified
+}
+
+------------------------------------------------------------
+-- Enumerations
+------------------------------------------------------------
+
+-- RouteKind removed: public/protected are derived via path sets in rules; no standalone enum needed
+
+------------------------------------------------------------
+-- Entities
+------------------------------------------------------------
+
+entity UserSession {
+    user: User
+    is_authenticated: Boolean
+    is_verified: Boolean
+    current_path: String
+    return_to: String?
+
+    -- Derived
+    is_public_path: current_path in {"/", "/login", "/login-replicant", "/register", "/register-replicant", "/forgot-password", "/forgot-password-replicant", "/reset-password", "/verify"}
+    is_verify_path: current_path in {"/verify"}
+}
+
+entity NavigationRequest {
+    path: String
+}
+
+------------------------------------------------------------
+-- Config
+------------------------------------------------------------
+
+config {
+    home_path: String = "/"
+    login_path: String = "/login"
+}
+
+------------------------------------------------------------
+-- Rules
+------------------------------------------------------------
+
+-- Initial sync: direct navigation to protected when unauthenticated stores return-to and shows login
+
+rule UnauthenticatedAccessProtectedRedirectsToLogin {
+    when: NavigationRequest(path)
+
+    let session = UserSession{current_path: path}
+    let is_protected = not (path in {"/", "/login", "/login-replicant", "/register", "/register-replicant", "/forgot-password", "/forgot-password-replicant", "/reset-password", "/verify"})
+
+    requires: session.is_authenticated = false
+    requires: is_protected
+
+    ensures: session.return_to = path
+    ensures: session.current_path = config.login_path
+}
+
+-- Authenticated access to public (except verify when !verified) bounces to home — covers hard refresh and SPA navigate
+
+rule AuthenticatedAccessPublicRedirectsHome {
+    when: NavigationRequest(path)
+
+    let session = UserSession{current_path: path}
+    let is_public = path in {"/", "/login", "/login-replicant", "/register", "/register-replicant", "/forgot-password", "/forgot-password-replicant", "/reset-password", "/verify"}
+    let is_verify = path in {"/verify"}
+    let should_redirect = is_public and (is_verify implies session.is_verified) and path != "/"
+
+    requires: session.is_authenticated = true
+    requires: should_redirect
+
+    ensures: session.current_path = config.home_path
+}
+
+-- Verify stays when !verified (explicit allow)
+
+rule AuthenticatedAccessVerifyWhenUnverifiedStays {
+    when: NavigationRequest(path)
+
+    let session = UserSession{current_path: path}
+    let is_verify = path in {"/verify"}
+
+    requires: session.is_authenticated = true
+    requires: is_verify
+    requires: session.is_verified = false
+
+    ensures: session.current_path = path
+}
+
+-- Login success with return-to restores protected deep link (including query, e.g. /dept-dashboard?unit-id=123)
+
+rule LoginSuccessWithReturnToRestores {
+    when: LoginSuccess(user, return_to)
+
+    let session = UserSession{user: user, return_to: return_to}
+
+    requires: session.return_to != null
+    requires: session.is_authenticated = false
+
+    ensures: session.is_authenticated = true
+    ensures: session.current_path = return_to
+    ensures: session.return_to = null
+}
+
+-- Login success without return-to: public current path (e.g. /login) -> home, protected stays
+
+rule LoginSuccessWithoutReturnToPublicGoesHome {
+    when: LoginSuccess(user, return_to)
+
+    let session = UserSession{user: user, current_path: "/login", return_to: return_to}
+    let is_public = "/login" in {"/", "/login", "/login-replicant", "/register", "/register-replicant", "/forgot-password", "/forgot-password-replicant", "/reset-password", "/verify"}
+    let is_verify = "/login" in {"/verify"}
+    let should_redirect = is_public and (is_verify implies session.is_verified)
+
+    requires: return_to = null
+    requires: session.is_authenticated = false
+    requires: should_redirect
+
+    ensures: session.is_authenticated = true
+    ensures: session.current_path = config.home_path
+    ensures: session.return_to = null
+}
+
+rule LoginSuccessWithoutReturnToProtectedStays {
+    when: LoginSuccess(user, return_to)
+
+    let session = UserSession{user: user, current_path: "/org-chart", return_to: return_to}
+
+    requires: return_to = null
+    requires: session.is_authenticated = false
+    requires: not ("/org-chart" in {"/", "/login", "/login-replicant", "/register", "/register-replicant", "/forgot-password", "/forgot-password-replicant", "/reset-password", "/verify"})
+
+    ensures: session.is_authenticated = true
+    ensures: session.current_path = "/org-chart"
+}
+
+-- 401 / token refresh failure clears auth and restores login view via return-to handling (via transit/json -> statechart)
+
+rule AuthFailureClearsSession {
+    when: AuthFailure(session)
+
+    requires: session.is_authenticated = true
+
+    ensures: session.is_authenticated = false
+    ensures: session.return_to = null
+}
+
+------------------------------------------------------------
+-- Invariants
+------------------------------------------------------------
+
+invariant AuthenticatedNeverSeesLoginWhenVerified {
+    for s in UserSessions:
+        s.is_authenticated = true and s.is_verified = true and s.current_path in {"/verify"} implies s.current_path = config.home_path
+}
+
+invariant ProtectedRequiresAuth {
+    for s in UserSessions:
+        s.current_path in {"/org-chart", "/dept-dashboard", "/headcount", "/policies", "/profile", "/org-dashboard", "/create-org", "/join-org"} implies s.is_authenticated = true
+}
+
+invariant ReturnToOnlyWhenUnauthProtected {
+    for s in UserSessions:
+        s.return_to != null implies s.is_authenticated = false and not (s.return_to in {"/", "/login", "/verify"})
+}
+
+invariant LoginDoesNotPersistReturnTo {
+    for s in UserSessions:
+        s.is_authenticated = true implies s.return_to = null
+}
+
+------------------------------------------------------------
+-- Actors
+------------------------------------------------------------
+
+actor Guest {
+    identified_by: User where not exists UserSession{user: this, is_authenticated: true}
+}
+
+actor AuthenticatedUser {
+    identified_by: User where exists UserSession{user: this, is_authenticated: true}
+}
+
+actor VerifiedUser {
+    identified_by: User where exists UserSession{user: this, is_authenticated: true} and UserSession{user: this, is_authenticated: true}.is_verified = true
+}
+
+actor UnverifiedUser {
+    identified_by: User where exists UserSession{user: this, is_authenticated: true} and UserSession{user: this, is_authenticated: true}.is_verified = false
+}
+
+------------------------------------------------------------
+-- Surfaces
+------------------------------------------------------------
+
+surface PublicNavigation {
+    facing guest: Guest
+    facing user: AuthenticatedUser
+
+    exposes:
+        UserSession.current_path
+        UserSession.return_to
+        UserSession.is_verified
+
+    provides:
+        NavigationRequest(path)
+        AuthFailure(session) when session.is_authenticated = true
+
+    @guarantee ProtectedRedirectsToLoginWithReturnTo
+        -- Unauthenticated request to protected path stores return-to (including query) and shows login synchronously before first render, no flash.
+
+    @guarantee AuthenticatedPublicRedirectsHomeExceptVerifyWhenUnverified
+        -- Authenticated request to public (login/register/etc) shows home; verify stays when !verified, redirects when verified.
+
+    @guidance
+        -- Client boot must synchronously evaluate public/verify+verified before first render (core.async is async in CLJS). SSR must mirror same effective-path.
+}
+
+surface Login {
+    facing guest: Guest
+
+    provides:
+        LoginSuccess(user, return_to)
+            when exists User{email: user.email}
+
+    @guarantee ReturnToPreservedAcrossLogin
+        -- If return-to was stored from protected deep link (including ?unit-id=123), successful login navigates there; otherwise public current path navigates to home.
+
+    @guidance
+        -- On LoginSuccess clear return-to before state transition; use replaceState not pushState so back button does not return to login.
+}
+
+surface Verification {
+    facing user: UnverifiedUser
+    facing verified: VerifiedUser
+
+    context session: UserSession where is_authenticated = true
+
+    exposes:
+        session.is_verified
+        session.current_path
+
+    provides:
+        NavigationRequest(path) when path in {"/verify"}
+
+    @guarantee VerifyStaysWhenUnverified
+        -- Authenticated !verified request to /verify stays on verify; verified request to /verify redirects to home.
+
+    @guidance
+        -- Show unverified banner when !verified (nav.cljs verification-banner) but do not block protected navigation.
+}
+
+------------------------------------------------------------
+-- Open Questions
+------------------------------------------------------------
+
+-- open question "Should /reset-password stay for authenticated verified users or also redirect? Currently treated as public -> / (reset via email link while logged in may be rare)."
+-- open question "Should /home-replicant be considered public or protected for redirect purposes? Currently protected."
+-- open question "Is SSR verified source of truth localStorage.verified vs JWT claim vs Pathom :current-user/verified? Currently shim seeds from env and localStorage."
