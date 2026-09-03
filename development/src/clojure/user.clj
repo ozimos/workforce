@@ -86,6 +86,7 @@
 (def test-ns->file
   '{com.ozimos.workforce.org.resolvers-test "components/org-rama/test/clojure/com/ozimos/workforce/org/resolvers_test.clj"
     com.ozimos.workforce.org.ipc-test "components/org-rama/test/clojure/com/ozimos/workforce/org/ipc_test.clj"
+    com.ozimos.workforce.org.seed-test "components/org-rama/test/clojure/com/ozimos/workforce/org/seed_test.clj"
     com.ozimos.workforce.web.oauth-integration-test "bases/web/test/clojure/com/ozimos/workforce/web/oauth_integration_test.clj"
     com.ozimos.workforce.web.saml-integration-test "bases/web/test/clojure/com/ozimos/workforce/web/saml_integration_test.clj"
     com.ozimos.workforce.web.integration-test "bases/web/test/clojure/com/ozimos/workforce/web/integration_test.clj"})

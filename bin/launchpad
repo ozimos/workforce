@@ -6,6 +6,8 @@
          '[clojure.string :as str]
          '[clojure.java.io :as io])
 
+(import '[java.lang ProcessBuilder ProcessBuilder$Redirect])
+
 (defn ensure-java-min-version
   "Ensure the JVM major version is >= min-version."
   [min-version ctx]
@@ -26,6 +28,110 @@
     (when (.exists f)
       (try (read-string (slurp f))
            (catch Exception _ nil)))))
+
+;; ---------------------------------------------------------------------------
+;; Per-worktree log file
+;; ---------------------------------------------------------------------------
+;; Every worktree runs its own launchpad and they are frequently up at the same
+;; time. A single shared log path means concurrent sessions write at independent
+;; file offsets and interleave half-written lines, so each worktree gets a
+;; private log under .launchpad/ (covered by the existing `*.log` gitignore
+;; rule). Override with $LAUNCHPAD_LOG_FILE or
+;; deps.local.edn {:launchpad {:log-file "..."}}; an empty string disables
+;; logging and runs launchpad in the foreground.
+
+(def default-log-file ".launchpad/bb-repl.log")
+
+(defn log-file-path
+  "Where this worktree's launchpad log is written, or nil to disable logging."
+  []
+  (let [from-env   (System/getenv "LAUNCHPAD_LOG_FILE")
+        from-local (get-in (read-deps-local) [:launchpad :log-file])]
+    (cond
+      (and from-env (empty? (str/trim from-env))) nil
+      (seq from-env)                             (str/trim from-env)
+      from-local                                 from-local
+      :else                                      default-log-file)))
+
+(defn- log-banner
+  "Header written at the top of every run so an appended log stays readable."
+  []
+  (str "\n=== launchpad start " (java.time.LocalDateTime/now) " ===\n"
+       "    worktree: " (.getCanonicalPath (io/file ".")) "\n"
+       "    args:     " (str/join " " *command-line-args*) "\n"))
+
+(defn- tee-and-run!
+  "Re-run this script with stdout and stderr piped through `tee` into `path`.
+
+   The redirection has to happen at the file-descriptor level: launchpad also
+   spawns Mailpit, the JVM, shadow-cljs and the SSR server, and child processes
+   inherit fd 1/2 rather than any stream Clojure could wrap. `startPipeline`
+   wires the child's stdout into tee's stdin without a shell in the picture, so
+   argument quoting cannot go wrong and the child still writes to the terminal.
+
+   Blocks until the pipeline drains and returns the launchpad exit code."
+  [path]
+  (let [cmd          (into ["bb" (or *file* "bin/launchpad")] *command-line-args*)
+        child-pb     (let [pb (ProcessBuilder. ^java.util.List (vec cmd))]
+                       ;; Merge stderr into the same pipe so the log is complete.
+                       (.redirectErrorStream pb true)
+                       (.put (.environment pb) "LAUNCHPAD_LOG_ACTIVE" "1")
+                       pb)
+        tee-pb       (doto (ProcessBuilder. ^java.util.List ["tee" "-a" path])
+                       (.redirectOutput ProcessBuilder$Redirect/INHERIT))
+        procs        (ProcessBuilder/startPipeline [child-pb tee-pb])
+        child        (first procs)]
+    ;; If this wrapper is signalled, take the child with it rather than leaving
+    ;; an orphaned launchpad holding every dev port.
+    (.addShutdownHook (Runtime/getRuntime)
+                      (Thread. (fn [] (doseq [p procs]
+                                        (try (.destroy p) (catch Exception _ nil))))))
+    (let [exit (.waitFor child)]
+      (doseq [p (rest procs)] (.waitFor p))
+      exit)))
+
+(when-not (= "1" (System/getenv "LAUNCHPAD_LOG_ACTIVE"))
+  (let [path (log-file-path)]
+    ;; Without tee we simply run in the foreground rather than losing output.
+    (when (and path (zero? (:exit (shell/sh "which" "tee"))))
+      (io/make-parents path)
+      (let [banner (log-banner)]
+        (spit path banner :append true)
+        (print banner)
+        (flush))
+      (System/exit (tee-and-run! path)))))
+
+(defn install-node-deps
+  "Run `pnpm install` before anything attempts a shadow-cljs build.
+
+   Launchpad itself has no package-manager install option (v0.53.238-alpha only
+   reads generic :launchpad/options into its context), so this is an explicit
+   project pre-step. pnpm's frozen lockfile and content-addressed store make the
+   already-up-to-date case cheap, while still repairing a partial node_modules
+   in a freshly created worktree.
+
+   Disable with deps.local.edn {:node/install {:enabled false}}."
+  [ctx]
+  (let [local    (read-deps-local)
+        enabled? (get-in local [:node/install :enabled] true)
+        package  (io/file "package.json")
+        pnpm?    (zero? (:exit (shell/sh "which" "pnpm")))]
+    (cond
+      (not enabled?) ctx
+      (not (.exists package)) ctx
+      (not pnpm?)
+      (do (log/error "package.json exists but pnpm is not available on PATH")
+          (System/exit 1))
+      :else
+      (do (log/info "Ensuring JavaScript dependencies are installed (pnpm install --frozen-lockfile)...")
+          (let [{:keys [exit out err]} (shell/sh "pnpm" "install" "--frozen-lockfile")]
+            (when (seq out) (print out))
+            (when (seq err) (binding [*out* *err*] (print err)))
+            (flush)
+            (when-not (zero? exit)
+              (log/error "pnpm install failed; aborting launchpad startup")
+              (System/exit exit)))
+          ctx))))
 
 (defn resolve-nrepl-port
   "If :launchpad/options :nrepl-port is 0 or nil, allocate a free port at boot."
@@ -187,32 +293,65 @@
                     8025)]
      {:smtp-port smtp-p :http-port http-p})))
 
+(defn mailpit-http-ok?
+  "Does something answer an HTTP GET on `http-port`?
+
+   A raw socket is used rather than curl so the probe cannot be diverted by an
+   HTTP proxy configured in the environment."
+  [http-port]
+  (try
+    (with-open [sock (java.net.Socket.)]
+      (.connect sock (java.net.InetSocketAddress. "127.0.0.1" http-port) 1500)
+      (.setSoTimeout sock 1500)
+      (let [w (java.io.PrintWriter. (java.io.OutputStreamWriter. (.getOutputStream sock) "UTF-8") true)]
+        (.print w "GET / HTTP/1.0\r\nHost: localhost\r\n\r\n")
+        (.flush w))
+      (let [rdr  (java.io.BufferedReader. (java.io.InputStreamReader. (.getInputStream sock) "UTF-8"))
+            head (str (.readLine rdr))]
+        (boolean (re-find #"^HTTP/\S+\s+[23]\d\d" head))))
+    (catch Exception _ false)))
+
+(defn mailpit-running?
+  "Is a Mailpit already up on the configured ports?
+
+   The HTTP UI answering is the primary signal. The fallback requires *both*
+   ports to be held, so an unrelated process squatting on one of them is not
+   mistaken for Mailpit — that would silently leave the dev environment with no
+   mail sink at all."
+  [{:keys [smtp-port http-port]}]
+  (boolean
+   (or (mailpit-http-ok? http-port)
+       (and (seq (find-pids-on-port smtp-port))
+            (seq (find-pids-on-port http-port))))))
+
 (defn register-shutdown-cleanup!
-  "Add JVM/Babashka shutdown hook to terminate any process listening on SSR, shadow, and Mailpit ports when launchpad exits."
+  "Add JVM/Babashka shutdown hook to terminate any process listening on SSR and
+   shadow ports when launchpad exits.
+
+   Mailpit is deliberately absent: it is a shared, machine-wide resource, so
+   tearing it down here would kill a sibling worktree's mail sink."
   [ctx]
   (let [local (read-deps-local)
         ssr-port (resolve-ssr-port local)
-        shadow-port (shadow-cljs-http-port)
-        {:keys [smtp-port http-port]} (resolve-mailpit-ports local)]
+        shadow-port (shadow-cljs-http-port)]
     (.addShutdownHook
       (Runtime/getRuntime)
       (Thread.
         (fn []
           (when ssr-port (kill-port! ssr-port))
-          (when shadow-port (kill-port! shadow-port))
-          (when smtp-port (kill-port! smtp-port))
-          (when http-port (kill-port! http-port))))))
+          (when shadow-port (kill-port! shadow-port))))))
   ctx)
 
 (defn cleanup-stale-dev-ports
-  "Clean up stale listeners on configured dev ports (nREPL, shadow-cljs, SSR, Jetty, Mailpit) before boot."
+  "Clean up stale listeners on configured dev ports (nREPL, shadow-cljs, SSR, Jetty) before boot.
+
+   Mailpit is deliberately excluded — it is shared across worktrees."
   [ctx]
   (let [local (read-deps-local)
         nrepl-p (get-in local [:launchpad/options :nrepl-port])
         shadow-p (shadow-cljs-http-port)
         ssr-p (resolve-ssr-port local)
-        jetty-dev-p (get-in local [:jetty/port :dev])
-        {:keys [smtp-port http-port]} (resolve-mailpit-ports local)]
+        jetty-dev-p (get-in local [:jetty/port :dev])]
     (when (and (integer? nrepl-p) (pos? nrepl-p))
       (kill-port! nrepl-p))
     (when (and (integer? shadow-p) (pos? shadow-p))
@@ -222,29 +361,33 @@
       (kill-port! ssr-p))
     (when (and (integer? jetty-dev-p) (pos? jetty-dev-p))
       (kill-port! jetty-dev-p))
-    (when (and (integer? smtp-port) (pos? smtp-port))
-      (kill-port! smtp-port))
-    (when (and (integer? http-port) (pos? http-port))
-      (kill-port! http-port))
     ctx))
 
 (defn start-mailpit
-  "If mailpit binary is available on PATH, start Mailpit in the background as a launchpad-managed process."
+  "If the mailpit binary is on PATH, start Mailpit in the background — unless one is already running.
+
+   Mailpit is a shared, machine-wide resource: several worktrees run their own
+   launchpad concurrently and all of them deliver mail to the same Mailpit. So
+   the ports are never freed here (that would kill a sibling worktree's mail
+   sink); we only detect an existing instance and, when there is one, adopt it
+   instead of starting a second."
   [ctx]
   (let [local (read-deps-local)
-        enabled? (get-in local [:mailpit :enabled] true)]
-    (if (and enabled? (zero? (:exit (shell/sh "which" "mailpit"))))
-      (let [{:keys [smtp-port http-port]} (resolve-mailpit-ports local)]
-        ;; Ensure no stale process is holding the ports
-        (kill-port! smtp-port)
-        (kill-port! http-port)
-        (log/info (str "Starting Mailpit (SMTP :" smtp-port ", HTTP UI :" http-port ")..."))
-        ((lambdaisland.launchpad/run-process
-          {:cmd         ["mailpit" "--smtp" (str "[::]:" smtp-port) "--listen" (str "[::]:" http-port)]
-           :background? true
-           :prefix      "mailpit"})
-         ctx))
-      ctx)))
+        enabled? (get-in local [:mailpit :enabled] true)
+        ports (resolve-mailpit-ports local)
+        {:keys [smtp-port http-port]} ports]
+    (if-not (and enabled? (zero? (:exit (shell/sh "which" "mailpit"))))
+      ctx
+      (if (mailpit-running? ports)
+        (do (log/info (str "Mailpit already running (SMTP :" smtp-port ", HTTP UI :" http-port
+                           "); reusing the shared instance."))
+            ctx)
+        (do (log/info (str "Starting Mailpit (SMTP :" smtp-port ", HTTP UI :" http-port ")..."))
+            ((lambdaisland.launchpad/run-process
+              {:cmd         ["mailpit" "--smtp" (str "[::]:" smtp-port) "--listen" (str "[::]:" http-port)]
+               :background? true
+               :prefix      "mailpit"})
+             ctx))))))
 
 (defn start-ssr-server
   "If deps.local.edn has :ssr-server :enabled, spawn the Node SSR server
@@ -316,6 +459,7 @@
 (lp/main
  {:steps
   (into [(partial ensure-java-min-version 21)
+         install-node-deps
          cleanup-stale-dev-ports
          resolve-nrepl-port
          resolve-shadow-ports

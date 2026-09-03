@@ -70,15 +70,12 @@
                                (try (parse-long (str/trim (slurp ".shadow-cljs/nrepl.port"))) (catch Exception _ nil)))
             shadow-http-p (try (parse-long (str/trim (slurp ".shadow-cljs/http.port"))) (catch Exception _ nil))
             ssr-p (resolve-ssr-port)
-            jetty-p (get-in local [:jetty/port :dev] 8100)
-            mailpit-smtp (or (when-let [p (System/getenv "MAILPIT_SMTP_PORT")] (try (parse-long p) (catch Exception _ nil)))
-                             (get-in local [:mailpit :smtp-port])
-                             1025)
-            mailpit-http (or (when-let [p (System/getenv "MAILPIT_HTTP_PORT")] (try (parse-long p) (catch Exception _ nil)))
-                             (get-in local [:mailpit :http-port])
-                             8025)]
+            jetty-p (get-in local [:jetty/port :dev] 8100)]
+        ;; Mailpit is intentionally absent: it is a shared, machine-wide
+        ;; resource, so killing its ports here would take down a sibling
+        ;; worktree's mail sink. Launchpad adopts an existing Mailpit instead.
         (filter (fn [p] (and (integer? p) (pos? p)))
-                [nrepl-p shadow-p (inc shadow-p) shadow-nrepl-p shadow-http-p ssr-p jetty-p mailpit-smtp mailpit-http])))
+                [nrepl-p shadow-p (inc shadow-p) shadow-nrepl-p shadow-http-p ssr-p jetty-p])))
 
     (defn kill-port-pids! [port]
       (when (and (integer? port) (pos? port))
