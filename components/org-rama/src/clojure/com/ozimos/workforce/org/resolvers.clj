@@ -373,23 +373,25 @@
 
 (pco/defresolver org-approval-rules-resolver
   "Resolve custom approval routing rules for an organization."
-  [{:keys [deps] :as _env} params]
+  [{:keys [deps] :as env} params]
   {::pco/input [:org/id]
    ::pco/output [{:org/approval-rules [:rule-id :priority :name :conditions :chain]}]}
   (let [store (get-store deps)
-        org-id (:org/id params)
-        rules (org/get-approval-rules store org-id)]
-    {:org/approval-rules rules}))
+        org-id (:org/id params)]
+    (require-org-member env deps org-id)
+    (let [rules (org/get-approval-rules store org-id)]
+      {:org/approval-rules rules})))
 
 (pco/defresolver org-role-permissions-resolver
   "Resolve role permission policies for an organization."
-  [{:keys [deps] :as _env} params]
+  [{:keys [deps] :as env} params]
   {::pco/input [:org/id]
    ::pco/output [:org/role-permissions]}
   (let [store (get-store deps)
-        org-id (:org/id params)
-        perms (org/get-role-permissions store org-id)]
-    {:org/role-permissions perms}))
+        org-id (:org/id params)]
+    (require-org-member env deps org-id)
+    (let [perms (org/get-role-permissions store org-id)]
+      {:org/role-permissions perms})))
 
 ;; -----------------------------------------------------------------------------
 ;; Capability Advertisement Resolver (:headcount/available-actions)
