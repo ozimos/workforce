@@ -58,6 +58,29 @@
                            "components/org-rama/test/clojure"
                            "bases/web/test/clojure"]}
 
+  ;; Production dependency set for `clojure -T:build uber`. Same bricks as
+  ;; :+default, deliberately without its :extra-paths: development/src/clojure
+  ;; must stay off the build classpath because the JVM auto-loads user.clj,
+  ;; which requires :dev-only tooling (integrant.repl, nrepl, clj-reload).
+  ;; Keep this list in sync with :+default when bricks are added or removed.
+  :uberjar {:extra-deps {com.ozimos.omni-auth/schema          {:local/root "../../omni-auth/main/components/schema"}
+                         com.ozimos.omni-auth/config          {:local/root "../../omni-auth/main/components/config"}
+                         com.ozimos.omni-auth/rama            {:local/root "../../omni-auth/main/components/rama"}
+                         com.ozimos.omni-auth/user-rama       {:local/root "../../omni-auth/main/components/user-rama"}
+                         com.ozimos.omni-auth/session-rama    {:local/root "../../omni-auth/main/components/session-rama"}
+                         com.ozimos.omni-auth/revocation-rama {:local/root "../../omni-auth/main/components/revocation-rama"}
+                         com.ozimos.omni-auth/token           {:local/root "../../omni-auth/main/components/token"}
+                         com.ozimos.omni-auth/security        {:local/root "../../omni-auth/main/components/security"}
+                         com.ozimos.omni-auth/pathom          {:local/root "../../omni-auth/main/components/pathom"}
+                         com.ozimos.omni-auth/mfa             {:local/root "../../omni-auth/main/components/mfa"}
+                         com.ozimos.omni-auth/webauthn        {:local/root "../../omni-auth/main/components/webauthn"}
+                         com.ozimos.omni-auth/oauth           {:local/root "../../omni-auth/main/components/oauth"}
+                         com.ozimos.omni-auth/saml            {:local/root "../../omni-auth/main/components/saml"}
+                         com.ozimos.omni-auth/notification    {:local/root "../../omni-auth/main/components/notification"}
+                         poly/org-rama        {:local/root "components/org-rama"}
+                         poly/web             {:local/root "bases/web"}
+                         org.clojure/clojure  {:mvn/version "1.12.4"}}}
+
   :poly {:main-opts ["-m" "polylith.clj.core.poly-cli.core"]
          :extra-deps {polylith/clj-poly {:mvn/version "0.3.32"}
                       io.github.seancorfield/polylith-external-test-runner

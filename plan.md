@@ -411,9 +411,20 @@ without code changes.
 **Uberjar** — `build.clj` defines `clean` and `uber`, producing
 `target/auth-service-0.1.0-SNAPSHOT-standalone.jar` with
 `com.ozimos.workforce.web.main` as the main class. There is no `bb uber` task yet;
-invoke it directly with `clojure -T:build uber`. Note that `build.clj` requests a
-`:uberjar` alias that is not defined in `deps.edn` — worth reconciling either by adding
-the alias or dropping it from the basis.
+invoke it directly with `clojure -T:build uber`. Expect roughly 295 MB and several
+minutes, almost all of it Rama.
+
+The basis is built from the workspace root using the `:uberjar` alias, which supplies
+the same bricks as `:+default` without its `:extra-paths`. Two things constrain that
+choice: `projects/auth-service/deps.edn` also declares `:uberjar`, but its `:local/root`
+paths are relative to the project directory and so do not resolve when the build runs
+from the workspace root; and `development/src/clojure` must stay off the build
+classpath, because the JVM auto-loads `user.clj`, which requires `:dev`-only tooling.
+`b/uber` additionally excludes `META-INF/license/**` and jar signatures, which Netty
+and other dependencies ship as conflicting file/directory pairs.
+
+Neither `bb build` nor CI builds the uberjar, so this path is worth wiring up before it
+is relied on for deployment.
 
 **CI** — `.github/workflows/ci.yml` runs on pushes and PRs to `main` on Ubuntu with JDK 21:
 `bb lint` → `bb build` (Tailwind CSS + shadow-cljs app and ssr) → `bb test` (Polylith JVM
