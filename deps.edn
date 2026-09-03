@@ -17,6 +17,7 @@
                      ;; Frontend (shadow-cljs compilation)
                      thheller/shadow-cljs     {:mvn/version "3.4.11"}
                      com.fulcrologic/fulcro   {:mvn/version "3.9.5"}
+                     com.fulcrologic/statecharts {:mvn/version "1.4.0-RC19"}
                      no.cjohansen/replicant   {:mvn/version "2026.07.1"}}
         ;; JNA (transitive dep, likely via Rama) calls
         ;; java.lang.System::load on Java 25+. Suppresses

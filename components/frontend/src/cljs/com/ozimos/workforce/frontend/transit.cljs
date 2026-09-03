@@ -30,6 +30,17 @@
                                  :ok (.-ok resp)
                                  :body data})))))))))
 
+
+;; Registered at startup by core.cljs to break the circular dependency:
+;; transit.cljs <- core.cljs (core requires transit, so transit can't require core).
+(defonce ^:private on-auth-failure-fn (atom nil))
+
+(defn register-auth-failure-handler!
+  "Register a zero-arg callback invoked whenever an unauthenticated 401 is
+   encountered and token refresh fails. Call from core.cljs during init."
+  [f]
+  (reset! on-auth-failure-fn f))
+
 (defn fetch-transit
   "Fetches an EQL endpoint with application/transit+json format.
    Automatically injects Authorization header and handles token refresh."
@@ -49,9 +60,8 @@
                                         retried-headers (assoc headers "Authorization" (str "Bearer " new-token))]
                                     (raw-fetch-transit url "POST" eql-query retried-headers))
                                   (do
-                                    (when (and (exists? js/window)
-                                               (not= (.-pathname js/window.location) "/login")
-                                               (not= (.-pathname js/window.location) "/register"))
-                                      (set! js/window.location.pathname "/login"))
+                                    ;; Notify the auth statechart instead of hard-navigating.
+                                    (when-let [f @on-auth-failure-fn]
+                                      (f))
                                     result)))))
                    result))))))
