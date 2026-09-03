@@ -3,6 +3,17 @@
 // throw at import time. The actual per-request path is set later from
 // ssr.cljs's render-page-html via (set!) on these objects.
 
+const path = require("path");
+const Module = require("module");
+const ssrNodeModules = path.resolve(__dirname, "node_modules");
+if (Module.globalPaths && !Module.globalPaths.includes(ssrNodeModules)) {
+  Module.globalPaths.push(ssrNodeModules);
+}
+process.env.NODE_PATH = [ssrNodeModules, process.env.NODE_PATH].filter(Boolean).join(":");
+if (typeof Module._initPaths === "function") {
+  Module._initPaths();
+}
+
 if (typeof globalThis.window === "undefined") {
   globalThis.window = {
     location: {

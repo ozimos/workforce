@@ -35,7 +35,7 @@
     (if (or (nil? configured) (not (and (integer? configured) (pos? configured))))
       (let [port (lp/free-port)]
         (log/info "Dynamically resolved nREPL port:" port)
-        (assoc-in ctx [:options :nrepl-port] port))
+        (assoc ctx :nrepl-port port))
       ctx)))
 
 (defn resolve-jetty-ports
@@ -271,7 +271,8 @@
            :env         (assoc (:env ctx)
                                "API_TARGET" api-target
                                "JETTY_DEV_PORT" (str jetty-port)
-                               "SSR_PORT" (str ssr-port))
+                               "SSR_PORT" (str ssr-port)
+                               "NODE_PATH" (str (.getAbsolutePath (io/file "ssr-server" "node_modules"))))
            :background? true
            :prefix      "ssr-server"})
          ctx))
