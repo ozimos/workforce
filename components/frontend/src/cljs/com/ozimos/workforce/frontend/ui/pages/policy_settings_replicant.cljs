@@ -62,4 +62,25 @@
                               [:td {:class "px-3 py-2 text-sm"} (:name rule)]])
                            rules))]
                [:div {:class "text-center py-6 bg-gray-50 rounded-lg border border-dashed border-gray-200"}
-                [:p {:class "text-sm text-gray-500"} "Default routing in effect: Step 1 (Hiring Manager) → Step 2 (Dept Head)."]])]])])
+                [:p {:class "text-sm text-gray-500"} "Default routing in effect: Step 1 (Hiring Manager) → Step 2 (Dept Head)."]])]
+            [:div {:class "rounded-lg border border-gray-200 bg-white p-6 shadow-sm space-y-4"}
+             [:div
+              [:h3 {:class "text-base font-semibold text-gray-900"} "Organization Chart Root Hierarchy Configuration"]
+              [:p {:class "text-xs text-gray-500 mt-0.5"}
+               "Specify the visual root of the full organization hierarchy or configure co-equal executive leadership."]]
+             [:div {:class "grid grid-cols-1 md:grid-cols-3 gap-4 pt-2"}
+              [:div {:class "border border-indigo-200 bg-indigo-50/40 rounded-lg p-4 space-y-2"}
+               [:div {:class "flex items-center gap-2 font-semibold text-xs text-indigo-900"}
+                [:span "🌟"] [:span "Automatic (Default)"]]
+               [:p {:class "text-xs text-gray-600"}
+                "Identifies employee with job title 'CEO'. If absent, gracefully falls back to the employee with the highest number of subordinate nodes."]]
+              [:div {:class "border border-gray-200 rounded-lg p-4 space-y-2"}
+               [:div {:class "flex items-center gap-2 font-semibold text-xs text-gray-900"}
+                [:span "🎯"] [:span "Custom Single Root"]]
+               [:p {:class "text-xs text-gray-600"}
+                "Set an explicit employee ID as the top node of the full org chart."]]
+              [:div {:class "border border-gray-200 rounded-lg p-4 space-y-2"}
+               [:div {:class "flex items-center gap-2 font-semibold text-xs text-gray-900"}
+                [:span "👥"] [:span "Co-Equal Leadership"]]
+               [:p {:class "text-xs text-gray-600"}
+                "Combines 2+ top-level co-equals under a synthetic visual root node (e.g. 'Office of the CEO' or 'Executive Board')."]]]]])])

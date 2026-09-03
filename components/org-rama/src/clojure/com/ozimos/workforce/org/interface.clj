@@ -186,6 +186,12 @@
   ([deps org-id viewer-ctx abac-policy]
    (core/get-org-workforce-chart deps org-id viewer-ctx abac-policy)))
 
+(defn get-org-chart-settings [deps org-id]
+  (core/get-org-chart-settings deps org-id))
+
+(defn update-org-chart-settings! [deps org-id settings]
+  (core/update-org-chart-settings! deps org-id settings))
+
 ;; --- Seed Data Generation & Ingestion ---
 
 (defn generate-seed-data []

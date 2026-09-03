@@ -28,6 +28,83 @@
 (defn refresh-workforce []
   [:com.ozimos.workforce.frontend.ui.pages.workforce-chart/refresh {}])
 
+(defn set-active-tab [data]
+  [:com.ozimos.workforce.frontend.ui.pages.workforce-chart/set-active-tab data])
+
+(defn set-custom-root [data]
+  [:com.ozimos.workforce.frontend.ui.pages.workforce-chart/set-custom-root data])
+
+(defn reset-custom-root []
+  [:com.ozimos.workforce.frontend.ui.pages.workforce-chart/reset-custom-root {}])
+
+;; -----------------------------------------------------------------------------
+;; Full Org Root Resolution Algorithm
+;; -----------------------------------------------------------------------------
+
+(defn count-descendants
+  "Calculates the total number of transitive descendants under node-id in hierarchy."
+  [hierarchy node-id]
+  (loop [queue (into #queue [] (get hierarchy node-id []))
+         visited #{node-id}
+         cnt 0]
+    (if (empty? queue)
+      cnt
+      (let [curr (peek queue)
+            q' (pop queue)]
+        (if (contains? visited curr)
+          (recur q' visited cnt)
+          (let [children (get hierarchy curr [])]
+            (recur (into q' children)
+                   (conj visited curr)
+                   (inc cnt))))))))
+
+(defn ceo-title?
+  "Checks if a title string represents a Chief Executive Officer."
+  [title]
+  (boolean (and title (re-find #"(?i)\bceo\b" (str title)))))
+
+(defn resolve-full-org-root
+  "Resolves the root of the full organization hierarchy according to:
+   1. Configured app setting (:root-id or :co-equal-ids)
+   2. Employee with job title matching 'CEO'
+   3. Graceful fallback: Employee with the highest number of transitive descendants."
+  [workforce-list hierarchy chart-settings]
+  (let [emp-ids (set (map :person/id workforce-list))
+        setting-root-id (:root-id chart-settings)
+        co-equal-ids (filterv emp-ids (:co-equal-ids chart-settings))]
+    (cond
+      ;; 1a. Explicit configured root ID
+      (and setting-root-id (contains? emp-ids setting-root-id))
+      {:root-id setting-root-id :synthetic-node nil}
+
+      ;; 1b. Configured co-equal leaders (>= 2)
+      (>= (count co-equal-ids) 2)
+      (let [visual-title (or (:visual-root-title chart-settings) "Executive Leadership")
+            synth-node {:person/id "__visual_root__"
+                        :person/name visual-title
+                        :person/title "Co-Equal Leadership"
+                        :person/role :admin
+                        :person/department-name "Executive Office"
+                        :person/is-synthetic? true}]
+        {:root-id "__visual_root__"
+         :synthetic-node synth-node
+         :co-equal-ids co-equal-ids})
+
+      ;; 2. Employee with title 'CEO'
+      :else
+      (if-let [ceo-emp (first (filter #(ceo-title? (:person/title %)) workforce-list))]
+        {:root-id (:person/id ceo-emp) :synthetic-node nil}
+
+        ;; 3. Graceful fallback: Employee with maximum descendants
+        (if (seq workforce-list)
+          (let [scored (map (fn [emp]
+                              {:id (:person/id emp)
+                               :descendants (count-descendants hierarchy (:person/id emp))})
+                            workforce-list)
+                top (apply max-key :descendants scored)]
+            {:root-id (:id top) :synthetic-node nil})
+          {:root-id nil :synthetic-node nil})))))
+
 ;; -----------------------------------------------------------------------------
 ;; Formatting Helpers
 ;; -----------------------------------------------------------------------------
@@ -111,7 +188,7 @@
 
 (defn- render-workforce-tree-node
   [person-id workforce-map hierarchy collapsed-nodes search-term can-view-comp?
-   headcounts-by-manager abac-policy]
+   headcounts-by-manager abac-policy custom-root-id]
   (let [person (get workforce-map person-id {:person/id person-id :person/name (str person-id)})
         children (get hierarchy person-id [])
         has-children? (pos? (count children))
@@ -121,6 +198,7 @@
         dept (or (:person/department-name person) (:person/division-name person) (:person/unit-id person))
         comp (:person/compensation person)
         role (:person/role person)
+        synthetic? (true? (:person/is-synthetic? person))
         search-term (some-> search-term str/lower-case str/trim)
         matches-search? (and (seq search-term)
                              (or (str/includes? (str/lower-case name) search-term)
@@ -133,9 +211,10 @@
            :class "flex flex-col items-center"}
      ;; Person Card Node
      [:div {:class (str "w-72 bg-white rounded-xl border p-4 shadow-sm transition-all duration-200 hover:shadow-md relative "
-                        (if matches-search?
-                          "border-indigo-500 ring-2 ring-indigo-400 bg-indigo-50/20"
-                          "border-gray-200 hover:border-indigo-300"))}
+                        (cond
+                          synthetic? "border-purple-300 bg-purple-50/20 ring-1 ring-purple-200"
+                          matches-search? "border-indigo-500 ring-2 ring-indigo-400 bg-indigo-50/20"
+                          :else "border-gray-200 hover:border-indigo-300"))}
       [:div {:class "flex items-start gap-3"}
        (avatar-badge name role)
        [:div {:class "flex-1 min-w-0"}
@@ -166,14 +245,28 @@
          (into [:div {:class "flex flex-col gap-1"}]
                (map headcount-badge visible-hcs))])
 
-      ;; Expand / Collapse Toggle if has direct reports
-      (when has-children?
-        [:div {:class "mt-3 pt-2 border-t border-gray-100 flex justify-between items-center"}
-         [:span {:class "text-[11px] text-gray-400 font-medium"}
-          (str (count children) " Direct Report" (when (> (count children) 1) "s"))]
+      ;; Action Buttons: Set as Root in My Org + Expand / Collapse Toggle
+      [:div {:class "mt-3 pt-2 border-t border-gray-100 flex items-center justify-between gap-2"}
+       (if (not synthetic?)
+         (if (= person-id custom-root-id)
+           [:span {:class "inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded ring-1 ring-inset ring-indigo-700/20"}
+            "⭐ Current Root"]
+           [:button {:class "inline-flex items-center gap-1 rounded bg-gray-50 px-2 py-0.5 text-xs font-medium text-gray-700 hover:bg-indigo-50 hover:text-indigo-600 transition ring-1 ring-inset ring-gray-200 hover:ring-indigo-300 shadow-2xs"
+                     :title "Set this employee as the root node in My Org"
+                     :on {:click [(set-custom-root {:id person-id})]}}
+            "🎯 Set as Root"])
+         [:span {:class "text-[11px] text-purple-600 font-semibold italic"} "Co-Equal Leadership"])
+
+       (when has-children?
          [:button {:class "inline-flex items-center gap-1 rounded bg-gray-50 px-2 py-0.5 text-xs font-medium text-gray-700 hover:bg-indigo-50 hover:text-indigo-600 transition"
-                    :on {:click [(toggle-workforce-collapse {:id person-id})]}}
-          (if collapsed? "▼ Expand" "▲ Collapse")]])]
+                   :on {:click [(toggle-workforce-collapse {:id person-id})]}}
+          (if collapsed? "▼ Expand" "▲ Collapse")])]
+
+      ;; Child count helper
+      (when has-children?
+        [:div {:class "mt-1.5 text-right"}
+         [:span {:class "text-[10px] text-gray-400 font-medium"}
+          (str (count children) " Direct Report" (when (> (count children) 1) "s"))]])]
 
      ;; Connecting Vertical Line & Children Branch
      (when (and has-children? (not collapsed?))
@@ -187,7 +280,7 @@
                  [[:div {:class "absolute top-0 left-12 right-12 h-0.5 bg-gray-300"}]])
                (map (fn [cid]
                       (render-workforce-tree-node cid workforce-map hierarchy collapsed-nodes search-term can-view-comp?
-                                                 headcounts-by-manager abac-policy))
+                                                 headcounts-by-manager abac-policy custom-root-id))
                     children)))])]))
 
 ;; -----------------------------------------------------------------------------
@@ -197,22 +290,67 @@
 (defrc WorkforceChart
   {:query [:loading :error :active-org :workforce :workforce-hierarchy :workforce-search
            :collapsed-workforce :permissions :headcounts-by-manager :abac/policy
+           :active-chart-tab :custom-root-id :current-user/email :org/chart-settings
            {:workforce/list (:query (meta WorkforceNode))}
            {:headcounts/list (:query (meta HeadcountCard))}]
    :ident :workforce-chart/root
    :ident-key :workforce-chart/root
    :route-segment ["org-chart"]}
   [{:keys [loading error active-org workforce workforce-hierarchy workforce-search
-           collapsed-workforce permissions headcounts-by-manager] :as props}]
+           collapsed-workforce permissions headcounts-by-manager active-chart-tab
+           custom-root-id] :as props}]
   (let [abac-policy (get props :abac/policy)
-        workforce-map (or workforce {})
-        hierarchy (or workforce-hierarchy {})
+        chart-settings (or (get props :org/chart-settings) (get props :chart-settings) {})
+        current-user-email (or (get props :current-user/email)
+                               (when (exists? js/localStorage)
+                                 (.getItem js/localStorage "email")))
+        raw-workforce-map (or workforce {})
+        raw-hierarchy (or workforce-hierarchy {})
         collapsed-nodes (or collapsed-workforce #{})
         can-view-comp? (if (contains? permissions :view-comp)
                          (true? (:view-comp permissions))
                          (contains? #{:admin :hr :vp :dept-head :hiring-manager} (:role permissions)))
-        root-ids (get hierarchy nil [])
-        total-members (count workforce-map)
+
+        ;; Resolve full org root (Settings -> CEO title -> Max descendants)
+        resolved-full (resolve-full-org-root (vals raw-workforce-map) raw-hierarchy chart-settings)
+        synth-node (:synthetic-node resolved-full)
+        workforce-map (if synth-node
+                        (assoc raw-workforce-map (:person/id synth-node) synth-node)
+                        raw-workforce-map)
+        hierarchy (cond
+                    synth-node
+                    (assoc (dissoc raw-hierarchy nil)
+                           nil ["__visual_root__"]
+                           "__visual_root__" (:co-equal-ids resolved-full))
+
+                    (:root-id resolved-full)
+                    (assoc raw-hierarchy nil [(:root-id resolved-full)])
+
+                    :else
+                    raw-hierarchy)
+        full-org-root-id (or (:root-id resolved-full) (first (get hierarchy nil [])))
+
+        ;; Current user employee match (by email)
+        my-employee (when (seq current-user-email)
+                      (some (fn [[_ p]]
+                              (when (= (some-> (:person/email p) str/lower-case)
+                                       (str/lower-case current-user-email))
+                                p))
+                            workforce-map))
+
+        ;; "My org" availability and effective root
+        my-org-root-id (or custom-root-id (:person/id my-employee))
+        my-org-available? (boolean (or (some? my-employee)
+                                       (and (some? custom-root-id)
+                                            (not= custom-root-id full-org-root-id))))
+        effective-tab (if (and (= active-chart-tab :tab/my-org) my-org-available?)
+                        :tab/my-org
+                        :tab/full-org)
+        active-root-ids (if (= effective-tab :tab/my-org)
+                          (if my-org-root-id [my-org-root-id] [])
+                          (if full-org-root-id [full-org-root-id] (get hierarchy nil [])))
+
+        total-members (count (remove :person/is-synthetic? (vals workforce-map)))
         total-headcounts (count (abac/filter-accessible-headcounts
                                  (apply concat (vals (or headcounts-by-manager {})))
                                  abac-policy))]
@@ -252,6 +390,45 @@
                   :on {:click [(refresh-workforce)]}}
          "↺ Refresh"]]]]
 
+     ;; Navigation Tabs ("Full org" / "My org")
+     [:div {:class "max-w-7xl mx-auto w-full px-6 pt-3 flex items-center justify-between border-b border-gray-200"}
+      [:nav {:class "flex space-x-6"}
+       [:button {:class (str "pb-3 text-sm font-semibold border-b-2 transition flex items-center gap-1.5 "
+                             (if (= effective-tab :tab/full-org)
+                               "border-indigo-600 text-indigo-600"
+                               "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"))
+                 :on {:click [(set-active-tab {:tab :tab/full-org})]}}
+        "🌐 Full org"]
+       (when my-org-available?
+         [:button {:class (str "pb-3 text-sm font-semibold border-b-2 transition flex items-center gap-1.5 "
+                               (if (= effective-tab :tab/my-org)
+                                 "border-indigo-600 text-indigo-600"
+                                 "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"))
+                   :on {:click [(set-active-tab {:tab :tab/my-org})]}}
+          "👤 My org"
+          (when (and custom-root-id (not= custom-root-id (:person/id my-employee)))
+            [:span {:class "ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-100 text-indigo-800"} "Custom Root"])])]]
+
+     ;; Subtree banner when viewing "My org"
+     (when (= effective-tab :tab/my-org)
+       (let [root-person (get workforce-map my-org-root-id)]
+         [:div {:class "max-w-7xl mx-auto w-full px-6 pt-3"}
+          [:div {:class "flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 px-4 py-2.5 bg-indigo-50 border border-indigo-200 rounded-xl text-xs text-indigo-900 shadow-2xs"}
+           [:div {:class "flex items-center gap-2"}
+            [:span {:class "text-base"} "🎯"]
+            [:div
+             [:span {:class "font-bold"} "Viewing My Org: "]
+             [:span {:class "font-medium"} (str (or (:person/name root-person) my-org-root-id)
+                                                (when-let [t (:person/title root-person)] (str " — " t)))]]]
+           [:div {:class "flex items-center gap-2"}
+            (when (and custom-root-id my-employee (not= custom-root-id (:person/id my-employee)))
+              [:button {:class "px-2.5 py-1 text-xs font-semibold rounded-lg bg-white border border-indigo-300 text-indigo-700 hover:bg-indigo-100 transition shadow-2xs"
+                        :on {:click [(reset-custom-root)]}}
+               "↺ Reset to My Profile"])
+            [:button {:class "px-2.5 py-1 text-xs font-semibold rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition shadow-2xs"
+                      :on {:click [(set-active-tab {:tab :tab/full-org})]}}
+             "View Full Org"]]]]))
+
      ;; Stat Badges Row
      [:div {:class "max-w-7xl mx-auto w-full px-6 pt-4"}
       [:div {:class "flex flex-wrap gap-4"}
@@ -281,7 +458,7 @@
          [:p {:class "font-bold"} "Failed to load workforce chart"]
          [:p {:class "text-xs mt-1"} (str error)]]
 
-        (empty? root-ids)
+        (empty? active-root-ids)
         [:div {:class "flex flex-col items-center justify-center h-64 text-gray-400 gap-2"}
          [:svg {:class "w-12 h-12 text-gray-300" :fill "none" :stroke "currentColor" :viewBox "0 0 24 24"}
           [:path {:stroke-linecap "round" :stroke-linejoin "round" :stroke-width "1.5"
@@ -294,5 +471,5 @@
               (map (fn [rid]
                      (render-workforce-tree-node rid workforce-map hierarchy collapsed-nodes
                                                 workforce-search can-view-comp?
-                                                headcounts-by-manager abac-policy))
-                   root-ids)))]]))
+                                                headcounts-by-manager abac-policy custom-root-id))
+                   active-root-ids)))]]))

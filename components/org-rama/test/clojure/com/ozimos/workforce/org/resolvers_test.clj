@@ -470,3 +470,45 @@
                        [{:org/workforce-chart [:headcounts/list :headcounts-by-manager]}])
             filtered-hcs (get-in abac-res [:org/workforce-chart :headcounts/list])]
         (is (empty? filtered-hcs) "Headcounts outside allowed dimensions must be excluded on the backend")))))
+
+(deftest ^:integration workforce-chart-root-settings-test
+  (testing "root resolution and chart settings mutation"
+    (let [admin (register-user)
+          emp-user (register-user)
+          [ok o] (org/create-org! *deps* {:name (str "wf-root-" (short-suffix)) :owner-user-id (:id admin)})
+          _ (is ok)
+          org-id (:id o)
+          _ (org/invite-to-org! *deps* {:org-id org-id :email (:email emp-user) :role "MEMBER" :invited-by (:id admin)})
+          inv-id (-> (org/list-invitations-for-user *deps* (:email emp-user)) first :invitation/id)
+          _ (org/join-org! *deps* {:user-id (:id emp-user) :invitation-id inv-id})
+          admin-env (build-env-with-org {:user-id (:id admin)})
+
+          ;; 1. Update chart settings with explicit root
+          mut-res (pathom/process admin-env
+                    [(list 'org/update-chart-settings
+                       {:org-id org-id
+                        :chart-settings {:root-id (str (:id emp-user))}})])
+          saved (first (vals mut-res))
+          _ (is (= (str (:id emp-user)) (get-in saved [:org/chart-settings :root-id])))
+
+          ;; 2. Verify root resolution places configured root under nil
+          chart-res (p.eql/process admin-env {:org/id org-id}
+                      [{:org/workforce-chart [:org/id :workforce-hierarchy :org/chart-settings]}])
+          hier (get-in chart-res [:org/workforce-chart :workforce-hierarchy])]
+      (is (= [(str (:id emp-user))] (get hier nil)))
+
+      ;; 3. Co-Equal Leadership creates visual synthetic root node
+      (let [_ (pathom/process admin-env
+                [(list 'org/update-chart-settings
+                   {:org-id org-id
+                    :chart-settings {:co-equal-ids [(str (:id admin)) (str (:id emp-user))]
+                                     :visual-root-title "Executive Co-Chairs"}})])
+            co-chart (p.eql/process admin-env {:org/id org-id}
+                       [{:org/workforce-chart [:org/id :workforce/list :workforce-hierarchy]}])
+            co-hier (get-in co-chart [:org/workforce-chart :workforce-hierarchy])
+            co-workforce (get-in co-chart [:org/workforce-chart :workforce/list])
+            synth (first (filter #(= (:person/id %) "__visual_root__") co-workforce))]
+        (is (= ["__visual_root__"] (get co-hier nil)))
+        (is (= [(str (:id admin)) (str (:id emp-user))] (get co-hier "__visual_root__")))
+        (is (some? synth))
+        (is (= "Executive Co-Chairs" (:person/name synth)))))))

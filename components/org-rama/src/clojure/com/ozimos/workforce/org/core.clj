@@ -686,12 +686,90 @@
            (or (nil? allowed-levels) (contains? allowed-levels level))
            (or (nil? allowed-locations) (contains? allowed-locations loc))))))
 
+(defonce ^:private org-chart-settings-store (atom {}))
+
+(defn get-org-chart-settings
+  "Retrieves org chart configuration settings for org-id."
+  [_deps org-id]
+  (get @org-chart-settings-store org-id {}))
+
+(defn update-org-chart-settings!
+  "Updates org chart configuration settings for org-id."
+  [_deps org-id settings]
+  (swap! org-chart-settings-store assoc org-id settings)
+  settings)
+
+(defn count-descendants
+  "Calculates the total number of transitive descendants under node-id in hierarchy."
+  [hierarchy node-id]
+  (loop [queue (into clojure.lang.PersistentQueue/EMPTY (get hierarchy node-id []))
+         visited #{node-id}
+         cnt 0]
+    (if (empty? queue)
+      cnt
+      (let [curr (peek queue)
+            q' (pop queue)]
+        (if (contains? visited curr)
+          (recur q' visited cnt)
+          (let [children (get hierarchy curr [])]
+            (recur (into q' children)
+                   (conj visited curr)
+                   (inc cnt))))))))
+
+(defn ceo-title?
+  "Checks if a title string represents a Chief Executive Officer."
+  [title]
+  (boolean (and title (re-find #"(?i)\bceo\b" (str title)))))
+
+(defn resolve-full-org-root
+  "Resolves the root of the full organization hierarchy according to:
+   1. Configured app setting (:root-id or :co-equal-ids)
+   2. Employee with job title matching 'CEO'
+   3. Graceful fallback: Employee with the highest number of transitive descendants."
+  [workforce-list hierarchy chart-settings]
+  (let [emp-ids (set (map :person/id workforce-list))
+        setting-root-id (:root-id chart-settings)
+        co-equal-ids (filterv emp-ids (:co-equal-ids chart-settings))]
+    (cond
+      ;; 1a. Explicit configured root ID
+      (and setting-root-id (contains? emp-ids setting-root-id))
+      {:root-id setting-root-id :synthetic-node nil}
+
+      ;; 1b. Configured co-equal leaders (>= 2)
+      (>= (count co-equal-ids) 2)
+      (let [visual-title (or (:visual-root-title chart-settings) "Executive Leadership")
+            synth-node {:person/id "__visual_root__"
+                        :person/name visual-title
+                        :person/title "Co-Equal Leadership"
+                        :person/role :admin
+                        :person/department-name "Executive Office"
+                        :person/is-synthetic? true}]
+        {:root-id "__visual_root__"
+         :synthetic-node synth-node
+         :co-equal-ids co-equal-ids})
+
+      ;; 2. Employee with title 'CEO'
+      :else
+      (if-let [ceo-emp (first (filter #(ceo-title? (:person/title %)) workforce-list))]
+        {:root-id (:person/id ceo-emp) :synthetic-node nil}
+
+        ;; 3. Graceful fallback: Employee with maximum descendants
+        (if (seq workforce-list)
+          (let [scored (map (fn [emp]
+                              {:id (:person/id emp)
+                               :descendants (count-descendants hierarchy (:person/id emp))})
+                            workforce-list)
+                top (apply max-key :descendants scored)]
+            {:root-id (:id top) :synthetic-node nil})
+          {:root-id nil :synthetic-node nil})))))
+
 (defn get-org-workforce-chart
   "Retrieves the workforce chart for an organization, enforcing backend-level
    RBAC compensation masking and ABAC headcount filtering before serialization."
   [deps org-id viewer-ctx abac-policy]
   (let [seed-org (get-seed-org-data org-id)
-        view-comp? (can-view-comp? viewer-ctx)]
+        view-comp? (can-view-comp? viewer-ctx)
+        chart-settings (get-org-chart-settings deps org-id)]
     (if seed-org
       ;; 1. Use seeded enterprise workforce dataset (10k nodes)
       (let [tree (:tree seed-org)
@@ -702,7 +780,7 @@
             empmt-by-nid (into {} (map (fn [e] [(str/replace (:employee-id e) #"^emp-" "") e])) employments)
             hc-by-nid (into {} (map (fn [h] [(str/replace (:request-id h) #"^req-" "") h])) headcounts)
             children (:children tree)
-            root-id (:root-id tree)
+            raw-root-id (:root-id tree)
 
             ;; Filter headcounts on the backend via ABAC before transmission
             allowed-hc-by-nid (into {} (filter (fn [[_ h]] (abac-allows-headcount? h abac-policy)) hc-by-nid))
@@ -733,7 +811,7 @@
                   employees)
 
             ;; Build workforce-hierarchy and headcounts-by-manager
-            workforce-hierarchy (atom {nil [root-id]})
+            workforce-hierarchy (atom {nil [raw-root-id]})
             headcounts-by-manager (atom {})]
 
         (doseq [[parent-nid child-nids] children]
@@ -753,19 +831,36 @@
                               :headcount/status (name (or (:status hc) :open))})
                            hc-children)))))
 
-        {:org/id org-id
-         :workforce/list workforce-list
-         :workforce-hierarchy @workforce-hierarchy
-         :headcounts/list (mapv (fn [hc]
-                                  {:headcount/id (:request-id hc)
-                                   :headcount/title (:title hc "Open Position")
-                                   :headcount/job-level (:job-level hc)
-                                   :headcount/location (:location hc)
-                                   :headcount/division-id (:division-id hc)
-                                   :headcount/dept-id (:unit-id hc)
-                                   :headcount/status (name (or (:status hc) :open))})
-                                (vals allowed-hc-by-nid))
-         :headcounts-by-manager @headcounts-by-manager})
+        ;; Apply full org root resolution (Settings -> CEO -> Max Descendants)
+        (let [resolved (resolve-full-org-root workforce-list @workforce-hierarchy chart-settings)
+              final-workforce (if-let [synth (:synthetic-node resolved)]
+                                (conj workforce-list synth)
+                                workforce-list)
+              final-hierarchy (cond
+                                (:synthetic-node resolved)
+                                (assoc (dissoc @workforce-hierarchy nil)
+                                       nil ["__visual_root__"]
+                                       "__visual_root__" (:co-equal-ids resolved))
+
+                                (:root-id resolved)
+                                (assoc @workforce-hierarchy nil [(:root-id resolved)])
+
+                                :else
+                                @workforce-hierarchy)]
+          {:org/id org-id
+           :workforce/list final-workforce
+           :workforce-hierarchy final-hierarchy
+           :headcounts/list (mapv (fn [hc]
+                                    {:headcount/id (:request-id hc)
+                                     :headcount/title (:title hc "Open Position")
+                                     :headcount/job-level (:job-level hc)
+                                     :headcount/location (:location hc)
+                                     :headcount/division-id (:division-id hc)
+                                     :headcount/dept-id (:unit-id hc)
+                                     :headcount/status (name (or (:status hc) :open))})
+                                  (vals allowed-hc-by-nid))
+           :headcounts-by-manager @headcounts-by-manager
+           :org/chart-settings chart-settings}))
 
       ;; 2. Fallback for dynamic/new orgs in Rama
       (let [members (list-members deps org-id)
@@ -780,11 +875,27 @@
                      :person/role (keyword (str/lower-case (str (:role m "employee"))))
                      :person/compensation (when view-comp? {:salary 150000 :currency "USD"})})
                   members)
-            workforce-hierarchy {nil [owner-id]
-                                 owner-id (mapv #(str (:user-id %)) (remove #(= (:user-id %) owner-id) members))}
+            base-hierarchy {nil [owner-id]
+                            owner-id (mapv #(str (:user-id %)) (remove #(= (:user-id %) owner-id) members))}
+            resolved (resolve-full-org-root workforce-list base-hierarchy chart-settings)
+            final-workforce (if-let [synth (:synthetic-node resolved)]
+                              (conj workforce-list synth)
+                              workforce-list)
+            final-hierarchy (cond
+                              (:synthetic-node resolved)
+                              (assoc (dissoc base-hierarchy nil)
+                                     nil ["__visual_root__"]
+                                     "__visual_root__" (:co-equal-ids resolved))
+
+                              (:root-id resolved)
+                              (assoc base-hierarchy nil [(:root-id resolved)])
+
+                              :else
+                              base-hierarchy)
             headcounts-by-mgr (if (seq headcounts) {owner-id headcounts} {})]
         {:org/id org-id
-         :workforce/list workforce-list
-         :workforce-hierarchy workforce-hierarchy
+         :workforce/list final-workforce
+         :workforce-hierarchy final-hierarchy
          :headcounts/list headcounts
-         :headcounts-by-manager headcounts-by-mgr}))))
+         :headcounts-by-manager headcounts-by-mgr
+         :org/chart-settings chart-settings}))))

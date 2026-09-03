@@ -187,7 +187,8 @@
                                        :workforce/list
                                        :workforce-hierarchy
                                        :headcounts/list
-                                       :headcounts-by-manager]}]}
+                                       :headcounts-by-manager
+                                       :org/chart-settings]}]}
   (let [user-id (require-auth env)
         store (get-store deps)
         org-id (:org/id params)]
@@ -701,6 +702,22 @@
        :headcount/status (:status result)}
       {:error (errors/make-error :bad_request "Failed to transition hire" result)})))
 
+(pco/defmutation update-chart-settings-mutation
+  "Updates org chart configuration settings (such as root node or co-equal leadership)."
+  [env params]
+  {::pco/op-name 'org/update-chart-settings
+   ::pco/params [:org/id :chart-settings]
+   ::pco/output [:org/id :org/chart-settings :error]}
+  (let [user-id (require-auth env)
+        store (get-store (:deps env))
+        org-id (or (:org/id params) (:org-id params))
+        chart-settings (or (:chart-settings params) (:org/chart-settings params))]
+    (when (nil? (org/get-membership store user-id org-id))
+      (throw (ex-info "Not a member of this org" {:type :forbidden})))
+    (let [saved (org/update-org-chart-settings! store org-id chart-settings)]
+      {:org/id org-id
+       :org/chart-settings saved})))
+
 ;; -----------------------------------------------------------------------------
 ;; Full Resolvers Index & Integrant Method
 ;; -----------------------------------------------------------------------------
@@ -740,7 +757,8 @@
    approve-headcount-mutation
    reject-headcount-mutation
    edit-headcount-field-mutation
-   transition-hire-mutation])
+   transition-hire-mutation
+   update-chart-settings-mutation])
 
 (defmethod ig/init-key :workforce/org-resolvers [_ _]
   resolvers)

@@ -234,7 +234,8 @@
                                            :workforce/list
                                            :workforce-hierarchy
                                            :headcounts/list
-                                           :headcounts-by-manager]}]}]
+                                           :headcounts-by-manager
+                                           :org/chart-settings]}]}]
                   {:on-success
                    (fn [body]
                      (let [chart (or (get-in body [[:org/id org-id] :org/workforce-chart])
@@ -243,6 +244,9 @@
                            hierarchy (:workforce-hierarchy chart)
                            headcounts-list (:headcounts/list chart)
                            headcounts-by-mgr (:headcounts-by-manager chart)
+                           chart-settings (:org/chart-settings chart)
+                           saved-custom-root (when (exists? js/localStorage)
+                                               (.getItem js/localStorage (str "workforce-custom-root:" org-id)))
 
                            ;; Query-Driven DB Normalization:
                            ;; Normalize workforce nodes into [:person/id id] entity table
@@ -269,6 +273,9 @@
                                     (assoc :workforce person-table
                                            :workforce-hierarchy hierarchy
                                            :headcounts-by-manager headcounts-by-mgr
+                                           :org/chart-settings chart-settings
+                                           :custom-root-id (or saved-custom-root (:custom-root-id s))
+                                           :active-chart-tab (or (:active-chart-tab s) :tab/full-org)
                                            :collapsed-workforce initial-collapsed
                                            :loading false))))))})))))
 
@@ -297,6 +304,8 @@
                             (-> db
                                 (assoc :active-org active-org
                                        :orgs (or orgs [])
+                                       :current-user/email (:current-user/email data)
+                                       :current-user/username (:current-user/username data)
                                        :abac/policy (let [p (:user/abac-policy data)]
                                                       (if (abac/policy-active? p) p {})))
                                 (update :org/id merge org-table))))
@@ -473,6 +482,33 @@
 
    :com.ozimos.workforce.frontend.ui.pages.workforce-chart/refresh
    (fn [_] (fetch-workforce-chart!))
+
+   :com.ozimos.workforce.frontend.ui.pages.workforce-chart/set-active-tab
+   (fn [data]
+     (let [tab (if (map? data) (:tab data) data)
+           state-atom (::app/state-atom app-inst)]
+       (swap! state-atom assoc :active-chart-tab tab)))
+
+   :com.ozimos.workforce.frontend.ui.pages.workforce-chart/set-custom-root
+   (fn [{:keys [id]}]
+     (let [state-atom (::app/state-atom app-inst)
+           org-id (get-in @state-atom [:active-org :org/id])]
+       (when (exists? js/localStorage)
+         (.setItem js/localStorage (str "workforce-custom-root:" org-id) id))
+       (swap! state-atom
+              (fn [s]
+                (-> s
+                    (assoc :custom-root-id id
+                           :active-chart-tab :tab/my-org)
+                    (update :collapsed-workforce disj id))))))
+
+   :com.ozimos.workforce.frontend.ui.pages.workforce-chart/reset-custom-root
+   (fn [_]
+     (let [state-atom (::app/state-atom app-inst)
+           org-id (get-in @state-atom [:active-org :org/id])]
+       (when (exists? js/localStorage)
+         (.removeItem js/localStorage (str "workforce-custom-root:" org-id)))
+       (swap! state-atom assoc :custom-root-id nil)))
 
    ;; Dept Dashboard
    ::dept-dashboard/set-tab

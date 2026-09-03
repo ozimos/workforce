@@ -90,3 +90,112 @@
                                     :headcounts-by-manager sample-headcounts
                                     :abac/policy {:allowed-divisions #{"div-eng"}}})]
       (is (not (clojure.string/includes? (pr-str hiccup) "VP Product"))))))
+
+(deftest root-resolution-algorithm-test
+  (testing "1. Default CEO title match"
+    (let [nodes [{:person/id "e1" :person/title "Founder"}
+                 {:person/id "e2" :person/title "Chief Executive Officer (CEO)"}]
+          hier {"e1" ["e3"] "e2" ["e4"]}
+          res (wf/resolve-full-org-root nodes hier {})]
+      (is (= "e2" (:root-id res)))
+      (is (nil? (:synthetic-node res)))))
+
+  (testing "2. Graceful fallback when no CEO exists: picks employee with highest descendant count"
+    (let [nodes [{:person/id "lead-a" :person/title "Managing Director"}
+                 {:person/id "lead-b" :person/title "Partner"}
+                 {:person/id "emp-1" :person/title "Associate"}
+                 {:person/id "emp-2" :person/title "Associate"}
+                 {:person/id "emp-3" :person/title "Junior"}]
+          ;; lead-a has 3 descendants (emp-1 -> emp-3, emp-2)
+          ;; lead-b has 0 descendants
+          hier {"lead-a" ["emp-1" "emp-2"]
+                "emp-1" ["emp-3"]}
+          res (wf/resolve-full-org-root nodes hier {})]
+      (is (= "lead-a" (:root-id res)) "Must gracefully select employee with highest subtree size")
+      (is (= 3 (wf/count-descendants hier "lead-a")))
+      (is (= 0 (wf/count-descendants hier "lead-b")))))
+
+  (testing "3. App setting: explicit root ID"
+    (let [nodes [{:person/id "e1" :person/title "CEO"}
+                 {:person/id "e2" :person/title "President"}]
+          hier {"e1" [] "e2" ["e1"]}
+          res (wf/resolve-full-org-root nodes hier {:root-id "e2"})]
+      (is (= "e2" (:root-id res)))))
+
+  (testing "4. App setting: co-equal top-level leadership creates synthetic visual root node"
+    (let [nodes [{:person/id "co-1" :person/title "Co-Founder"}
+                 {:person/id "co-2" :person/title "Co-Founder"}]
+          hier {"co-1" ["e3"] "co-2" ["e4"]}
+          res (wf/resolve-full-org-root nodes hier {:co-equal-ids ["co-1" "co-2"]
+                                                   :visual-root-title "Executive Committee"})]
+      (is (= "__visual_root__" (:root-id res)))
+      (is (some? (:synthetic-node res)))
+      (is (= "Executive Committee" (:person/name (:synthetic-node res))))
+      (is (= ["co-1" "co-2"] (:co-equal-ids res))))))
+
+(deftest dual-tabs-and-my-org-test
+  (let [extended-workforce {"emp-alice" {:person/id "emp-alice"
+                                         :person/name "Alice Smith"
+                                         :person/title "CEO"
+                                         :person/email "alice@acme.com"}
+                            "emp-bob"   {:person/id "emp-bob"
+                                         :person/name "Bob Jones"
+                                         :person/title "VP Engineering"
+                                         :person/email "bob@acme.com"}
+                            "emp-carol" {:person/id "emp-carol"
+                                         :person/name "Carol Danvers"
+                                         :person/title "Staff Engineer"
+                                         :person/email "carol@acme.com"}}
+        extended-hierarchy {nil ["emp-alice"]
+                            "emp-alice" ["emp-bob"]
+                            "emp-bob" ["emp-carol"]}]
+
+    (testing "My org tab is hidden when current user email is not in workforce and no custom root is set"
+      (let [hiccup (wf/WorkforceChart {:workforce extended-workforce
+                                      :workforce-hierarchy extended-hierarchy
+                                      :current-user/email "outsider@unknown.com"
+                                      :custom-root-id nil})]
+        (is (str/includes? (pr-str hiccup) "Full org"))
+        (is (not (str/includes? (pr-str hiccup) "👤 My org")))))
+
+    (testing "My org tab is visible when current user email matches an employee"
+      (let [hiccup (wf/WorkforceChart {:workforce extended-workforce
+                                      :workforce-hierarchy extended-hierarchy
+                                      :current-user/email "bob@acme.com"
+                                      :custom-root-id nil})]
+        (is (str/includes? (pr-str hiccup) "Full org"))
+        (is (str/includes? (pr-str hiccup) "👤 My org"))))
+
+    (testing "My org tab renders subtree rooted at matched user"
+      (let [hiccup (wf/WorkforceChart {:workforce extended-workforce
+                                      :workforce-hierarchy extended-hierarchy
+                                      :current-user/email "bob@acme.com"
+                                      :active-chart-tab :tab/my-org
+                                      :custom-root-id nil})
+            rendered (pr-str hiccup)]
+        (is (str/includes? rendered "Viewing My Org: "))
+        (is (str/includes? rendered "Bob Jones"))
+        (is (str/includes? rendered "Carol Danvers"))
+        ;; Alice (CEO) is above Bob, so Alice is not in Bob's subtree
+        (is (not (str/includes? rendered "Alice Smith")))))
+
+    (testing "Set as Root button is rendered on each card"
+      (let [hiccup (wf/WorkforceChart {:workforce extended-workforce
+                                      :workforce-hierarchy extended-hierarchy
+                                      :current-user/email "alice@acme.com"
+                                      :active-chart-tab :tab/full-org})]
+        (is (str/includes? (pr-str hiccup) "Set as Root"))))
+
+    (testing "Manually set custom root makes My org visible and renders custom subtree"
+      (let [hiccup (wf/WorkforceChart {:workforce extended-workforce
+                                      :workforce-hierarchy extended-hierarchy
+                                      :current-user/email "outsider@unknown.com"
+                                      :custom-root-id "emp-bob"
+                                      :active-chart-tab :tab/my-org})
+            rendered (pr-str hiccup)]
+        (is (str/includes? rendered "👤 My org"))
+        (is (str/includes? rendered "Custom Root"))
+        (is (str/includes? rendered "Viewing My Org: "))
+        (is (str/includes? rendered "Bob Jones"))
+        (is (str/includes? rendered "Carol Danvers"))
+        (is (not (str/includes? rendered "Alice Smith")))))))
