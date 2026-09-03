@@ -662,9 +662,14 @@
          store (get-store (:deps env))
          org-id (:headcount/org-id params)
          _ (require-org-member env (:deps env) org-id)
+         facts {:job-level (:headcount/job-level params "L3")
+                :dept-id (:headcount/dept-id params)
+                :unit-id (:headcount/unit-id params)
+                :employee-type (:headcount/employee-type params :full-time)
+                :location (:headcount/location params "remote")}
          chain (or (:headcount/chain-snapshot params)
-                  (let [rules (org/get-approval-rules store org-id)
-                        matching-rule (re/find-routing-rule rules params)]
+                   (let [rules (org/get-approval-rules store org-id)
+                         matching-rule (re/find-routing-rule rules facts)]
                     (or (:chain matching-rule)
                         [{:step 1 :role :hiring-manager}
                          {:step 2 :role :dept-head}])))
