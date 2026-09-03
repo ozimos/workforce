@@ -172,7 +172,7 @@
       (is (= org-id (:org/id chart)))
       (is (seq units) "should return units list")
       (is (= 2 (count units)) "should have 2 units")
-      (is (= [div-id] (get hierarchy nil)) "division should be root unit")
+      (is (not (contains? hierarchy nil)) "hierarchy must not use a nil key (Transit-unsafe)")
       (is (= [dept-id] (get hierarchy div-id)) "department should be child of division")
       (let [fe-unit (some #(when (= dept-id (:unit/id %)) %) units)]
         (is (some? fe-unit))
@@ -180,6 +180,89 @@
         (is (= 8 (:unit/budget fe-unit)))
         (is (= div-id (:unit/parent-id fe-unit)))
         (is (= (:id user) (get-in fe-unit [:unit/actors :hiring-manager])))))))
+
+(deftest ^:integration edit-field-advertisement-and-authorization-test
+  (testing "edit-field is only advertised to requester/admin and enforced server-side"
+    (let [admin (register-user)
+          [ok o] (org/create-org! *deps* {:name (str "hc-edit-" (short-suffix)) :owner-user-id (:id admin)})
+          _ (is ok)
+          org-id (:id o)
+          admin-id (:id admin)
+          requester (register-user)
+          other (register-user)
+          _ (org/invite-to-org! *deps* {:org-id org-id :email (:email requester) :role "MEMBER" :invited-by admin-id})
+          requester-inv (-> (org/list-invitations-for-user *deps* (:email requester)) first :invitation/id)
+          _ (org/join-org! *deps* {:user-id (:id requester) :invitation-id requester-inv})
+          _ (org/invite-to-org! *deps* {:org-id org-id :email (:email other) :role "MEMBER" :invited-by admin-id})
+          other-inv (-> (org/list-invitations-for-user *deps* (:email other)) first :invitation/id)
+          _ (org/join-org! *deps* {:user-id (:id other) :invitation-id other-inv})
+          dept-id (str "dept-edit-" (short-suffix))
+          _ (org/create-org-unit! *deps* {:unit-id dept-id :org-id org-id :name "Edit Dept" :parent-id nil :budget 5})
+          _ (org/assign-org-actor! *deps* {:org-id org-id :unit-id dept-id :user-id (:id requester) :role :hiring-manager})
+          requester-id (:id requester)
+          other-id (:id other)
+          create-res (pathom/process (build-env-with-org {:user-id requester-id})
+                                     [(list 'headcount/create
+                                            {:headcount/org-id org-id
+                                             :headcount/unit-id dept-id
+                                             :headcount/title "Draft Req"
+                                             :headcount/job-level "L4"
+                                             :headcount/employee-type :full-time
+                                             :headcount/chain-snapshot [{:step 1 :role :hiring-manager}]})])
+          req-id (:headcount/id (first (vals create-res)))
+          _ (is (some? req-id))
+          _ (is (= "L4" (:job-level (org/get-headcount-request *deps* req-id)))
+                "request stores :job-level at top level")
+
+          ;; Advertisement: requester sees edit-field
+          req-actions (:headcount/available-actions
+                          (p.eql/process (build-env-with-org {:user-id requester-id})
+                                         {:headcount/id req-id} [:headcount/available-actions]))
+          _ (is (contains? (set req-actions) :headcount/edit-field)
+                "requester should see edit-field")
+
+          ;; Advertisement: admin sees edit-field
+          admin-actions (:headcount/available-actions
+                             (p.eql/process (build-env-with-org {:user-id admin-id})
+                                            {:headcount/id req-id} [:headcount/available-actions]))
+          _ (is (contains? (set admin-actions) :headcount/edit-field)
+                "admin should see edit-field")
+
+          ;; Advertisement: unrelated member must NOT see edit-field
+          other-actions (:headcount/available-actions
+                             (p.eql/process (build-env-with-org {:user-id other-id})
+                                            {:headcount/id req-id} [:headcount/available-actions]))
+          _ (is (not (contains? (set other-actions) :headcount/edit-field))
+                "non-requester member must not be advertised edit-field")
+
+          ;; Server check: unrelated member rejected
+          edit-data (-> (pathom/process (build-env-with-org {:user-id other-id})
+                                        [(list 'headcount/edit-field
+                                               {:headcount/org-id org-id
+                                                :headcount/request-id req-id
+                                                :headcount/field-name :job-level
+                                                :headcount/new-value "L7"})])
+                        vals first)
+          _ (is (some? edit-data))
+          _ (is (= :unauthorized (:error-code (get edit-data :error)))
+                (str "server must reject edit by non-requester member, got: " edit-data))
+
+          ;; Request value unchanged after rejection
+          _ (is (= "L4" (:job-level (org/get-headcount-request *deps* req-id)))
+                "rejected edit must not change the value")
+
+          ;; Server check: requester allowed
+          ok-edit-data (-> (pathom/process (build-env-with-org {:user-id requester-id})
+                                           [(list 'headcount/edit-field
+                                                  {:headcount/org-id org-id
+                                                   :headcount/request-id req-id
+                                                   :headcount/field-name :job-level
+                                                   :headcount/new-value "L5"})])
+                           vals first)
+          _ (is (nil? (get ok-edit-data :error))
+                (str "requester edit should succeed, got: " ok-edit-data))]
+      (is (= "L5" (:job-level (org/get-headcount-request *deps* req-id)))
+          "requester edit should apply"))))
 
 (deftest ^:integration join-org-mutation-test
   (testing "join-org mutation accepts invitation and joins org"

@@ -166,10 +166,13 @@
     (when (nil? (org/get-membership store user-id org-id))
       (throw (ex-info "Not a member of this org" {:type :forbidden})))
     (let [units (org/list-org-units store org-id)
+          ;; Hierarchy maps parent-id -> child-ids. Roots (nil parent-id) are
+          ;; derived by consumers from :unit/parent-id; a nil map key is not
+          ;; Transit-safe, so it must never be materialized here.
           hierarchy (reduce (fn [acc u]
                               (if-let [p (:parent-id u)]
                                 (update acc p (fnil conj []) (:unit-id u))
-                                (update acc nil (fnil conj []) (:unit-id u))))
+                                acc))
                             {}
                             units)]
       {:org/chart
@@ -410,20 +413,20 @@
     (cond-> []
       ;; Draft state: submit, edit, cancel
       (= status :draft)
-      (into (cond-> [:headcount/edit-field]
-              (or is-requester? is-admin?) (conj :headcount/submit :headcount/cancel)))
+      (into (cond-> (when (or is-requester? is-admin?) [:headcount/edit-field])
+            (or is-requester? is-admin?) (conj :headcount/submit :headcount/cancel)))
 
       ;; In-approval state: approve/reject if approver, edit/cancel if requester/admin
       (= status :in-approval)
-      (into (cond-> [:headcount/edit-field]
-              is-approver? (conj :headcount/approve :headcount/reject)
-              (or is-requester? is-admin?) (conj :headcount/cancel)))
+      (into (cond-> (when (or is-requester? is-admin?) [:headcount/edit-field])
+            is-approver? (conj :headcount/approve :headcount/reject)
+            (or is-requester? is-admin?) (conj :headcount/cancel)))
 
       ;; Approved state: transition to hire, edit, cancel
       (= status :approved)
-      (into (cond-> [:headcount/edit-field]
-              (or is-admin? (= (:role viewer) :recruiter) (= (:role viewer) :hr)) (conj :headcount/transition-hire)
-              is-admin? (conj :headcount/cancel))))))
+      (into (cond-> (when (or is-requester? is-admin?) [:headcount/edit-field])
+            (or is-admin? (= (:role viewer) :recruiter) (= (:role viewer) :hr)) (conj :headcount/transition-hire)
+            is-admin? (conj :headcount/cancel))))))
 
 (pco/defresolver headcount-available-actions-resolver
   "Capability advertisement: dynamically resolves permissible actions on a headcount requisition."
@@ -744,19 +747,29 @@
    ::pco/output [:headcount/request-id :headcount/field-name :headcount/new-value :error]}
   (let [user-id (require-auth env)
         store (get-store (:deps env))
-        input {:org-id (:headcount/org-id params)
-               :request-id (:headcount/request-id params)
-               :editor-user-id user-id
-               :field-name (:headcount/field-name params)
-               :new-value (:headcount/new-value params)
-               :idempotency-key (or (:headcount/idempotency-key params)
-                                    (get-in env [:request :headers "idempotency-key"]))}
-        [ok result] (org/edit-headcount-field! store input)]
-    (if ok
-      {:headcount/request-id (:request-id result)
-       :headcount/field-name (:field-name result)
-       :headcount/new-value (:new-value result)}
-      {:error (errors/make-error :bad_request "Failed to edit field" result)})))
+        org-id (:headcount/org-id params)
+        req (org/get-headcount-request store (:headcount/request-id params))
+        membership (org/get-membership store user-id org-id)]
+    (if (nil? req)
+      {:error (errors/make-error :not_found "Headcount request not found" {:request-id (:headcount/request-id params)})}
+      (if (nil? membership)
+        {:error (errors/make-error :unauthorized "Not a member of this org" {})}
+        (let [editor-role (keyword (str/lower-case (str (:role membership))))]
+          (if (not (or (= user-id (:requester-id req)) (= editor-role :admin)))
+            {:error (errors/make-error :unauthorized "Only the requester or an org admin may edit this requisition" {})}
+            (let [input {:org-id org-id
+                         :request-id (:headcount/request-id params)
+                         :editor-user-id user-id
+                         :field-name (:headcount/field-name params)
+                         :new-value (:headcount/new-value params)
+                         :idempotency-key (or (:headcount/idempotency-key params)
+                                              (get-in env [:request :headers "idempotency-key"]))}
+                  [ok result] (org/edit-headcount-field! store input)]
+              (if ok
+                {:headcount/request-id (:request-id result)
+                 :headcount/field-name (:field-name result)
+                 :headcount/new-value (:new-value result)}
+                {:error (errors/make-error :bad_request "Failed to edit field" result)}))))))))
 
 (pco/defmutation transition-hire-mutation
   "Transition an approved headcount requisition to a filled hire."
