@@ -361,12 +361,14 @@
 
 (pco/defresolver headcount-timeline-resolver
   "Resolve audit event timeline for a headcount requisition."
-  [{:keys [deps] :as _env} params]
+  [{:keys [deps] :as env} params]
   {::pco/input [:headcount/id]
    ::pco/output [{:headcount/timeline [:event :actor :timestamp :step :reason :field :new-value]}]}
   (let [store (get-store deps)
         req-id (:headcount/id params)
+        req (org/get-headcount-request store req-id)
         timeline (org/get-request-timeline store req-id)]
+    (require-org-member env deps (:org-id req))
     {:headcount/timeline timeline}))
 
 (pco/defresolver org-approval-rules-resolver
