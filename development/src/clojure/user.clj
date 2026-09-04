@@ -5,17 +5,43 @@
    [integrant.repl :refer [clear go halt resume set-prep! suspend]])
   (:gen-class))
 
+(def ^:private rama-topology-namespaces
+  "Namespaces that define Rama modules, depots, PStates, or topologies.
+   Because Rama IPC topologies compile at JVM launch, changes to these
+   namespaces require a JVM restart to take effect in the IPC cluster."
+  #{'com.ozimos.omni-auth.rama.module
+    'com.ozimos.omni-auth.rama.extension
+    'com.ozimos.omni-auth.rama.registry
+    'com.ozimos.workforce.org.extension
+    'com.ozimos.workforce.org.records})
+
+(defn- check-and-log-rama-changes!
+  [reloaded-ns-coll]
+  (let [affected (filter rama-topology-namespaces reloaded-ns-coll)]
+    (when (seq affected)
+      (println "\n" (str/join "" (repeat 72 "!")))
+      (println "[RAMA IPC WARNING] Changes detected in compiled Rama topology namespaces:")
+      (doseq [ns-sym affected]
+        (println (str "  - " ns-sym)))
+      (println "In-memory Rama IPC clusters cannot recompile active module topologies in the same JVM.")
+      (println "To propagate depot/PState schema or stream topology changes to Rama, RESTART THE REPL JVM.")
+      (println (str/join "" (repeat 72 "!")) "\n"))))
+
 (defn reset
   "Reload changed namespaces via clj-reload and resume the Integrant system.
 
    Matches the original `integrant.repl/reset` semantics (suspend → reload → resume)
-   but uses `clj-reload` instead of `clojure.tools.namespace.repl`. Jetty is kept
-   warm via `ig/suspend!` (see `com.ozimos.workforce.web.system`), Rama PStates fall
-   through to `halt`/`init` since they have no suspend."
+   using `clj-reload`. Jetty and the in-memory Rama IPC cluster are kept warm
+   via `ig/suspend!` and `ig/resume-key` (see `com.ozimos.workforce.web.system` and
+   `com.ozimos.omni-auth.rama.core`).
+
+   If any Rama module or stream topology namespaces were modified, surfaces a clear
+   warning alerting that a JVM restart is required for those topologies to update."
   []
   (suspend)
-  ((requiring-resolve 'clj-reload.core/reload))
-  (resume))
+  (let [reload-res ((requiring-resolve 'clj-reload.core/reload))]
+    (check-and-log-rama-changes! (or (:loaded reload-res) []))
+    (resume)))
 
 (require 'com.ozimos.omni-auth.config.core
          'com.ozimos.omni-auth.rama.core

@@ -36,8 +36,8 @@
           (fs/copy (fs/file main-worktree f) f)
           (println (str "  -> Copied " f))))
 
-      ;; 3. Copy directory caches/configs from main worktree
-      (doseq [dir [".clj-kondo/.cache" ".lsp" ".vscode" ".calva"]]
+      ;; 3. Copy directory caches/configs/seed from main worktree
+      (doseq [dir [".clj-kondo/.cache" ".lsp" ".vscode" ".calva" ".seed"]]
         (when (and main-worktree (fs/exists? (fs/file main-worktree dir)) (not (fs/exists? dir)))
           (fs/create-dirs dir)
           (fs/copy-tree (fs/file main-worktree dir) dir)
