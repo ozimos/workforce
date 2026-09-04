@@ -3,6 +3,9 @@
   (:require
    [cljs.test :refer [deftest is testing]]
    [clojure.string :as str]
+   [com.fulcrologic.fulcro.application :as app]
+   [com.fulcrologic.statecharts.integration.fulcro :as scf]
+   [com.ozimos.workforce.frontend.auth-statechart :as auth-sc]
    [com.ozimos.workforce.frontend.ui.pages.org-chart :as org-chart]
    [com.ozimos.workforce.frontend.ui.pages.workforce-chart :as workforce-chart]
    [com.ozimos.workforce.frontend.ui.root :as root-rc]
@@ -125,3 +128,26 @@
           html (rs/render hiccup)]
       (is (str/includes? html "Sign in to your account"))
       (is (str/includes? html "alice@acme.com")))))
+
+(deftest ^:async statechart-logout-test
+  (testing "sending :event/logout triggers server-logout-fn and transitions to unauthenticated"
+    (cljs.test/async done
+      (let [app-inst (app/fulcro-app {})
+            logged-out? (atom false)
+            redirected? (atom false)]
+        (scf/install-fulcro-statecharts! app-inst
+          {:extra-env {:server-logout-fn (fn [] (reset! logged-out? true))
+                       :clear-tokens-fn (constantly nil)
+                       :redirect-fn (fn [target _] (when (= target "/login") (reset! redirected? true)))}})
+        (scf/register-statechart! app-inst auth-sc/machine-id auth-sc/auth-routing-chart)
+        (scf/start! app-inst {:machine auth-sc/machine-id
+                              :session-id auth-sc/default-session-id})
+        (scf/send! app-inst auth-sc/default-session-id :event/token-valid {:path "/org-chart"})
+        (scf/send! app-inst auth-sc/default-session-id :event/logout)
+        (js/setTimeout
+          (fn []
+            (is (true? @logged-out?) "server-logout-fn must be invoked on logout")
+            (is (true? @redirected?) "user must be redirected to /login on logout")
+            (done))
+          50)))))
+

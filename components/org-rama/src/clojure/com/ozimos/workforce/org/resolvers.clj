@@ -845,6 +845,24 @@
       {:org/id org-id
        :results results})))
 
+(pco/defmutation logout-mutation
+  "Revoke the current user's session token on Rama."
+  [env _params]
+  {::pco/op-name 'auth/logout
+   ::pco/output [:auth/logged-out?]}
+  (let [jti (or (get-in env [:auth :current-user :jti])
+                (get-in env [:request :identity :jti])
+                (get-in env [:auth :jti]))
+        system (:deps env)]
+    (when (and jti system)
+      (try
+        ((requiring-resolve 'com.ozimos.omni-auth.revocation.interface/revoke!)
+         system
+         jti
+         (+ (System/currentTimeMillis) (* 900 1000)))
+        (catch Exception _ nil)))
+    {:auth/logged-out? true}))
+
 ;; -----------------------------------------------------------------------------
 ;; Full Resolvers Index & Integrant Method
 ;; -----------------------------------------------------------------------------
@@ -889,7 +907,8 @@
    transition-hire-mutation
    update-chart-settings-mutation
    fetch-workforce-branch-mutation
-   search-workforce-mutation])
+   search-workforce-mutation
+   logout-mutation])
 
 (defmethod ig/init-key :workforce/org-resolvers [_ _]
   resolvers)

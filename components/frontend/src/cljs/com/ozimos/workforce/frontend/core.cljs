@@ -110,6 +110,10 @@
     (.removeItem js/localStorage "username")
     (.removeItem js/localStorage "email")))
 
+(defn- handle-statechart-server-logout! []
+  (when (is-logged-in?)
+    (transit/fetch-transit "/api/query" [(list 'auth/logout {})])))
+
 (defn- handle-statechart-redirect! [target-path return-to-path]
   (let [state-atom (::app/state-atom app-inst)]
     (when return-to-path
@@ -812,6 +816,7 @@
       ;; ------------------------------------------------------------------
       (scf/install-fulcro-statecharts! app-inst {:extra-env {:current-path current-path
                                                              :clear-tokens-fn clear-stored-tokens!
+                                                             :server-logout-fn handle-statechart-server-logout!
                                                              :redirect-fn handle-statechart-redirect!
                                                              :sync-route-fn handle-statechart-sync-route!
                                                              :fetch-session-fn fetch-user-session!

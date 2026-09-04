@@ -141,6 +141,10 @@
 
       ;; Logout and 401 Auth Failure
       (transition {:event :event/logout
-                   :target :state/unauthenticated})
+                   :target :state/unauthenticated
+                   :content [(script-action
+                               (fn [env _ _ _]
+                                 (when-let [server-logout (:server-logout-fn env)]
+                                   (server-logout))))]})
       (transition {:event :event/auth-failure
                    :target :state/unauthenticated}))))

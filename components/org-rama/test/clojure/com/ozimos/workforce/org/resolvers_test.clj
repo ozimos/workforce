@@ -3,6 +3,7 @@
    [clojure.string :as str]
    [clojure.test :refer [deftest is testing use-fixtures]]
    [com.ozimos.omni-auth.pathom.core :as pathom]
+   [com.ozimos.omni-auth.revocation.interface :as revocation]
    [com.ozimos.omni-auth.user.interface :as user]
    [com.ozimos.workforce.org.interface :as org]
    [com.ozimos.workforce.org.resolvers :as org-res]
@@ -669,3 +670,19 @@
         (is (seq results) "Search mutation must find matching employees")
         (when-let [first-match (first results)]
           (is (seq (:person/ancestor-path first-match)) "Match must include ancestor path from root"))))))
+
+(deftest ^:integration logout-mutation-test
+  (testing "auth/logout mutation revokes the active session token in Rama"
+    (let [user (register-user)
+          jti (str (ops/random-uuid7))
+          auth-env (pathom/build-env *deps*
+                                     {:user-id (:id user)
+                                      :current-user {:id (:id user)
+                                                     :user-id (:id user)
+                                                     :jti jti}}
+                                     org-res/resolvers)
+          _ (is (not (revocation/is-revoked? *deps* jti)) "Token should not be revoked before logout")
+          res (pathom/process auth-env [(list 'auth/logout {})])
+          logged-out-data (first (vals res))]
+      (is (= {:auth/logged-out? true} logged-out-data))
+      (is (true? (revocation/is-revoked? *deps* jti)) "Token jti must be revoked on Rama after auth/logout"))))
