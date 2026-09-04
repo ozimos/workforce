@@ -129,8 +129,9 @@
 
 (defn- handle-statechart-redirect! [target-path return-to-path]
   (let [state-atom (::app/state-atom app-inst)]
-    (when return-to-path
-      (swap! state-atom assoc :auth/return-to return-to-path))
+    (if return-to-path
+      (swap! state-atom assoc :auth/return-to return-to-path)
+      (swap! state-atom dissoc :auth/return-to))
     (when (and (exists? js/window) (exists? js/window.history))
       (.replaceState js/window.history nil "" target-path))
     (let [route (current-path-route target-path)]
@@ -544,7 +545,7 @@
                     (fetch-user-session!))))))
    ::nav/logout
    (fn [_]
-     (scf/send! app-inst auth-sc/default-session-id :event/logout))
+     (scf/send! app-inst auth-sc/default-session-id :event/logout {:logout? true}))
 
    ;; Org Chart Mutations
    ::org-chart/toggle-collapse

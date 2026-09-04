@@ -50,24 +50,27 @@
     (state {:id :state/unauthenticated}
       (on-entry {}
         (script-action
-          (fn [env _ _ e-data]
+          (fn [env _ e-name e-data]
             (let [clear-fn (:clear-tokens-fn env)
                   clear-form-fn (:clear-form-fn env)
                   redirect-fn (:redirect-fn env)
+                  logout? (or (= :event/logout e-name)
+                              (true? (:logout? e-data)))
                   path (or (:path e-data)
-                           (:current-path env)
                            (when (and (exists? js/window) (exists? js/window.location))
                              (str js/window.location.pathname js/window.location.search))
+                           (:current-path env)
                            "/")
                   target "/login"
-                  return-to (when (protected-path? path) path)]
+                  return-to (when (and (not logout?) (protected-path? path))
+                              path)]
               (when clear-fn (clear-fn))
               (when clear-form-fn (clear-form-fn))
               ;; Option B: on-entry owns redirect unconditionally.
               ;; Transition :event/logout is server-only; this avoids duplicate
               ;; pushState and prevents return-to being set on explicit logout.
-              ;; For guard (protected → /login) preserve return-to; for explicit
-              ;; logout (e.g. from "/" ) still land on /login with nil return-to.
+              ;; For guard/auth-failure (protected → /login) preserve return-to;
+              ;; for explicit logout, land on /login with nil return-to.
               (when (and redirect-fn (not= path target))
                 (redirect-fn target return-to))))))
 

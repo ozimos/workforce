@@ -227,11 +227,13 @@
       (scf/process-events! app-inst)
       (is (= "/org-chart" @redirected-return-to) "guard must preserve attempted protected path as return-to"))
     ;; Explicit logout case: authenticated -> unauthenticated must NOT set return-to (Option B)
+    ;; even when the user was active on a protected path.
     (let [app-inst2 (app/fulcro-app {})
           redirected-return-to2 (atom ::not-set)]
       (scf/install-fulcro-statecharts! app-inst2
         {:event-loop? false
-         :extra-env {:server-logout-fn (constantly nil)
+         :extra-env {:current-path "/org-chart"
+                     :server-logout-fn (constantly nil)
                      :clear-tokens-fn (constantly nil)
                      :clear-form-fn (constantly nil)
                      :redirect-fn (fn [_ return-to] (reset! redirected-return-to2 return-to))
@@ -241,9 +243,56 @@
       (scf/register-statechart! app-inst2 auth-sc/machine-id auth-sc/auth-routing-chart)
       (scf/start! app-inst2 {:machine auth-sc/machine-id
                              :session-id auth-sc/default-session-id})
-      (scf/send! app-inst2 auth-sc/default-session-id :event/token-valid {:path "/"})
+      (scf/send! app-inst2 auth-sc/default-session-id :event/token-valid {:path "/org-chart"})
       (scf/process-events! app-inst2)
       (is (some #{:state/authenticated} (scf/current-configuration app-inst2 auth-sc/default-session-id)))
-      (scf/send! app-inst2 auth-sc/default-session-id :event/logout)
+      (scf/send! app-inst2 auth-sc/default-session-id :event/logout {:logout? true})
       (scf/process-events! app-inst2)
-      (is (nil? @redirected-return-to2) "logout must redirect with nil return-to"))))
+      (is (nil? @redirected-return-to2) "logout must redirect with nil return-to even from protected path"))))
+
+(deftest statechart-expired-token-inactivity-roundtrip-test
+  (testing "expired token after prolonged inactivity redirects to /login with return-to and restores page A after login"
+    (let [app-inst (app/fulcro-app {})
+          state-atom (::app/state-atom app-inst)
+          redirected-to (atom nil)
+          synced-route (atom nil)]
+      (scf/install-fulcro-statecharts! app-inst
+        {:event-loop? false
+         :extra-env {:current-path "/org-chart"
+                     :server-logout-fn (constantly nil)
+                     :clear-tokens-fn (constantly nil)
+                     :clear-form-fn (constantly nil)
+                     :redirect-fn (fn [target return-to]
+                                    (reset! redirected-to target)
+                                    (if return-to
+                                      (swap! state-atom assoc :auth/return-to return-to)
+                                      (swap! state-atom dissoc :auth/return-to)))
+                     :sync-route-fn (fn [path _] (reset! synced-route path))
+                     :fetch-session-fn (constantly nil)
+                     :fetch-page-data-fn (constantly nil)}})
+      (scf/register-statechart! app-inst auth-sc/machine-id auth-sc/auth-routing-chart)
+      (scf/start! app-inst {:machine auth-sc/machine-id
+                            :session-id auth-sc/default-session-id})
+      ;; User was active on Page A (/org-chart)
+      (scf/send! app-inst auth-sc/default-session-id :event/token-valid {:path "/org-chart"})
+      (scf/process-events! app-inst)
+      (is (some #{:state/authenticated} (scf/current-configuration app-inst auth-sc/default-session-id)))
+
+      ;; Prolonged inactivity: token expired, backend returns 401, triggering :event/auth-failure
+      (scf/send! app-inst auth-sc/default-session-id :event/auth-failure)
+      (scf/process-events! app-inst)
+
+      ;; Assert redirected to /login and return-to is Page A (/org-chart)
+      (is (= "/login" @redirected-to) "expired token must redirect to /login")
+      (is (= "/org-chart" (:auth/return-to @state-atom)) "Page A path must be preserved in :auth/return-to")
+      (is (some #{:state/unauthenticated} (scf/current-configuration app-inst auth-sc/default-session-id)))
+
+      ;; Successful login on /login restores return-to
+      (let [return-to (:auth/return-to @state-atom)]
+        (swap! state-atom dissoc :auth/return-to)
+        (scf/send! app-inst auth-sc/default-session-id :event/login-success {:return-to return-to}))
+      (scf/process-events! app-inst)
+
+      ;; Assert user returned to Page A (/org-chart) and is authenticated
+      (is (= "/org-chart" @synced-route) "user must be returned to Page A (/org-chart) after login")
+      (is (some #{:state/authenticated} (scf/current-configuration app-inst auth-sc/default-session-id))))))
