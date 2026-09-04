@@ -41,24 +41,43 @@
   ([handlers]
    (dispatch! nil handlers))
   ([app-inst handlers]
-   (fn [event-map handler-data]
-     (cond
-       ;; Standard [::action-key & args]
-       (and (vector? handler-data) (keyword? (first handler-data)))
-       (let [k (first handler-data)
-             handler (or (get handlers k)
-                         (when (= "navigate" (name k))
-                           (get handlers :navigate)))]
-         (if handler
-           (apply handler event-map (rest handler-data))
-           (js/console.warn "[bridge] no handler for" (pr-str handler-data))))
+   (let [dispatch-single!
+         (fn [event-map action-vec]
+           (cond
+             (and (vector? action-vec) (keyword? (first action-vec)))
+             (let [k (first action-vec)
+                   handler (or (get handlers k)
+                               (when (= "navigate" (name k))
+                                 (get handlers :navigate)))]
+               (if handler
+                 (apply handler event-map (rest action-vec))
+                 (js/console.warn "[bridge] no handler for" (pr-str action-vec))))
 
-       ;; Direct Fulcro mutation transaction: [(my-mutation {:id 1})]
-       (and (sequential? handler-data) (seq handler-data) (list? (first handler-data)) app-inst)
-       (comp/transact! app-inst (vec handler-data))
+             (and (sequential? action-vec) (seq action-vec) (list? (first action-vec)) app-inst)
+             (comp/transact! app-inst (vec action-vec))
 
-       :else
-       (js/console.warn "[bridge] unrecognized handler data" (pr-str handler-data))))))
+             :else
+             (js/console.warn "[bridge] unrecognized handler data" (pr-str action-vec))))]
+     (fn [event-map handler-data]
+       (cond
+         ;; Standard single action vector: [::action-key & args]
+         (and (vector? handler-data) (keyword? (first handler-data)))
+         (dispatch-single! event-map handler-data)
+
+         ;; Sequence of action vectors: e.g. [[:action-1] [:action-2]]
+         (and (sequential? handler-data)
+              (seq handler-data)
+              (vector? (first handler-data))
+              (keyword? (first (first handler-data))))
+         (doseq [action-vec handler-data]
+           (dispatch-single! event-map action-vec))
+
+         ;; Direct Fulcro mutation transaction: [(my-mutation {:id 1})]
+         (and (sequential? handler-data) (seq handler-data) (list? (first handler-data)) app-inst)
+         (comp/transact! app-inst (vec handler-data))
+
+         :else
+         (js/console.warn "[bridge] unrecognized handler data" (pr-str handler-data)))))))
 
 (defn install-replicant-root!
   "Mounts Replicant as the rendering engine for the given Fulcro application.

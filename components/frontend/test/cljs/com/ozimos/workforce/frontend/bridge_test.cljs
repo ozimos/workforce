@@ -88,3 +88,15 @@
       (is (nil? (:app/thing @state-atom)))
       (adapter mock-event-map [(list 'com.ozimos.workforce.frontend.bridge-test/set-thing {:v 42})])
       (is (= 42 (:app/thing @state-atom))))))
+
+(deftest dispatch-handles-sequence-of-action-vectors
+  (testing "Dispatch adapter processes sequence of action vectors e.g. [[:action-1] [:action-2]]"
+    (let [calls (atom [])
+          adapter (bridge/dispatch!
+                    {::action-a (fn [_ & args] (swap! calls conj [::action-a (first args)]))
+                     ::action-b (fn [_ & args] (swap! calls conj [::action-b (first args)]))})
+          mock-event-map {:replicant/trigger :replicant.trigger/dom-event}]
+      (adapter mock-event-map [[::action-a {:x 1}] [::action-b {:y 2}]])
+      (is (= [[::action-a {:x 1}] [::action-b {:y 2}]] @calls)
+          "Both action vectors in sequence must be invoked in order"))))
+
