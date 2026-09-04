@@ -214,29 +214,85 @@
            p
            (lp/free-port))))))
 
-(defn start-frontend-watcher
-  "If deps.local.edn has :frontend/watcher :enabled, add eval forms
-   to start shadow-cljs watch inside the JVM at startup with isolated ports."
+(defn start-parallel-system
+  "Inject a single eval-form that dispatches shadow builds and system start+seed
+   as concurrent futures, so nREPL (started last by nrepl-server-eval-forms) is
+   available immediately instead of blocking on the full serial chain.
+
+   The old serial chain was:
+     clj-reload → shadow server → watch :app (6s) → watch :ssr (1s) → go → seed (34s) → nREPL
+
+   The new parallel chain is:
+     clj-reload → (future: shadow server + watch :app + :ssr)
+                 (future: go + seed!)
+                 → nREPL (immediate, futures still running)
+
+   nREPL is available in ~8s (JVM boot) instead of ~50s. Users can connect while
+   seeding is still in progress. The futures print their own 'ready' messages."
   [ctx]
-  (let [local-file (io/file "deps.local.edn")]
-    (if (and (.exists local-file)
-             (get-in (read-string (slurp local-file)) [:frontend/watcher :enabled]))
-      (let [http-p  (shadow-cljs-http-port ctx)
-            nrepl-p (shadow-cljs-nrepl-port ctx)]
-        (log/info (str "Starting shadow-cljs frontend watcher (HTTP port: " http-p ", nREPL port: " nrepl-p ")..."))
-        (-> ctx
-            (update :eval-forms into
-                    [`(do (require 'shadow.cljs.devtools.server)
-                          (require 'shadow.cljs.devtools.api)
-                          (require 'shadow.cljs.devtools.config)
-                          (let [base-cfg# (shadow.cljs.devtools.config/load-cljs-edn)
-                                cfg# (assoc base-cfg#
-                                       :http {:port ~http-p}
-                                       :nrepl {:port ~nrepl-p})]
-                            (shadow.cljs.devtools.server/start! cfg#)))
-                     '(shadow.cljs.devtools.api/watch :app)
-                     '(shadow.cljs.devtools.api/watch :ssr)])))
-      ctx)))
+  (let [local       (read-deps-local)
+        watcher?    (boolean (get-in local [:frontend/watcher :enabled]))
+        auto-start? (get local :system/auto-start true)
+        auto-seed?  (get local :system/auto-seed true)
+        http-p      (shadow-cljs-http-port ctx)
+        nrepl-p     (shadow-cljs-nrepl-port ctx)
+        shadow-server-start `(do (require 'shadow.cljs.devtools.server)
+                                 (require 'shadow.cljs.devtools.api)
+                                 (require 'shadow.cljs.devtools.config)
+                                 (let [base-cfg# ((requiring-resolve 'shadow.cljs.devtools.config/load-cljs-edn))
+                                       cfg# (assoc base-cfg# :http {:port ~http-p} :nrepl {:port ~nrepl-p})]
+                                   ((requiring-resolve 'shadow.cljs.devtools.server/start!) cfg#)))
+        watch-app '(shadow.cljs.devtools.api/watch :app)
+        watch-ssr '(shadow.cljs.devtools.api/watch :ssr)]
+    (when watcher?
+      (log/info (str "Configuring parallel shadow-cljs watcher (HTTP port: " http-p
+                     ", nREPL port: " nrepl-p ") + system startup in background futures...")))
+    (if (and watcher? auto-start?)
+      (let [shadow-form `(future
+                           (try
+                             ~shadow-server-start
+                             ((requiring-resolve 'shadow.cljs.devtools.api/watch) :app)
+                             ((requiring-resolve 'shadow.cljs.devtools.api/watch) :ssr)
+                             (println "[shadow] shadow-cljs builds ready (:app + :ssr)")
+                             (catch Throwable e#
+                               (binding [*out* *err*]
+                                 (println "[shadow] ERROR:" (.getMessage e#))
+                                 (.printStackTrace e#))
+                               (throw e#))))
+            system-form (let [body# (if auto-seed?
+                                      `(let [go-fn# (requiring-resolve 'integrant.repl/go)
+                                             seed-fn# (requiring-resolve 'user/seed!)
+                                             res# (when go-fn# (go-fn#))]
+                                         (try (when seed-fn# (seed-fn#))
+                                              (catch Exception e#
+                                                (binding [*out* *err*]
+                                                  (println "Seed auto-load notice:" (.getMessage e#))
+                                                  (.printStackTrace e#))))
+                                         (println "[system] Dev system started and seeded.")
+                                         res#)
+                                      `(let [go-fn# (requiring-resolve 'integrant.repl/go)
+                                             res# (when go-fn# (go-fn#))]
+                                         (println "[system] Dev system started.")
+                                         res#))]
+                          `(future
+                             (try ~body#
+                                  (catch Throwable e#
+                                    (binding [*out* *err*]
+                                      (println "[system] ERROR:" (.getMessage e#))
+                                      (.printStackTrace e#))
+                                    (throw e#)))))]
+        (update ctx :eval-forms conj
+                `(do
+                   (def ~'shadow-start-future ~shadow-form)
+                   (def ~'system-start-future ~system-form))))
+      ;; Fall back to the old serial behavior for partial configs
+      (cond-> ctx
+        watcher?
+        (update :eval-forms into [shadow-server-start watch-app watch-ssr])
+        auto-start?
+        (update :eval-forms conj (if auto-seed?
+                                   '(do (in-ns 'user) (start-and-seed!))
+                                   '(do (in-ns 'user) (go))))))))
 
 (defn resolve-ssr-port
   "Resolve SSR server port. Checked in order:
@@ -424,37 +480,31 @@
 (defn wait-for-shadow-cljs
   "Block until the shadow-cljs HTTP server is accepting TCP connections.
 
-   Must run AFTER lp/default-steps (which spawns the JVM via
-   start-clojure-process and waits for nREPL). By the time nREPL is up,
-   shadow-cljs's HTTP server has also started — this step re-confirms
-   that the port is listening so the SSR server's relay client doesn't
-   race the JVM at boot."
+   In parallel mode, shadow-cljs starts inside a future alongside system startup
+   and seeding. This step polls the shadow HTTP port and then waits for the :ssr
+   build output (ssr-output/ssr.js) to appear so start-ssr-server doesn't race a
+   still-compiling :ssr build."
   [ctx]
   (let [port    (shadow-cljs-http-port ctx)
         timeout 300000]
     (log/info "Waiting for shadow-cljs HTTP server on port" port "...")
     (if-let [{:keys [took]} (wait/wait-for-port "localhost" port {:timeout timeout :pause 1000})]
       (do (log/info "shadow-cljs HTTP server reachable after" (/ took 1000.0) "seconds")
-          (Thread/sleep 1000)
-          ctx)
+          ;; Wait for :ssr build output if it doesn't exist yet (parallel mode race).
+          (let [ssr-js (io/file "ssr-output" "ssr.js")]
+            (when-not (.exists ssr-js)
+              (log/info "Waiting for :ssr build output (ssr-output/ssr.js)...")
+              (loop [waited 0]
+                (when (and (< waited timeout) (not (.exists ssr-js)))
+                  (Thread/sleep 500)
+                  (recur (+ waited 500))))
+              (if (.exists ssr-js)
+                (log/info ":ssr build output ready")
+                (log/warn ":ssr build output not found after" (/ timeout 1000) "seconds; starting SSR server anyway")))
+            ctx))
       (do (log/warn "shadow-cljs HTTP server not reachable on port" port
                     "after" (/ timeout 1000) "seconds; starting SSR server anyway")
           ctx))))
-
-(defn auto-start-system
-  "If deps.local.edn has :system/auto-start true (or defaults to true),
-   add eval forms to automatically run (user/go) or (user/start-and-seed!) on JVM startup."
-  [ctx]
-  (let [local (read-deps-local)
-        auto-start? (get local :system/auto-start true)
-        auto-seed?  (get local :system/auto-seed true)]
-    (if auto-start?
-      (if auto-seed?
-        (do (log/info "Configuring automatic system startup & seeding (user/start-and-seed!)...")
-            (update ctx :eval-forms conj '(do (in-ns 'user) (start-and-seed!))))
-        (do (log/info "Configuring automatic system startup (user/go)...")
-            (update ctx :eval-forms conj '(do (in-ns 'user) (go)))))
-      ctx)))
 
 (lp/main
  {:steps
@@ -465,8 +515,7 @@
          resolve-shadow-ports
          register-shutdown-cleanup!
          start-mailpit
-         start-frontend-watcher
-         auto-start-system
+         start-parallel-system
          resolve-jetty-ports]
         (concat lp/default-steps
                 [wait-for-shadow-cljs
