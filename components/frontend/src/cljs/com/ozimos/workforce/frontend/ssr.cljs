@@ -3,7 +3,7 @@
    [com.fulcrologic.fulcro.algorithms.denormalize :as denorm]
    [com.fulcrologic.fulcro.application :as app]
    [com.ozimos.workforce.frontend.routing :as routing]
-   [com.ozimos.workforce.frontend.ui.root-replicant :as root-rc]
+   [com.ozimos.workforce.frontend.ui.root :as root-rc]
    [replicant.string :as rstr]))
 
 (defn- escape-html [s]
@@ -31,64 +31,64 @@
 (defn- page-title [path]
   (cond
     (= path "/login")            "Sign In"
-    (= path "/login-replicant")  "Sign In"
+    (= path "/login")  "Sign In"
     (= path "/register")         "Create Account"
-    (= path "/register-replicant") "Create Account"
+    (= path "/register") "Create Account"
     (= path "/create-org")       "Create Organization"
-    (= path "/create-org-replicant") "Create Organization"
+    (= path "/create-org") "Create Organization"
     (= path "/join-org")         "Join Organization"
-    (= path "/join-org-replicant") "Join Organization"
+    (= path "/join-org") "Join Organization"
     (= path "/org-dashboard")    "Organization Dashboard"
-    (= path "/org-dashboard-replicant") "Organization Dashboard"
+    (= path "/org-dashboard") "Organization Dashboard"
     (= path "/policies")        "Policies"
-    (= path "/policies-replicant") "Policies"
+    (= path "/policies") "Policies"
     (= path "/org-chart")        "Organization Chart"
-    (= path "/org-chart-replicant") "Organization Chart"
+    (= path "/org-chart") "Organization Chart"
     (= path "/headcount")        "Headcount"
-    (= path "/headcount-replicant") "Headcount"
+    (= path "/headcount") "Headcount"
     (= path "/dept-dashboard")   "Department Dashboard"
-    (= path "/dept-dashboard-replicant") "Department Dashboard"
+    (= path "/dept-dashboard") "Department Dashboard"
     (= path "/profile")          "Profile"
-    (= path "/profile-replicant") "Profile"
+    (= path "/profile") "Profile"
     (= path "/forgot-password")  "Forgot Password"
-    (= path "/forgot-password-replicant") "Forgot Password"
+    (= path "/forgot-password") "Forgot Password"
     (= path "/reset-password")   "Reset Password"
-    (= path "/reset-password-replicant") "Reset Password"
+    (= path "/reset-password") "Reset Password"
     (= path "/verify")           "Verify Account"
-    (= path "/verify-replicant") "Verify Account"
-    (= path "/home-replicant")   "Dashboard"
+    (= path "/verify") "Verify Account"
+    (= path "/home")   "Dashboard"
     (= path "/")                 "Dashboard"
     :else                        "Best Auth"))
 
 (defn- page-description [path]
   (cond
     (= path "/login")            "Sign in to your account"
-    (= path "/login-replicant")  "Sign in to your account"
+    (= path "/login")  "Sign in to your account"
     (= path "/register")         "Create a new account"
-    (= path "/register-replicant") "Create a new account"
+    (= path "/register") "Create a new account"
     (= path "/create-org")       "Create a new organization"
-    (= path "/create-org-replicant") "Create a new organization"
+    (= path "/create-org") "Create a new organization"
     (= path "/join-org")         "Join an existing organization"
-    (= path "/join-org-replicant") "Join an existing organization"
+    (= path "/join-org") "Join an existing organization"
     (= path "/org-dashboard")    "Manage your organization"
-    (= path "/org-dashboard-replicant") "Manage your organization"
+    (= path "/org-dashboard") "Manage your organization"
     (= path "/policies")        "Policies and approval routing"
-    (= path "/policies-replicant") "Policies and approval routing"
+    (= path "/policies") "Policies and approval routing"
     (= path "/org-chart")        "Interactive organizational hierarchy"
-    (= path "/org-chart-replicant") "Interactive organizational hierarchy"
+    (= path "/org-chart") "Interactive organizational hierarchy"
     (= path "/headcount")        "Headcount requisitions and approvals"
-    (= path "/headcount-replicant") "Headcount requisitions and approvals"
+    (= path "/headcount") "Headcount requisitions and approvals"
     (= path "/dept-dashboard")   "Department headcount dashboard"
-    (= path "/dept-dashboard-replicant") "Department headcount dashboard"
+    (= path "/dept-dashboard") "Department headcount dashboard"
     (= path "/profile")          "Update your profile"
-    (= path "/profile-replicant") "Update your profile"
+    (= path "/profile") "Update your profile"
     (= path "/forgot-password")  "Reset your password"
-    (= path "/forgot-password-replicant") "Reset your password"
+    (= path "/forgot-password") "Reset your password"
     (= path "/reset-password")   "Set a new password"
-    (= path "/reset-password-replicant") "Set a new password"
+    (= path "/reset-password") "Set a new password"
     (= path "/verify")           "Verify your email address"
-    (= path "/verify-replicant") "Verify your email address"
-    (= path "/home-replicant")   "Home dashboard"
+    (= path "/verify") "Verify your email address"
+    (= path "/home")   "Home dashboard"
     (= path "/")                 "Dashboard - Best Auth"
     :else                        "Best Auth - Authentication Template"))
 
@@ -127,9 +127,9 @@
                  logged-in? (authenticated?)]
              (swap! state-atom assoc :route route :logged-in? logged-in?)
              (let [db @state-atom
-                   query (:query (meta root-rc/RootReplicant))
+                   query (:query (meta root-rc/Root))
                    denormalized-tree (denorm/db->tree query db db)
-                   hiccup (root-rc/RootReplicant denormalized-tree)
+                   hiccup (root-rc/Root denormalized-tree)
                    rendered (rstr/render hiccup)]
                {:status :ok :html rendered}))
            (catch js/Error e

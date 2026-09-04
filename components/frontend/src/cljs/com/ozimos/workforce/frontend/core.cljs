@@ -9,23 +9,23 @@
    [com.ozimos.workforce.frontend.abac :as abac]
    [com.ozimos.workforce.frontend.auth-statechart :as auth-sc]
    [com.ozimos.workforce.frontend.json :as json]
-   [com.ozimos.workforce.frontend.replicant-bridge :as bridge]
+   [com.ozimos.workforce.frontend.bridge :as bridge]
    [com.ozimos.workforce.frontend.routing :as routing]
    [com.ozimos.workforce.frontend.transit :as transit]
-   [com.ozimos.workforce.frontend.ui.components.nav-replicant :as nav]
-   [com.ozimos.workforce.frontend.ui.pages.create-org-replicant :as create-org]
-   [com.ozimos.workforce.frontend.ui.pages.dept-dashboard-replicant :as dept-dashboard]
-   [com.ozimos.workforce.frontend.ui.pages.forgot-password-replicant :as forgot-password]
-   [com.ozimos.workforce.frontend.ui.pages.headcount-replicant :as headcount]
-   [com.ozimos.workforce.frontend.ui.pages.join-org-replicant :as join-org]
-   [com.ozimos.workforce.frontend.ui.pages.login-replicant :as login]
+   [com.ozimos.workforce.frontend.ui.components.nav :as nav]
+   [com.ozimos.workforce.frontend.ui.pages.create-org :as create-org]
+   [com.ozimos.workforce.frontend.ui.pages.dept-dashboard :as dept-dashboard]
+   [com.ozimos.workforce.frontend.ui.pages.forgot-password :as forgot-password]
+   [com.ozimos.workforce.frontend.ui.pages.headcount :as headcount]
+   [com.ozimos.workforce.frontend.ui.pages.join-org :as join-org]
+   [com.ozimos.workforce.frontend.ui.pages.login :as login]
    [com.ozimos.workforce.frontend.views.org-chart :as org-chart]
-   [com.ozimos.workforce.frontend.ui.pages.policy-settings-replicant :as policy-settings]
-   [com.ozimos.workforce.frontend.ui.pages.profile-replicant :as profile]
-   [com.ozimos.workforce.frontend.ui.pages.register-replicant :as register]
-   [com.ozimos.workforce.frontend.ui.pages.reset-password-replicant :as reset-password]
+   [com.ozimos.workforce.frontend.ui.pages.policy-settings :as policy-settings]
+   [com.ozimos.workforce.frontend.ui.pages.profile :as profile]
+   [com.ozimos.workforce.frontend.ui.pages.register :as register]
+   [com.ozimos.workforce.frontend.ui.pages.reset-password :as reset-password]
    [com.ozimos.workforce.frontend.ui.pages.workforce-chart :as workforce-chart]
-   [com.ozimos.workforce.frontend.ui.root-replicant :as root-rc]
+   [com.ozimos.workforce.frontend.ui.root :as root-rc]
    [fulcro.inspect.tool :as inspect]
    [goog.dom :as gdom]
    [replicant.dom :as r]))
@@ -58,22 +58,22 @@
   "Maps a route keyword to the normalized Fulcro App DB ident for the page."
   [route]
   (case route
-    (:route/login :route/login-replicant)                     [:login-replicant/root :main]
-    (:route/register :route/register-replicant)               [:register-replicant/root :main]
-    (:route/create-org :route/create-org-replicant)           [:create-org-replicant/root :main]
-    (:route/join-org :route/join-org-replicant)               [:join-org-replicant/root :main]
-    (:route/org-dashboard :route/org-dashboard-replicant)     [:org-dashboard-replicant/root :main]
-    (:route/org-chart :route/org-chart-replicant)             [:workforce-chart/root :main]
-    (:route/org-chart-2 :route/org-chart-2-replicant)         [:org-chart-replicant/root :main]
-    (:route/dept-dashboard :route/dept-dashboard-replicant)   [:dept-dashboard-replicant/root :main]
-    (:route/headcount :route/headcount-replicant)             [:headcount-replicant/root :main]
-    (:route/policies :route/policies-replicant)               [:policy-settings-replicant/root :main]
-    (:route/profile :route/profile-replicant)                 [:profile-replicant/root :main]
-    (:route/forgot-password :route/forgot-password-replicant) [:forgot-password-replicant/root :main]
-    (:route/reset-password :route/reset-password-replicant)   [:reset-password-replicant/root :main]
-    (:route/verify :route/verify-replicant)                   [:verify-replicant/root :main]
-    (:route/home :route/home-replicant)                       [:home-replicant/root :main]
-    [:login-replicant/root :main]))
+    :route/login                     [:login/root :main]
+    :route/register               [:register/root :main]
+    :route/create-org           [:create-org/root :main]
+    :route/join-org               [:join-org/root :main]
+    :route/org-dashboard     [:org-dashboard/root :main]
+    :route/org-chart             [:workforce-chart/root :main]
+    :route/org-chart-2         [:org-chart/root :main]
+    :route/dept-dashboard   [:dept-dashboard/root :main]
+    :route/headcount             [:headcount/root :main]
+    :route/policies               [:policy-settings/root :main]
+    :route/profile                 [:profile/root :main]
+    :route/forgot-password [:forgot-password/root :main]
+    :route/reset-password   [:reset-password/root :main]
+    :route/verify                   [:verify/root :main]
+    :route/home                       [:home/root :main]
+    [:login/root :main]))
 
 (defn- sync-route-state!
   "Pure helper to update both flat :route and normalized Dynamic Router ident in App DB."
@@ -141,11 +141,10 @@
           state-atom (::app/state-atom app-inst)]
       (if (:active-org @state-atom)
         (cond
-          (#{:route/org-chart :route/org-chart-replicant} route)
+          (#{:route/org-chart} route)
           (fetch-workforce-chart!)
 
-          (#{:route/org-chart-2 :route/org-chart-2-replicant
-             :route/dept-dashboard :route/dept-dashboard-replicant} route)
+          (#{:route/org-chart-2 :route/dept-dashboard} route)
           (fetch-org-chart!))
         (fetch-user-session!)))))
 
@@ -193,7 +192,7 @@
     (let [state-atom (::app/state-atom app-inst)
           active-org (:active-org @state-atom)]
       (when-let [org-id (:org/id active-org)]
-        (load-rc! org-chart/OrgChartReplicant
+        (load-rc! org-chart/OrgChart
                   [{[:org/id org-id]
                     [{:org/chart [:org/id :org/hierarchy
                                   {:org/units [:unit/id :unit/name :unit/division-id
@@ -411,7 +410,7 @@
                                                       (if (abac/policy-active? p) p {})))
                                 (update :org/id merge org-table))))
                    (let [curr-route (:route @state-atom)]
-                     (if (#{:route/org-chart :route/org-chart-replicant} curr-route)
+                     (if (#{:route/org-chart} curr-route)
                        (fetch-workforce-chart!)
                        (fetch-org-chart!)))))})))
 
@@ -745,13 +744,13 @@
   (when-let [mount-el (when (exists? js/document) (gdom/getElement "app"))]
     (let [state-atom (::app/state-atom app-inst)
           db @state-atom
-          query (:query (meta root-rc/RootReplicant))
+          query (:query (meta root-rc/Root))
           denormalized-tree (denorm/db->tree query db db)
           route (or (:route db) (current-path-route))
           [target-ident-key _] (route->target-ident route)
           router-props {:router/current-route {target-ident-key db}}
           enriched-tree (assoc denormalized-tree :root/router router-props)]
-      (r/render mount-el (root-rc/RootReplicant enriched-tree)))))
+      (r/render mount-el (root-rc/Root enriched-tree)))))
 
 (defn schedule-render! []
   (when-not @render-scheduled?

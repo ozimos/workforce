@@ -1,40 +1,48 @@
 (ns com.ozimos.workforce.frontend.ui.pages.verify
-  (:require
-   [com.fulcrologic.fulcro.components :as comp :refer [defsc]]
-   [com.fulcrologic.fulcro.dom :as dom :refer [a div p]]
-   [com.ozimos.workforce.frontend.json :as json]))
+  "Replicant view for the Email Verification page.
+   Pure props -> hiccup via defrc with pure state transitions."
+  (:require-macros
+   [com.ozimos.workforce.frontend.defrc :refer [defrc]]))
 
-(defn- get-param [key]
-  (some-> js/window.location.search
-          (.substring 1)
-          (.split "&")
-          (->> (map #(.split % "="))
-               (filter #(= (first %) key)) first second)))
+;; -----------------------------------------------------------------------------
+;; Pure State Transitions (fn [db params] -> db)
+;; -----------------------------------------------------------------------------
 
-(defn- verify-account [this]
-  (let [token (get-param "token")
-        user-id (get-param "user-id")]
-    (if (and token user-id)
-      (-> (json/fetch-json "/api/auth/verify" "POST" {:token token :user-id user-id})
-          (.then (fn [{:keys [status]}]
-                   (if (= 200 status)
-                     (comp/set-state! this {:status :success :message "Account verified!"})
-                     (comp/set-state! this {:status :error :message "Verification failed"})))))
-      (comp/set-state! this {:status :error :message "Missing verification token"}))))
+(defn set-status-state [db status message]
+  (assoc db :status status :message message))
 
-(defsc Verify [this _props]
+;; -----------------------------------------------------------------------------
+;; View
+;; -----------------------------------------------------------------------------
+
+(defrc Verify
   {:query [:status :message]
-   :initial-state {:status :loading :message nil}
-   :component-did-mount verify-account}
-  (let [{:keys [status message]} (comp/get-state this)]
-    (div {:className "flex min-h-full flex-col justify-center px-6 py-12 lg:px-8"}
-      (div {:className "sm:mx-auto sm:w-full sm:max-w-sm"}
-        (case status
-          :loading (div {:className "text-center"} (p {:className "text-gray-500"} "Verifying your account..."))
-          :success (div {:className "rounded-md bg-green-50 p-4"}
-                     (p {:className "text-sm text-green-700"} message)
-                     (a {:href "/login" :className "mt-2 inline-block text-sm font-semibold text-indigo-600 hover:text-indigo-500"} "Sign in"))
-          :error (div {:className "rounded-md bg-red-50 p-4"}
-                   (p {:className "text-sm text-red-700"} (or message "Verification failed"))
-                   (a {:href "/login" :className "mt-2 inline-block text-sm font-semibold text-indigo-600 hover:text-indigo-500"} "Back to sign in"))
-          (div {:className "text-center"} (p {:className "text-gray-500"} "Verifying your account...")))))))
+   :ident :verify/root
+   :ident-key :verify/root
+   :route-segment ["verify"]}
+  [{:keys [status message]}]
+  [:div {:class "flex min-h-full flex-col justify-center px-6 py-12 lg:px-8"}
+   [:div {:class "sm:mx-auto sm:w-full sm:max-w-sm"}
+    (case status
+      :loading
+      [:div {:class "text-center"}
+       [:p {:class "text-gray-500"} "Verifying your account..."]]
+
+      :success
+      [:div {:class "rounded-md bg-green-50 p-4"}
+       [:p {:class "text-sm text-green-700"} (or message "Account verified!")]
+       [:a {:href "/login"
+            :class "mt-2 inline-block text-sm font-semibold text-indigo-600 hover:text-indigo-500"
+            :on {:click [::navigate "/login"]}}
+        "Sign in"]]
+
+      :error
+      [:div {:class "rounded-md bg-red-50 p-4"}
+       [:p {:class "text-sm text-red-700"} (or message "Verification failed")]
+       [:a {:href "/login"
+            :class "mt-2 inline-block text-sm font-semibold text-indigo-600 hover:text-indigo-500"
+            :on {:click [::navigate "/login"]}}
+        "Back to sign in"]]
+
+      [:div {:class "text-center"}
+       [:p {:class "text-gray-500"} "Verifying your account..."]])]])

@@ -42,7 +42,7 @@
 
    (defrouter-rc MainRouter
      {:router-id :main-router
-      :router-targets [LoginReplicant OrgChartReplicant ...]})"
+      :router-targets [Login OrgChart ...]})"
   [sym {:keys [router-id router-targets] :as opts}]
   (let [targets (vec router-targets)]
     `(def ~sym
@@ -79,7 +79,7 @@
            (fn ~(symbol (str sym "-view")) [props#]
              (let [current-route# (:router/current-route props#)
                    ;; In Fulcro union query denormalization:
-                   ;; current-route# is {:login-replicant/root {:identifier "..." ...}}
+                   ;; current-route# is {:login/root {:identifier "..." ...}}
                    ;; or if already unwrapped, {:identifier "..." ...}
                    entry# (when (map? current-route#)
                             (some (fn [[ident-k# comp-fn#]]

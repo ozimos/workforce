@@ -3,9 +3,9 @@
   (:require
    [cljs.test :refer [deftest is testing]]
    [clojure.string :as str]
-   [com.ozimos.workforce.frontend.ui.pages.org-chart-replicant :as org-chart]
+   [com.ozimos.workforce.frontend.ui.pages.org-chart :as org-chart]
    [com.ozimos.workforce.frontend.ui.pages.workforce-chart :as workforce-chart]
-   [com.ozimos.workforce.frontend.ui.root-replicant :as root-rc]
+   [com.ozimos.workforce.frontend.ui.root :as root-rc]
    [replicant.string :as rs]))
 
 (deftest auth-guard-rendering
@@ -14,7 +14,7 @@
                  :logged-in? false
                  :active-org nil
                  :orgs []}
-          hiccup (root-rc/RootReplicant props)
+          hiccup (root-rc/Root props)
           html (rs/render hiccup)]
       (is (false? (:logged-in? props)))
       ;; Nav branding should NOT be rendered when unauthenticated
@@ -27,7 +27,7 @@
                  :active-org {:org/id 0 :org/name "Acme Corp" :org/role "ADMIN"}
                  :orgs [{:org/id 0 :org/name "Acme Corp"}]
                  :dropdown-open false}
-          hiccup (root-rc/RootReplicant props)
+          hiccup (root-rc/Root props)
           html (rs/render hiccup)]
       (is (true? (:logged-in? props)))
       (is (str/includes? html "Workforce"))
@@ -36,8 +36,8 @@
       (is (str/includes? html "Workforce Dashboard")))))
 
 (deftest org-chart-populated-units-rendering
-  (testing "resolve-page-view maps :route/org-chart-2 to OrgChartReplicant"
-    (is (= org-chart/OrgChartReplicant
+  (testing "resolve-page-view maps :route/org-chart-2 to OrgChart"
+    (is (= org-chart/OrgChart
            (root-rc/resolve-page-view :route/org-chart-2))))
 
   (testing "resolve-page-view maps :route/org-chart to WorkforceChart"
@@ -67,7 +67,7 @@
                   :unit/pending 0}}
           hierarchy {nil ["org-acme-div-eng"]
                      "org-acme-div-eng" ["org-acme-dept-eng-frontend"]}
-          ;; Test OrgChartReplicant directly rather than via RootReplicant
+          ;; Test OrgChart directly rather than via Root
           ;; to isolate the routing content from the root layout rendering
           page-props {:loading false
                       :error nil
@@ -76,7 +76,7 @@
                       :hierarchy hierarchy
                       :collapsed-nodes #{}
                       :search-term ""}
-          html (rs/render (org-chart/OrgChartReplicant page-props))]
+          html (rs/render (org-chart/OrgChart page-props))]
       (is (str/includes? html "Divisions &amp; Departments Chart"))
       (is (str/includes? html "Acme Corp"))
       (is (str/includes? html "Engineering"))
@@ -98,7 +98,7 @@
                  :workforce-search ""
                  :loading false
                  :error nil}
-          hiccup (root-rc/RootReplicant props)
+          hiccup (root-rc/Root props)
           html (rs/render hiccup)]
       (is (str/includes? html "Workforce Chart"))
       (is (str/includes? html "Alice Smith")))))
@@ -112,12 +112,12 @@
       (is (= :main-router (:router-id m)))
       (is (map? (first query)))
       (is (contains? (first query) :router/current-route))
-      (is (contains? target-map :org-chart-replicant/root))
-      (is (contains? target-map :login-replicant/root))
+      (is (contains? target-map :org-chart/root))
+      (is (contains? target-map :login/root))
       (is (= ["org-chart"] (first (filter #(= % ["org-chart"]) (keys route-segment-map)))))))
 
   (testing "MainRouter renders active target view when routed"
-    (let [router-props {:router/current-route {:login-replicant/root {:identifier "alice@acme.com"
+    (let [router-props {:router/current-route {:login/root {:identifier "alice@acme.com"
                                                                       :password ""
                                                                       :error-msg nil
                                                                       :mfa-required false}}}

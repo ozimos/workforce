@@ -1,13 +1,21 @@
 (ns com.ozimos.workforce.frontend.ui.components.nav-test
   (:require
    [cljs.test :refer [deftest is testing]]
-   [com.ozimos.workforce.frontend.ui.components.nav :as nav]))
-
-(deftest uncompleted-steps-count-test
-  (testing "calculates uncompleted security steps correctly"
-    (testing "when mfa is disabled (false or nil), returns 1 step remaining"
-      (is (= 1 (nav/uncompleted-steps-count {:user/mfa-enabled? false})))
-      (is (= 1 (nav/uncompleted-steps-count {}))))
-
-    (testing "when mfa is enabled, returns 0 steps remaining"
-      (is (= 0 (nav/uncompleted-steps-count {:user/mfa-enabled? true}))))))
+   [clojure.string :as str]
+   [com.ozimos.workforce.frontend.ui.components.nav :as sut]
+   [replicant.string :as rs]))
+(defn- base-props [o] (merge {:fetched true :active-org {:org/id "1" :org/name "A" :org/role "ADMIN"} :orgs [{:org/id "1" :org/name "A"} {:org/id "2" :org/name "B"}] :dropdown-open false} o))
+(defn- html [p] (rs/render (sut/NavBar p)))
+(defn- tree [p] (sut/NavBar p))
+(defn- valid? [n] (cond (nil? n) true (string? n) true (number? n) true (boolean? n) true (vector? n) (and (keyword? (first n)) (let [[_ a & m] n c (if (map? a) m (cons a m))] (every? valid? c))) (sequential? n) (every? valid? n) :else false))
+(defn- find-ev [h pred] (letfn [(walk [n] (cond (and (vector? n) (keyword? (first n))) (let [[_ a & m] n attrs (when (map? a) a) on (get-in attrs [:on :click]) ch (if (map? a) m (rest n))] (or (when (and on (pred on)) on) (some walk ch))) (sequential? n) (some walk n) :else nil))] (walk h)))
+(deftest rendering (testing "nav shows org name" (is (str/includes? (html (base-props {})) "A")) (is (str/includes? (html (base-props {})) "Workforce")) (is (str/includes? (html (base-props {:dropdown-open true})) "Switch Organization"))))
+(deftest events (testing "toggle dropdown" (let [h (tree (base-props {})) ev (find-ev h #(= (first %) :com.ozimos.workforce.frontend.ui.components.nav/toggle-dropdown))] (is (= [:com.ozimos.workforce.frontend.ui.components.nav/toggle-dropdown] ev)))))
+(deftest well-formed (testing "valid" (is (true? (valid? (tree (base-props {})))))))
+(deftest pure-state
+  (testing "pure fns"
+    (is (= true (:dropdown-open (sut/toggle-dropdown-state (base-props {:dropdown-open false})))))
+    (is (= false (:dropdown-open (sut/toggle-dropdown-state (base-props {:dropdown-open true})))))
+    (is (= 0 (sut/uncompleted-steps-count {:user/mfa-enabled? true})))
+    (is (= 1 (sut/uncompleted-steps-count {:user/mfa-enabled? false})))))
+(deftest metadata (testing "query ident" (is (= [:active-org :orgs :dropdown-open] (:query (meta sut/NavBar)))) (is (= :nav/root (:ident (meta sut/NavBar))))))

@@ -8,20 +8,20 @@
   (testing "public paths are correctly identified"
     (is (true? (routing/public-path? "/")))
     (is (true? (routing/public-path? "/login")))
-    (is (true? (routing/public-path? "/login-replicant")))
+    (is (true? (routing/public-path? "/login")))
     (is (true? (routing/public-path? "/register")))
-    (is (true? (routing/public-path? "/register-replicant")))
+    (is (true? (routing/public-path? "/register")))
     (is (true? (routing/public-path? "/forgot-password")))
-    (is (true? (routing/public-path? "/forgot-password-replicant")))
+    (is (true? (routing/public-path? "/forgot-password")))
     (is (true? (routing/public-path? "/reset-password")))
     (is (true? (routing/public-path? "/reset-password?token=abc")))
-    (is (true? (routing/public-path? "/reset-password-replicant")))
+    (is (true? (routing/public-path? "/reset-password")))
     (is (true? (routing/public-path? "/verify")))
     (is (true? (routing/public-path? "/verify?token=xyz"))))
 
   (testing "protected paths are correctly identified"
     (is (false? (routing/public-path? "/org-chart")))
-    (is (false? (routing/public-path? "/org-chart-replicant")))
+    (is (false? (routing/public-path? "/org-chart")))
     (is (false? (routing/public-path? "/org-chart-2")))
     (is (false? (routing/public-path? "/dept-dashboard")))
     (is (false? (routing/public-path? "/dept-dashboard?unit-id=123")))
@@ -31,7 +31,7 @@
     (is (false? (routing/public-path? "/create-org")))
     (is (false? (routing/public-path? "/join-org")))
     (is (false? (routing/public-path? "/org-dashboard")))
-    (is (false? (routing/public-path? "/home-replicant"))))
+    (is (false? (routing/public-path? "/home"))))
 
   (testing "protected-path? is complement"
     (is (true? (routing/protected-path? "/org-chart")))
@@ -46,14 +46,14 @@
 (deftest path->route-test
   (testing "maps known paths to route keywords"
     (is (= :route/login (routing/path->route "/login")))
-    (is (= :route/login-replicant (routing/path->route "/login-replicant")))
+    (is (= :route/login (routing/path->route "/login")))
     (is (= :route/register (routing/path->route "/register")))
     (is (= :route/org-chart (routing/path->route "/org-chart")))
-    (is (= :route/org-chart-replicant (routing/path->route "/org-chart-replicant")))
+    (is (= :route/org-chart (routing/path->route "/org-chart")))
     (is (= :route/headcount (routing/path->route "/headcount")))
     (is (= :route/profile (routing/path->route "/profile")))
     (is (= :route/home (routing/path->route "/")))
-    (is (= :route/home-replicant (routing/path->route "/home-replicant"))))
+    (is (= :route/home (routing/path->route "/home"))))
 
   (testing "handles query strings by stripping search"
     (is (= :route/dept-dashboard (routing/path->route "/dept-dashboard?unit-id=123")))

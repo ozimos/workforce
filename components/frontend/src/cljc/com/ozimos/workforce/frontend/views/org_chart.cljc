@@ -207,12 +207,12 @@
   [props]
   (render-unit-card props 0 false false))
 
-(defrc OrgChartReplicant
+(defrc OrgChart
   {:query [:loading :error :active-org :units :hierarchy :search-term :collapsed-nodes
            {:org/chart [:org/id :org/hierarchy
                         {:org/units (:query (meta OrgUnit))}]}]
-   :ident :org-chart-replicant/root
-   :ident-key :org-chart-replicant/root
+   :ident :org-chart/root
+   :ident-key :org-chart/root
    :route-segment ["org-chart-2"]}
   [{:keys [loading error active-org units hierarchy search-term collapsed-nodes]}]
   (let [unit-list (vals (or units {}))

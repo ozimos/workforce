@@ -15,11 +15,8 @@
         pathname (first (str/split p #"\?" 2))]
     (or (= pathname "/")
         (= pathname "/login")
-        (= pathname "/login-replicant")
         (= pathname "/register")
-        (= pathname "/register-replicant")
         (= pathname "/forgot-password")
-        (= pathname "/forgot-password-replicant")
         (str/starts-with? pathname "/reset-password")
         (str/starts-with? pathname "/verify"))))
 
@@ -51,31 +48,19 @@
         pathname (first (str/split p #"\?" 2))]
     (cond
       (= pathname "/register") :route/register
-      (= pathname "/register-replicant") :route/register-replicant
       (= pathname "/create-org") :route/create-org
-      (= pathname "/create-org-replicant") :route/create-org-replicant
       (= pathname "/join-org") :route/join-org
-      (= pathname "/join-org-replicant") :route/join-org-replicant
       (= pathname "/org-dashboard") :route/org-dashboard
-      (= pathname "/org-dashboard-replicant") :route/org-dashboard-replicant
       (= pathname "/org-chart") :route/org-chart
-      (= pathname "/org-chart-replicant") :route/org-chart-replicant
       (= pathname "/org-chart-2") :route/org-chart-2
-      (= pathname "/org-chart-2-replicant") :route/org-chart-2-replicant
       (= pathname "/dept-dashboard") :route/dept-dashboard
-      (= pathname "/dept-dashboard-replicant") :route/dept-dashboard-replicant
       (= pathname "/headcount") :route/headcount
-      (= pathname "/headcount-replicant") :route/headcount-replicant
       (= pathname "/policies") :route/policies
-      (= pathname "/policies-replicant") :route/policies-replicant
       (= pathname "/profile") :route/profile
-      (= pathname "/profile-replicant") :route/profile-replicant
       (= pathname "/forgot-password") :route/forgot-password
-      (= pathname "/forgot-password-replicant") :route/forgot-password-replicant
       (str/starts-with? pathname "/reset-password") :route/reset-password
       (str/starts-with? pathname "/verify") :route/verify
       (= pathname "/login") :route/login
-      (= pathname "/login-replicant") :route/login-replicant
-      (= pathname "/home-replicant") :route/home-replicant
+      (= pathname "/home") :route/home
       (= pathname "/") :route/home
       :else :route/login)))
