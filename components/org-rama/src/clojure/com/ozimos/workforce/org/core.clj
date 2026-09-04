@@ -2,6 +2,7 @@
   (:require
    [clojure.string :as str]
    [com.ozimos.omni-auth.rama.interface :as rama]
+   [com.ozimos.workforce.org.rbac :as rbac]
    [com.ozimos.workforce.org.records :as rec]
    [com.rpl.rama :as ramaapi]
    [com.rpl.rama.ops :as ops]
@@ -868,26 +869,63 @@
                                                 :currency (:currency empmt "USD")})}))
                    employees)
 
+             parent-map (invert-children-map children)
              ;; Build workforce-hierarchy and headcounts-by-manager
              workforce-hierarchy (atom {nil [raw-root-id]})
              headcounts-by-manager (atom {})]
 
          (doseq [[parent-nid child-nids] children]
-           (let [emp-children (filterv #(contains? emp-by-nid %) child-nids)
-                 hc-children (keep #(get allowed-hc-by-nid %) child-nids)]
-             (when (seq emp-children)
-               (swap! workforce-hierarchy assoc parent-nid emp-children))
-             (when (seq hc-children)
-               (swap! headcounts-by-manager assoc parent-nid
+           (let [parent-tree-id (if (contains? allowed-hc-by-nid parent-nid)
+                                  (str "req-" parent-nid)
+                                  parent-nid)
+                 emp-children (filterv #(contains? emp-by-nid %) child-nids)
+                 hc-children-models (keep #(get allowed-hc-by-nid %) child-nids)
+                 hc-tree-ids (mapv #(str "req-" %) (filter #(contains? allowed-hc-by-nid %) child-nids))
+                 all-children (into emp-children hc-tree-ids)]
+             (when (seq all-children)
+               (swap! workforce-hierarchy assoc parent-tree-id all-children))
+             (when (seq hc-children-models)
+               (swap! headcounts-by-manager assoc parent-tree-id
                       (mapv (fn [hc]
-                              {:headcount/id (:request-id hc)
-                               :headcount/title (:title hc "Open Position")
-                               :headcount/job-level (:job-level hc)
-                               :headcount/location (:location hc)
-                               :headcount/division-id (:division-id hc)
-                               :headcount/dept-id (:unit-id hc)
-                               :headcount/status (name (or (:status hc) :open))})
-                            hc-children)))))
+                              (let [req-id (:request-id hc)
+                                    parent-is-emp? (contains? emp-by-nid parent-nid)
+                                    parent-is-hc? (contains? allowed-hc-by-nid parent-nid)
+                                    rep-mgr (or (:reporting-manager hc)
+                                                (when parent-is-emp? {:type :employee :id parent-nid})
+                                                (when parent-is-hc? {:type :headcount :id (str "req-" parent-nid)}))
+                                    owner-id (or (:owner hc) (:requester-id hc) "u-owner")
+                                    hiring-mgr-id (or (:hiring-manager hc)
+                                                      (when parent-is-emp? parent-nid)
+                                                      owner-id)
+                                    effective-rep (rbac/resolve-effective-reporting
+                                                   (cond
+                                                     (vector? rep-mgr) rep-mgr
+                                                     (map? rep-mgr) (if (or (:employee-id rep-mgr) (:headcount-id rep-mgr))
+                                                                      rep-mgr
+                                                                      (when (:type rep-mgr) [rep-mgr]))
+                                                     :else (when parent-is-emp? [{:type :employee :id parent-nid}])))
+                                    recruiters (vec (or (:recruiters hc) ["recruiter-1"]))
+                                    approvers (vec (or (:approvers hc) ["approver-1"]))
+                                    collaborators (vec (or (:collaborators hc) []))
+                                    sourcers (vec (or (:sourcers hc) []))]
+                                {:headcount/id req-id
+                                 :headcount/title (:title hc "Open Position")
+                                 :headcount/job-level (:job-level hc)
+                                 :headcount/location (:location hc)
+                                 :headcount/division-id (:division-id hc)
+                                 :headcount/dept-id (:unit-id hc)
+                                 :headcount/status (name (or (:status hc) :open))
+                                 :headcount/owner owner-id
+                                 :headcount/hiring-manager hiring-mgr-id
+                                 :headcount/reporting-manager rep-mgr
+                                 :headcount/acting-reporting-manager? (:acting-reporting-manager? effective-rep false)
+                                 :headcount/acting-reporting-manager-id (:employee-reporting-manager-id effective-rep)
+                                 :headcount/headcount-reporting-manager-id (:headcount-reporting-manager-id effective-rep)
+                                 :headcount/recruiters recruiters
+                                 :headcount/approvers approvers
+                                 :headcount/collaborators collaborators
+                                 :headcount/sourcers sourcers}))
+                            hc-children-models)))))
 
          ;; Apply full org root resolution (Settings -> CEO -> Max Descendants)
          (let [resolved (resolve-full-org-root workforce-list @workforce-hierarchy chart-settings)
@@ -915,19 +953,52 @@
                                     final-hierarchy)
                filtered-headcounts-by-mgr (if allowed-nodes
                                             (select-keys @headcounts-by-manager allowed-nodes)
-                                            @headcounts-by-manager)]
+                                            @headcounts-by-manager)
+               enriched-headcounts-list
+               (mapv (fn [[nid hc]]
+                       (let [parent-nid (get parent-map nid)
+                             parent-is-emp? (contains? emp-by-nid parent-nid)
+                             parent-is-hc? (contains? allowed-hc-by-nid parent-nid)
+                             rep-mgr (or (:reporting-manager hc)
+                                         (when parent-is-emp? {:type :employee :id parent-nid})
+                                         (when parent-is-hc? {:type :headcount :id (str "req-" parent-nid)}))
+                             owner-id (or (:owner hc) (:requester-id hc) "u-owner")
+                             hiring-mgr-id (or (:hiring-manager hc)
+                                               (when parent-is-emp? parent-nid)
+                                               owner-id)
+                             effective-rep (rbac/resolve-effective-reporting
+                                            (cond
+                                              (vector? rep-mgr) rep-mgr
+                                              (map? rep-mgr) (if (or (:employee-id rep-mgr) (:headcount-id rep-mgr))
+                                                               rep-mgr
+                                                               (when (:type rep-mgr) [rep-mgr]))
+                                              :else (when parent-is-emp? [{:type :employee :id parent-nid}])))
+                             recruiters (vec (or (:recruiters hc) ["recruiter-1"]))
+                             approvers (vec (or (:approvers hc) ["approver-1"]))
+                             collaborators (vec (or (:collaborators hc) []))
+                             sourcers (vec (or (:sourcers hc) []))]
+                         {:headcount/id (:request-id hc)
+                          :headcount/title (:title hc "Open Position")
+                          :headcount/job-level (:job-level hc)
+                          :headcount/location (:location hc)
+                          :headcount/division-id (:division-id hc)
+                          :headcount/dept-id (:unit-id hc)
+                          :headcount/status (name (or (:status hc) :open))
+                          :headcount/owner owner-id
+                          :headcount/hiring-manager hiring-mgr-id
+                          :headcount/reporting-manager rep-mgr
+                          :headcount/acting-reporting-manager? (:acting-reporting-manager? effective-rep false)
+                          :headcount/acting-reporting-manager-id (:employee-reporting-manager-id effective-rep)
+                          :headcount/headcount-reporting-manager-id (:headcount-reporting-manager-id effective-rep)
+                          :headcount/recruiters recruiters
+                          :headcount/approvers approvers
+                          :headcount/collaborators collaborators
+                          :headcount/sourcers sourcers}))
+                     allowed-hc-by-nid)]
            {:org/id org-id
             :workforce/list filtered-workforce
             :workforce-hierarchy filtered-hierarchy
-            :headcounts/list (mapv (fn [hc]
-                                     {:headcount/id (:request-id hc)
-                                      :headcount/title (:title hc "Open Position")
-                                      :headcount/job-level (:job-level hc)
-                                      :headcount/location (:location hc)
-                                      :headcount/division-id (:division-id hc)
-                                      :headcount/dept-id (:unit-id hc)
-                                      :headcount/status (name (or (:status hc) :open))})
-                                   (vals allowed-hc-by-nid))
+            :headcounts/list enriched-headcounts-list
             :headcounts-by-manager filtered-headcounts-by-mgr
             :org/chart-settings chart-settings
             :total-workforce-count (count employees)
@@ -935,8 +1006,31 @@
 
        ;; 2. Fallback for dynamic/new orgs in Rama
        (let [members (list-members deps org-id)
-             headcounts (filterv #(abac-allows-headcount? % abac-policy) (list-headcount-requests deps org-id))
+             raw-headcounts (list-headcount-requests deps org-id)
              owner-id (or (:owner-user-id (find-org-by-id deps org-id)) (-> members first :user-id) "u-owner")
+             headcounts (mapv (fn [hc]
+                                (let [owner (or (:owner hc) (:requester-id hc) owner-id)
+                                      hm (or (:hiring-manager hc) owner)
+                                      rm (or (:reporting-manager hc) {:type :employee :id owner})]
+                                  {:headcount/id (:request-id hc)
+                                   :headcount/title (:title hc "Open Position")
+                                   :headcount/job-level (:job-level hc)
+                                   :headcount/location (:location hc)
+                                   :headcount/division-id (:division-id hc)
+                                   :headcount/dept-id (:unit-id hc)
+                                   :headcount/status (name (or (:status hc) :open))
+                                   :headcount/owner owner
+                                   :headcount/hiring-manager hm
+                                   :headcount/reporting-manager rm
+                                   :headcount/acting-reporting-manager? false
+                                   :headcount/acting-reporting-manager-id nil
+                                   :headcount/headcount-reporting-manager-id nil
+                                   :headcount/recruiters (vec (or (:recruiters hc) []))
+                                   :headcount/approvers (vec (or (:approvers hc) []))
+                                   :headcount/collaborators (vec (or (:collaborators hc) []))
+                                   :headcount/sourcers (vec (or (:sourcers hc) []))}))
+                              (filterv #(abac-allows-headcount? % abac-policy) raw-headcounts))
+             hc-ids (mapv :headcount/id headcounts)
              workforce-list
              (mapv (fn [m]
                      {:person/id (str (:user-id m))
@@ -947,7 +1041,8 @@
                       :person/compensation (when view-comp? {:salary 150000 :currency "USD"})})
                    members)
              base-hierarchy {nil [owner-id]
-                             owner-id (mapv #(str (:user-id %)) (remove #(= (:user-id %) owner-id) members))}
+                             owner-id (into (mapv #(str (:user-id %)) (remove #(= (:user-id %) owner-id) members))
+                                            hc-ids)}
              resolved (resolve-full-org-root workforce-list base-hierarchy chart-settings)
              final-workforce (if-let [synth (:synthetic-node resolved)]
                                (conj workforce-list synth)
@@ -995,7 +1090,8 @@
             empmt-by-nid (into {} (map (fn [e] [(str/replace (:employee-id e) #"^emp-" "") e])) employments)
             hc-by-nid (into {} (map (fn [h] [(str/replace (:request-id h) #"^req-" "") h])) headcounts)
             children-map (:children tree)
-            child-nids (get children-map manager-id [])
+            mgr-clean-id (str/replace manager-id #"^req-" "")
+            child-nids (get children-map mgr-clean-id [])
 
             allowed-hc-by-nid (into {} (filter (fn [[_ h]] (abac-allows-headcount? h abac-policy)) hc-by-nid))
 
@@ -1023,21 +1119,58 @@
                                                :currency (:currency empmt "USD")})}))
                   (filterv #(contains? emp-by-nid %) child-nids))
 
+            all-direct-children
+            (into (filterv #(contains? emp-by-nid %) child-nids)
+                  (mapv #(str "req-" %) (filter #(contains? allowed-hc-by-nid %) child-nids)))
+
             branch-hierarchy
-            (into {manager-id (filterv #(contains? emp-by-nid %) child-nids)}
+            (into {manager-id all-direct-children}
                   (map (fn [cid]
-                         [cid (filterv #(contains? emp-by-nid %) (get children-map cid []))])
-                       child-nids))
+                         (let [cid-clean (str/replace cid #"^req-" "")
+                               c-cids (get children-map cid-clean [])
+                               c-all-cids (into (filterv #(contains? emp-by-nid %) c-cids)
+                                                (mapv #(str "req-" %) (filter #(contains? allowed-hc-by-nid %) c-cids)))]
+                           [cid c-all-cids]))
+                       all-direct-children))
 
             mgr-hcs (keep #(get allowed-hc-by-nid %) child-nids)
             hc-models (mapv (fn [hc]
-                              {:headcount/id (:request-id hc)
-                               :headcount/title (:title hc "Open Position")
-                               :headcount/job-level (:job-level hc)
-                               :headcount/location (:location hc)
-                               :headcount/division-id (:division-id hc)
-                               :headcount/dept-id (:unit-id hc)
-                               :headcount/status (name (or (:status hc) :open))})
+                              (let [req-id (:request-id hc)
+                                    owner-id (or (:owner hc) (:requester-id hc) "u-owner")
+                                    hiring-mgr-id (or (:hiring-manager hc)
+                                                      (when (contains? emp-by-nid mgr-clean-id) mgr-clean-id)
+                                                      owner-id)
+                                    rep-mgr (or (:reporting-manager hc)
+                                                (when (contains? emp-by-nid mgr-clean-id) {:type :employee :id mgr-clean-id})
+                                                (when (contains? allowed-hc-by-nid mgr-clean-id) {:type :headcount :id (str "req-" mgr-clean-id)}))
+                                    effective-rep (rbac/resolve-effective-reporting
+                                                   (cond
+                                                     (vector? rep-mgr) rep-mgr
+                                                     (map? rep-mgr) (if (or (:employee-id rep-mgr) (:headcount-id rep-mgr))
+                                                                      rep-mgr
+                                                                      (when (:type rep-mgr) [rep-mgr]))
+                                                     :else (when (contains? emp-by-nid mgr-clean-id) [{:type :employee :id mgr-clean-id}])))
+                                    recruiters (vec (or (:recruiters hc) ["recruiter-1"]))
+                                    approvers (vec (or (:approvers hc) ["approver-1"]))
+                                    collaborators (vec (or (:collaborators hc) []))
+                                    sourcers (vec (or (:sourcers hc) []))]
+                                {:headcount/id req-id
+                                 :headcount/title (:title hc "Open Position")
+                                 :headcount/job-level (:job-level hc)
+                                 :headcount/location (:location hc)
+                                 :headcount/division-id (:division-id hc)
+                                 :headcount/dept-id (:unit-id hc)
+                                 :headcount/status (name (or (:status hc) :open))
+                                 :headcount/owner owner-id
+                                 :headcount/hiring-manager hiring-mgr-id
+                                 :headcount/reporting-manager rep-mgr
+                                 :headcount/acting-reporting-manager? (:acting-reporting-manager? effective-rep false)
+                                 :headcount/acting-reporting-manager-id (:employee-reporting-manager-id effective-rep)
+                                 :headcount/headcount-reporting-manager-id (:headcount-reporting-manager-id effective-rep)
+                                 :headcount/recruiters recruiters
+                                 :headcount/approvers approvers
+                                 :headcount/collaborators collaborators
+                                 :headcount/sourcers sourcers}))
                             mgr-hcs)]
         {:org/id org-id
          :manager-id manager-id

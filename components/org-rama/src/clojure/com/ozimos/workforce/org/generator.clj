@@ -3,9 +3,7 @@
    Generates 10,000-person tree hierarchies, division/dept combinations,
    80/20 employee vs headcount distribution, and Malli-powered attributes."
   (:require
-   [clojure.string :as str]
-   [malli.core :as m]
-   [malli.generator :as mg]))
+   [clojure.string :as str]))
 
 ;; =============================================================================
 ;; 1. Divisions & Departments Definitions (~40 Combinations)
@@ -349,13 +347,17 @@
                                (< (.nextDouble rng) 0.20))]
 
         (if is-headcount?
-          ;; Generate Headcount Requisition
+          ;; Generate Headcount Requisition with full actors and reporting manager
           (let [status-roll (.nextDouble rng)
                 status (cond
                          (< status-roll 0.40) :open
                          (< status-roll 0.75) :in-approval
                          (< status-roll 0.90) :approved
                          :else :rejected)
+                parent-id (or (:parent-id node) (:root-id tree))
+                owner-id (if (= parent-id (:root-id tree)) "u-alice" (str "emp-" parent-id))
+                rec-idx (inc (mod (.nextInt rng 10) 3))
+                app-idx (inc (mod (.nextInt rng 10) 2))
                 hc {:request-id (str "req-" nid)
                     :org-id org-id
                     :unit-id unit-id
@@ -367,7 +369,14 @@
                     :salary-band base-sal
                     :bonus-target bonus-tgt
                     :status status
-                    :created-at 1788200000000}]
+                    :created-at 1788200000000
+                    :owner owner-id
+                    :hiring-manager (str "emp-" parent-id)
+                    :reporting-manager {:type :employee :id parent-id}
+                    :recruiters [(format "recruiter-%d" rec-idx)]
+                    :approvers [(format "approver-%d" app-idx)]
+                    :collaborators [(format "collab-%d" rec-idx)]
+                    :sourcers [(format "sourcer-%d" rec-idx)]}]
             (swap! headcounts conj hc))
 
           ;; Generate Employee and Employment Placement

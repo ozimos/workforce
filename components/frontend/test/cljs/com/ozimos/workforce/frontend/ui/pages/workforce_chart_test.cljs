@@ -77,19 +77,89 @@
       (is (not (clojure.string/includes? (pr-str hiccup) "$300,000"))))))
 
 (deftest abac-headcount-integration-test
-  (testing "headcounts matching ABAC policy are visible"
-    (let [hiccup (wf/WorkforceChart {:workforce sample-workforce
-                                    :workforce-hierarchy sample-hierarchy
-                                    :headcounts-by-manager sample-headcounts
-                                    :abac/policy {:allowed-divisions #{"div-prod"}}})]
-      (is (clojure.string/includes? (pr-str hiccup) "VP Product"))))
+  (let [hier-with-hc {nil ["emp-alice"]
+                      "emp-alice" ["emp-bob" "req-1"]}]
+    (testing "headcounts matching ABAC policy are visible"
+      (let [hiccup (wf/WorkforceChart {:workforce sample-workforce
+                                      :workforce-hierarchy hier-with-hc
+                                      :headcounts-by-manager sample-headcounts
+                                      :abac/policy {:allowed-divisions #{"div-prod"}}})]
+        (is (str/includes? (pr-str hiccup) "VP Product"))))
 
-  (testing "headcounts forbidden by ABAC policy are hidden"
-    (let [hiccup (wf/WorkforceChart {:workforce sample-workforce
-                                    :workforce-hierarchy sample-hierarchy
-                                    :headcounts-by-manager sample-headcounts
-                                    :abac/policy {:allowed-divisions #{"div-eng"}}})]
-      (is (not (clojure.string/includes? (pr-str hiccup) "VP Product"))))))
+    (testing "headcounts forbidden by ABAC policy are hidden"
+      (let [hiccup (wf/WorkforceChart {:workforce sample-workforce
+                                      :workforce-hierarchy hier-with-hc
+                                      :headcounts-by-manager sample-headcounts
+                                      :abac/policy {:allowed-divisions #{"div-eng"}}})]
+        (is (not (str/includes? (pr-str hiccup) "VP Product")))))))
+
+(deftest headcount-actors-and-tree-placement-test
+  (let [headcount-data {"req-10" {:headcount/id "req-10"
+                                  :headcount/title "Staff Backend Engineer"
+                                  :headcount/job-level "L5"
+                                  :headcount/location "Remote"
+                                  :headcount/dept-id "Engineering"
+                                  :headcount/status "open"
+                                  :headcount/hiring-manager "emp-bob"
+                                  :headcount/reporting-manager "emp-bob"
+                                  :headcount/acting-reporting-manager? true
+                                  :headcount/recruiters ["recruiter-1"]
+                                  :headcount/approvers ["approver-1" "approver-2"]
+                                  :headcount/collaborators ["collab-1"]
+                                  :headcount/sourcers ["sourcer-1"]
+                                  :headcount/owner "emp-alice"}
+                        "req-11" {:headcount/id "req-11"
+                                  :headcount/title "Junior Engineer"
+                                  :headcount/job-level "L3"
+                                  :headcount/location "Remote"
+                                  :headcount/dept-id "Engineering"
+                                  :headcount/status "open"
+                                  :headcount/reporting-manager {:type :headcount :id "req-10"}}}
+        workforce-with-acting {"emp-alice" {:person/id "emp-alice" :person/name "Alice Smith" :person/title "CEO"}
+                               "emp-bob"   {:person/id "emp-bob" :person/name "Bob Jones" :person/title "VP Eng"
+                                            :person/acting-reporting-manager? true}}
+        hierarchy {nil ["emp-alice"]
+                   "emp-alice" ["emp-bob" "req-10"]
+                   "req-10" ["req-11"]}]
+
+    (testing "headcounts slot directly into the tree hierarchy alongside employees"
+      (let [hiccup (wf/WorkforceChart {:workforce workforce-with-acting
+                                       :workforce-hierarchy hierarchy
+                                       :headcounts headcount-data})
+            rendered (pr-str hiccup)]
+        ;; Both employee and headcount are rendered in the tree
+        (is (str/includes? rendered "Bob Jones"))
+        (is (str/includes? rendered "Staff Backend Engineer"))
+        ;; Headcount card displays requisition badge
+        (is (str/includes? rendered "Open Headcount"))
+        ;; Nested headcount reporting to another headcount is rendered
+        (is (str/includes? rendered "Junior Engineer"))))
+
+    (testing "headcount card displays all actors"
+      (let [hiccup (wf/WorkforceChart {:workforce workforce-with-acting
+                                       :workforce-hierarchy hierarchy
+                                       :headcounts headcount-data})
+            rendered (pr-str hiccup)]
+        (is (str/includes? rendered "Hiring Mgr:"))
+        (is (str/includes? rendered "emp-bob"))
+        (is (str/includes? rendered "Acting Reporting Mgr:"))
+        (is (str/includes? rendered "Recruiter:"))
+        (is (str/includes? rendered "recruiter-1"))
+        (is (str/includes? rendered "Approvers:"))
+        (is (str/includes? rendered "approver-1, approver-2"))
+        (is (str/includes? rendered "Collaborators:"))
+        (is (str/includes? rendered "collab-1"))
+        (is (str/includes? rendered "Sourcers:"))
+        (is (str/includes? rendered "sourcer-1"))
+        (is (str/includes? rendered "Owner:"))
+        (is (str/includes? rendered "emp-alice"))))
+
+    (testing "acting reporting manager badge renders on employee card"
+      (let [hiccup (wf/WorkforceChart {:workforce workforce-with-acting
+                                       :workforce-hierarchy hierarchy
+                                       :headcounts headcount-data})
+            rendered (pr-str hiccup)]
+        (is (str/includes? rendered "⚡ Acting Reporting Manager"))))))
 
 (deftest root-resolution-algorithm-test
   (testing "1. Default CEO title match"

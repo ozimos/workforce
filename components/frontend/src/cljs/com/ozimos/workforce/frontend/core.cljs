@@ -293,6 +293,7 @@
                                   (assoc-in [:person/id] (merge (get s :person/id {}) person-table))
                                   (assoc-in [:headcount/id] (merge (get s :headcount/id {}) hc-table))
                                   (update :workforce merge person-table)
+                                  (update :headcounts (fnil merge {}) hc-table)
                                   (update :workforce-hierarchy merge branch-hier)
                                   (update :headcounts-by-manager merge hcs-by-mgr))))))))
         (.catch (fn [err]
@@ -386,6 +387,7 @@
                                     (assoc-in [:person/id] (merge (get s :person/id {}) person-table))
                                     (assoc-in [:headcount/id] (merge (get s :headcount/id {}) headcount-table))
                                     (assoc :workforce person-table
+                                           :headcounts headcount-table
                                            :workforce-hierarchy hierarchy
                                            :headcounts-by-manager headcounts-by-mgr
                                            :org/chart-settings chart-settings

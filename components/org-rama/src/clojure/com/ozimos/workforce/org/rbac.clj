@@ -25,18 +25,120 @@
             (let [children (get org-hierarchy curr #{})]
               (recur (into rest-q children) (conj visited curr)))))))))
 
+(defn valid-reporting-managers?
+  "Validates reporting managers for a worker (employee or headcount).
+   Rules:
+   1. Max 1 reporting manager of type :employee
+   2. Max 1 reporting manager of type :headcount
+   3. Total max reporting manager count of 2.
+   Accepts either a seq of manager maps (e.g. [{:type :employee :id ...}])
+   or a map with :employee-id and/or :headcount-id."
+  [managers]
+  (cond
+    (nil? managers) true
+    (map? managers)
+    (let [emp-count (if (:employee-id managers) 1 0)
+          hc-count  (if (:headcount-id managers) 1 0)]
+      (and (<= emp-count 1)
+           (<= hc-count 1)
+           (<= (+ emp-count hc-count) 2)))
+    (coll? managers)
+    (let [emp-count (count (filter #(= (:type %) :employee) managers))
+          hc-count  (count (filter #(= (:type %) :headcount) managers))
+          total     (count managers)]
+      (and (<= emp-count 1)
+           (<= hc-count 1)
+           (<= total 2)
+           (= total (+ emp-count hc-count))))
+    :else false))
+
+(defn resolve-effective-reporting
+  "Resolves the effective reporting structure and acting manager status for a worker.
+   When both an employee and a headcount are reporting managers:
+     - The employee is shown on the org chart tree as the immediate parent
+     - The employee is marked as :acting-reporting-manager? true
+     - The headcount manager is retained in :headcount-reporting-manager-id
+   When only an employee exists:
+     - The employee is shown on the org chart tree as the immediate parent
+     - :acting-reporting-manager? is false
+   When only a headcount exists:
+     - The headcount is shown on the org chart tree as the immediate parent
+     - :acting-reporting-manager? is false."
+  [managers]
+  (let [mgr-list (cond
+                   (map? managers)
+                   (concat (when-let [eid (:employee-id managers)] [{:type :employee :id eid}])
+                           (when-let [hid (:headcount-id managers)] [{:type :headcount :id hid}]))
+                   (coll? managers) managers
+                   :else [])
+        emp-mgr (first (filter #(= (:type %) :employee) mgr-list))
+        hc-mgr  (first (filter #(= (:type %) :headcount) mgr-list))]
+    (cond
+      ;; Both employee and headcount reporting managers
+      (and emp-mgr hc-mgr)
+      {:tree-parent-id (:id emp-mgr)
+       :acting-reporting-manager? true
+       :employee-reporting-manager-id (:id emp-mgr)
+       :headcount-reporting-manager-id (:id hc-mgr)
+       :reporting-managers [emp-mgr hc-mgr]}
+
+      ;; Employee only
+      emp-mgr
+      {:tree-parent-id (:id emp-mgr)
+       :acting-reporting-manager? false
+       :employee-reporting-manager-id (:id emp-mgr)
+       :headcount-reporting-manager-id nil
+       :reporting-managers [emp-mgr]}
+
+      ;; Headcount only
+      hc-mgr
+      {:tree-parent-id (:id hc-mgr)
+       :acting-reporting-manager? false
+       :employee-reporting-manager-id nil
+       :headcount-reporting-manager-id (:id hc-mgr)
+       :reporting-managers [hc-mgr]}
+
+      :else
+      {:tree-parent-id nil
+       :acting-reporting-manager? false
+       :employee-reporting-manager-id nil
+       :headcount-reporting-manager-id nil
+       :reporting-managers []})))
+
 (defn is-actor-on-request?
-  "Checks if the viewer user-id is an explicit actor on the headcount request
-   (requester, assigned recruiter, approver, or in approved-by list)."
+  "Checks if the viewer user-id is an explicit actor on the headcount request.
+   Recognizes actors:
+   - owner
+   - hiring-manager (in charge of hiring process)
+   - reporting-manager (employee or headcount)
+   - recruiters (vector of user IDs)
+   - approvers / approved-by (vector of user IDs)
+   - collaborators (vector of user IDs)
+   - sourcers (vector of user IDs)
+   - requester / legacy assigned actors."
   [viewer target-req]
   (let [viewer-id (:user-id viewer)
-        requester-id (:requester-id target-req)
+        owner-id (or (:owner target-req) (:owner-id target-req) (:requester-id target-req))
+        hiring-mgr-id (or (:hiring-manager target-req) (:hiring-manager-id target-req))
+        rep-mgr (:reporting-manager target-req)
+        rep-mgr-id (cond (string? rep-mgr) rep-mgr
+                         (map? rep-mgr) (or (:id rep-mgr) (:employee-id rep-mgr) (:headcount-id rep-mgr)))
         approved-by (set (:approved-by target-req))
         current-approver-id (:current-approver-id target-req)
+        approvers (set (concat (when current-approver-id [current-approver-id])
+                               approved-by
+                               (keep #(if (map? %) (:approver-user-id %) %) (:approvers target-req))))
+        recruiters (set (or (:recruiters target-req) []))
+        collaborators (set (or (:collaborators target-req) []))
+        sourcers (set (or (:sourcers target-req) []))
         assigned-actors (set (:assigned-actor-ids target-req))]
-    (or (= viewer-id requester-id)
-        (= viewer-id current-approver-id)
-        (contains? approved-by viewer-id)
+    (or (= viewer-id owner-id)
+        (= viewer-id hiring-mgr-id)
+        (= viewer-id rep-mgr-id)
+        (contains? approvers viewer-id)
+        (contains? recruiters viewer-id)
+        (contains? collaborators viewer-id)
+        (contains? sourcers viewer-id)
         (contains? assigned-actors viewer-id))))
 
 (defn can-view-headcount?
