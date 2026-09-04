@@ -48,37 +48,45 @@
     ;; 2. Unauthenticated State
     ;; -------------------------------------------------------------------------
     (state {:id :state/unauthenticated}
-      (on-entry
+      (on-entry {}
         (script-action
           (fn [env _ _ e-data]
             (let [clear-fn (:clear-tokens-fn env)
+                  clear-form-fn (:clear-form-fn env)
                   redirect-fn (:redirect-fn env)
                   path (or (:path e-data)
                            (:current-path env)
                            (when (and (exists? js/window) (exists? js/window.location))
                              (str js/window.location.pathname js/window.location.search))
-                           "/")]
+                           "/")
+                  target "/login"
+                  return-to (when (protected-path? path) path)]
               (when clear-fn (clear-fn))
-              (when (and redirect-fn (protected-path? path))
-                ;; Redirect to /login and pass the attempted path as return-to
-                (redirect-fn "/login" path))))))
+              (when clear-form-fn (clear-form-fn))
+              ;; Option B: on-entry owns redirect unconditionally.
+              ;; Transition :event/logout is server-only; this avoids duplicate
+              ;; pushState and prevents return-to being set on explicit logout.
+              ;; For guard (protected → /login) preserve return-to; for explicit
+              ;; logout (e.g. from "/" ) still land on /login with nil return-to.
+              (when (and redirect-fn (not= path target))
+                (redirect-fn target return-to))))))
 
       ;; Navigating while unauthenticated
       (transition {:event :event/navigate
                    :cond (fn [_ _ _ e-data] (protected-path? (:path e-data)))
-                   :target :state/unauthenticated
-                   :content [(script-action
-                               (fn [env _ _ e-data]
-                                 (when-let [redirect-fn (:redirect-fn env)]
-                                   (redirect-fn "/login" (:path e-data)))))]})
+                   :target :state/unauthenticated}
+        (script-action
+          (fn [env _ _ e-data]
+            (when-let [redirect-fn (:redirect-fn env)]
+              (redirect-fn "/login" (:path e-data))))))
 
       (transition {:event :event/navigate
                    :cond (fn [_ _ _ e-data] (not (protected-path? (:path e-data))))
-                   :target :state/unauthenticated
-                   :content [(script-action
-                               (fn [env _ _ e-data]
-                                 (when-let [sync-fn (:sync-route-fn env)]
-                                   (sync-fn (:path e-data) false))))]})
+                   :target :state/unauthenticated}
+        (script-action
+          (fn [env _ _ e-data]
+            (when-let [sync-fn (:sync-route-fn env)]
+              (sync-fn (:path e-data) false)))))
 
       ;; Successful login moves into authenticated state
       (transition {:event :event/login-success
@@ -88,7 +96,7 @@
     ;; 3. Authenticated State
     ;; -------------------------------------------------------------------------
     (state {:id :state/authenticated}
-      (on-entry
+      (on-entry {}
         (script-action
           (fn [env _ _ e-data]
             (let [sync-fn (:sync-route-fn env)
@@ -123,28 +131,28 @@
                                                           (= "true" (.getItem js/localStorage "verified")))
                                                  true))]
                              (routing/should-redirect-public? (:path e-data) verified?)))
-                   :target :state/authenticated
-                   :content [(script-action
-                               (fn [env _ _ _]
-                                 (when-let [sync-fn (:sync-route-fn env)]
-                                   (sync-fn "/" true))))]})
+                   :target :state/authenticated}
+        (script-action
+          (fn [env _ _ _]
+            (when-let [sync-fn (:sync-route-fn env)]
+              (sync-fn "/" true)))))
 
       (transition {:event :event/navigate
                    :cond (fn [_ _ _ e-data] (not (public-path? (:path e-data))))
-                   :target :state/authenticated
-                   :content [(script-action
-                               (fn [env _ _ e-data]
-                                 (when-let [sync-fn (:sync-route-fn env)]
-                                   (sync-fn (:path e-data) true))
-                                 (when-let [fetch-data (:fetch-page-data-fn env)]
-                                   (fetch-data (:path e-data)))))]})
+                   :target :state/authenticated}
+        (script-action
+          (fn [env _ _ e-data]
+            (when-let [sync-fn (:sync-route-fn env)]
+              (sync-fn (:path e-data) true))
+            (when-let [fetch-data (:fetch-page-data-fn env)]
+              (fetch-data (:path e-data))))))
 
-      ;; Logout and 401 Auth Failure
+      ;; Logout and 401 Auth Failure — Option B: server-only, on-entry owns clear/redirect
       (transition {:event :event/logout
-                   :target :state/unauthenticated
-                   :content [(script-action
-                               (fn [env _ _ _]
-                                 (when-let [server-logout (:server-logout-fn env)]
-                                   (server-logout))))]})
+                   :target :state/unauthenticated}
+        (script-action
+          (fn [env _ _ _]
+            (when-let [server-logout (:server-logout-fn env)]
+              (server-logout)))))
       (transition {:event :event/auth-failure
                    :target :state/unauthenticated}))))

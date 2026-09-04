@@ -8,8 +8,8 @@
    [com.fulcrologic.statecharts.integration.fulcro :as scf]
    [com.ozimos.workforce.frontend.abac :as abac]
    [com.ozimos.workforce.frontend.auth-statechart :as auth-sc]
-   [com.ozimos.workforce.frontend.json :as json]
    [com.ozimos.workforce.frontend.bridge :as bridge]
+   [com.ozimos.workforce.frontend.json :as json]
    [com.ozimos.workforce.frontend.routing :as routing]
    [com.ozimos.workforce.frontend.transit :as transit]
    [com.ozimos.workforce.frontend.ui.components.nav :as nav]
@@ -19,13 +19,13 @@
    [com.ozimos.workforce.frontend.ui.pages.headcount :as headcount]
    [com.ozimos.workforce.frontend.ui.pages.join-org :as join-org]
    [com.ozimos.workforce.frontend.ui.pages.login :as login]
-   [com.ozimos.workforce.frontend.views.org-chart :as org-chart]
    [com.ozimos.workforce.frontend.ui.pages.policy-settings :as policy-settings]
    [com.ozimos.workforce.frontend.ui.pages.profile :as profile]
    [com.ozimos.workforce.frontend.ui.pages.register :as register]
    [com.ozimos.workforce.frontend.ui.pages.reset-password :as reset-password]
    [com.ozimos.workforce.frontend.ui.pages.workforce-chart :as workforce-chart]
    [com.ozimos.workforce.frontend.ui.root :as root-rc]
+   [com.ozimos.workforce.frontend.views.org-chart :as org-chart]
    [fulcro.inspect.tool :as inspect]
    [goog.dom :as gdom]
    [replicant.dom :as r]))
@@ -110,9 +110,22 @@
     (.removeItem js/localStorage "username")
     (.removeItem js/localStorage "email")))
 
+(defn- handle-statechart-clear-form! []
+  ;; Clear sensitive login form state on unauthenticated entry (logout).
+  ;; Covers :identifier/:password and MFA/error keys to prevent
+  ;; repopulation after logout; normalized ident is also reset.
+  (let [state-atom (::app/state-atom app-inst)]
+    (swap! state-atom
+           (fn [db]
+             (-> db
+                 (dissoc :identifier :password :error-msg :mfa-required :mfa-token :mfa-code)
+                 (assoc-in [:login/root :main] {}))))))
+
 (defn- handle-statechart-server-logout! []
-  (when (is-logged-in?)
-    (transit/fetch-transit "/api/query" [(list 'auth/logout {})])))
+  ;; Fire & forget - statechart-driven, no is-logged-in? gate.
+  ;; Token header is read synchronously inside fetch-transit; this fn is
+  ;; invoked before clear-tokens in the transition script so the header is intact.
+  (transit/fetch-transit "/api/query" [(list 'auth/logout {})]))
 
 (defn- handle-statechart-redirect! [target-path return-to-path]
   (let [state-atom (::app/state-atom app-inst)]
@@ -153,13 +166,13 @@
         (fetch-user-session!)))))
 
 (defn- navigate!
-   ([path] (navigate! path nil))
-   ([path return-to]
-    (when (and (exists? js/window) (exists? js/window.history))
-      (if return-to
-        (.replaceState js/window.history nil "" path)
-        (.pushState js/window.history nil "" path)))
-    (scf/send! app-inst auth-sc/default-session-id :event/navigate {:path path :return-to return-to})))
+  ([path] (navigate! path nil))
+  ([path return-to]
+   (when (and (exists? js/window) (exists? js/window.history))
+     (if return-to
+       (.replaceState js/window.history nil "" path)
+       (.pushState js/window.history nil "" path)))
+   (scf/send! app-inst auth-sc/default-session-id :event/navigate {:path path :return-to return-to})))
 
 (defn navigate
   "Public SPA navigation: push the path onto history and route in-app
@@ -816,6 +829,7 @@
       ;; ------------------------------------------------------------------
       (scf/install-fulcro-statecharts! app-inst {:extra-env {:current-path current-path
                                                              :clear-tokens-fn clear-stored-tokens!
+                                                             :clear-form-fn handle-statechart-clear-form!
                                                              :server-logout-fn handle-statechart-server-logout!
                                                              :redirect-fn handle-statechart-redirect!
                                                              :sync-route-fn handle-statechart-sync-route!

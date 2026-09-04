@@ -121,33 +121,127 @@
 
   (testing "MainRouter renders active target view when routed"
     (let [router-props {:router/current-route {:login/root {:identifier "alice@acme.com"
-                                                                      :password ""
-                                                                      :error-msg nil
-                                                                      :mfa-required false}}}
+                                                            :password ""
+                                                            :error-msg nil
+                                                            :mfa-required false}}}
           hiccup (root-rc/MainRouter router-props)
           html (rs/render hiccup)]
       (is (str/includes? html "Sign in to your account"))
       (is (str/includes? html "alice@acme.com")))))
 
-(deftest ^:async statechart-logout-test
+(deftest statechart-logout-test
   (testing "sending :event/logout triggers server-logout-fn and transitions to unauthenticated"
-    (cljs.test/async done
-      (let [app-inst (app/fulcro-app {})
-            logged-out? (atom false)
-            redirected? (atom false)]
-        (scf/install-fulcro-statecharts! app-inst
-          {:extra-env {:server-logout-fn (fn [] (reset! logged-out? true))
-                       :clear-tokens-fn (constantly nil)
-                       :redirect-fn (fn [target _] (when (= target "/login") (reset! redirected? true)))}})
-        (scf/register-statechart! app-inst auth-sc/machine-id auth-sc/auth-routing-chart)
-        (scf/start! app-inst {:machine auth-sc/machine-id
-                              :session-id auth-sc/default-session-id})
-        (scf/send! app-inst auth-sc/default-session-id :event/token-valid {:path "/org-chart"})
-        (scf/send! app-inst auth-sc/default-session-id :event/logout)
-        (js/setTimeout
-          (fn []
-            (is (true? @logged-out?) "server-logout-fn must be invoked on logout")
-            (is (true? @redirected?) "user must be redirected to /login on logout")
-            (done))
-          50)))))
+    (let [app-inst (app/fulcro-app {})
+          logged-out? (atom false)
+          redirected? (atom false)]
+      (scf/install-fulcro-statecharts! app-inst
+        {:event-loop? false
+         :extra-env {:server-logout-fn (fn [] (reset! logged-out? true))
+                     :clear-tokens-fn (constantly nil)
+                     :clear-form-fn (constantly nil)
+                     :redirect-fn (fn [target _] (when (= target "/login") (reset! redirected? true)))}})
+      (scf/register-statechart! app-inst auth-sc/machine-id auth-sc/auth-routing-chart)
+      (scf/start! app-inst {:machine auth-sc/machine-id
+                            :session-id auth-sc/default-session-id})
+      (scf/send! app-inst auth-sc/default-session-id :event/token-valid {:path "/org-chart"})
+      (scf/process-events! app-inst)
+      (is (some #{:state/authenticated}
+                (scf/current-configuration app-inst auth-sc/default-session-id)))
+      (scf/send! app-inst auth-sc/default-session-id :event/logout)
+      (scf/process-events! app-inst)
+      (is (true? @logged-out?) "server-logout-fn must be invoked on logout")
+      (is (true? @redirected?) "user must be redirected to /login on logout")
+      (is (some #{:state/unauthenticated}
+                (scf/current-configuration app-inst auth-sc/default-session-id))))))
 
+(deftest statechart-logout-clears-form-test
+  (testing "unauthenticated on-entry clears sensitive login form fields and normalized ident"
+    (let [app-inst (app/fulcro-app {})
+          state-atom (::app/state-atom app-inst)
+          _ (swap! state-atom assoc
+                   :identifier "alice@acme.com" :password "P@ssword123"
+                   :error-msg "bad" :mfa-required true :mfa-token "tok" :mfa-code "123456"
+                   :login/root {:identifier "alice@acme.com" :password "P@ssword123"})
+          _ (swap! state-atom assoc-in [:login/root :main] {:identifier "alice@acme.com" :password "P@ssword123"})
+          cleared-form? (atom false)
+          redirected-to (atom nil)
+          redirected-return-to (atom ::not-set)]
+      (scf/install-fulcro-statecharts! app-inst
+        {:event-loop? false
+         :extra-env {:server-logout-fn (constantly nil)
+                     :clear-tokens-fn (constantly nil)
+                     :clear-form-fn (fn []
+                                      (reset! cleared-form? true)
+                                      (swap! state-atom
+                                             (fn [db]
+                                               (-> db
+                                                   (dissoc :identifier :password :error-msg :mfa-required :mfa-token :mfa-code)
+                                                   (assoc-in [:login/root :main] {})))))
+                     :redirect-fn (fn [target return-to]
+                                    (reset! redirected-to target)
+                                    (reset! redirected-return-to return-to))
+                     :sync-route-fn (constantly nil)
+                     :fetch-session-fn (constantly nil)
+                     :fetch-page-data-fn (constantly nil)}})
+      (scf/register-statechart! app-inst auth-sc/machine-id auth-sc/auth-routing-chart)
+      (scf/start! app-inst {:machine auth-sc/machine-id
+                            :session-id auth-sc/default-session-id})
+      (scf/send! app-inst auth-sc/default-session-id :event/token-valid {:path "/"})
+      (scf/process-events! app-inst)
+      ;; sanity: form populated before logout
+      (is (= "alice@acme.com" (:identifier @state-atom)))
+      (is (= "P@ssword123" (:password @state-atom)))
+      (scf/send! app-inst auth-sc/default-session-id :event/logout)
+      (scf/process-events! app-inst)
+      (is (true? @cleared-form?) "clear-form-fn must be invoked on unauthenticated entry (logout)")
+      (is (nil? (:identifier @state-atom)) "identifier must be cleared after logout")
+      (is (nil? (:password @state-atom)) "password must be cleared after logout")
+      (is (nil? (:error-msg @state-atom)))
+      (is (nil? (:mfa-required @state-atom)))
+      (is (= {} (get-in @state-atom [:login/root :main])) "normalized login ident must be reset")
+      (is (= "/login" @redirected-to) "must redirect to /login on logout")
+      (is (nil? @redirected-return-to) "explicit logout must not set return-to (Option B)"))))
+
+(deftest statechart-logout-redirect-owns-return-to-test
+  (testing "guard redirect preserves return-to, explicit logout does not"
+    ;; Guard case: unauthenticated navigate to protected
+    (let [app-inst (app/fulcro-app {})
+          redirected-return-to (atom ::not-set)]
+      (scf/install-fulcro-statecharts! app-inst
+        {:event-loop? false
+         :extra-env {:server-logout-fn (constantly nil)
+                     :clear-tokens-fn (constantly nil)
+                     :clear-form-fn (constantly nil)
+                     :redirect-fn (fn [_ return-to] (reset! redirected-return-to return-to))
+                     :sync-route-fn (constantly nil)
+                     :fetch-session-fn (constantly nil)
+                     :fetch-page-data-fn (constantly nil)}})
+      (scf/register-statechart! app-inst auth-sc/machine-id auth-sc/auth-routing-chart)
+      (scf/start! app-inst {:machine auth-sc/machine-id
+                            :session-id auth-sc/default-session-id})
+      (scf/send! app-inst auth-sc/default-session-id :event/no-token {:path "/"})
+      (scf/process-events! app-inst)
+      (scf/send! app-inst auth-sc/default-session-id :event/navigate {:path "/org-chart"})
+      (scf/process-events! app-inst)
+      (is (= "/org-chart" @redirected-return-to) "guard must preserve attempted protected path as return-to"))
+    ;; Explicit logout case: authenticated -> unauthenticated must NOT set return-to (Option B)
+    (let [app-inst2 (app/fulcro-app {})
+          redirected-return-to2 (atom ::not-set)]
+      (scf/install-fulcro-statecharts! app-inst2
+        {:event-loop? false
+         :extra-env {:server-logout-fn (constantly nil)
+                     :clear-tokens-fn (constantly nil)
+                     :clear-form-fn (constantly nil)
+                     :redirect-fn (fn [_ return-to] (reset! redirected-return-to2 return-to))
+                     :sync-route-fn (constantly nil)
+                     :fetch-session-fn (constantly nil)
+                     :fetch-page-data-fn (constantly nil)}})
+      (scf/register-statechart! app-inst2 auth-sc/machine-id auth-sc/auth-routing-chart)
+      (scf/start! app-inst2 {:machine auth-sc/machine-id
+                             :session-id auth-sc/default-session-id})
+      (scf/send! app-inst2 auth-sc/default-session-id :event/token-valid {:path "/"})
+      (scf/process-events! app-inst2)
+      (is (some #{:state/authenticated} (scf/current-configuration app-inst2 auth-sc/default-session-id)))
+      (scf/send! app-inst2 auth-sc/default-session-id :event/logout)
+      (scf/process-events! app-inst2)
+      (is (nil? @redirected-return-to2) "logout must redirect with nil return-to"))))

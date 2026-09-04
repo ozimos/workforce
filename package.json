@@ -5,6 +5,7 @@
   "packageManager": "pnpm@11.18.0",
   "devDependencies": {
     "autoprefixer": "^10.5.4",
+    "playwright": "^1.62.1",
     "postcss": "^8.5.20",
     "shadow-cljs": "2.28.20",
     "tailwindcss": "^3.4.19"
