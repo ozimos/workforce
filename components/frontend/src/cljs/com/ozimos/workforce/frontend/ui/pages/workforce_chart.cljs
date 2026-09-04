@@ -7,7 +7,8 @@
    [com.ozimos.workforce.frontend.defrc :refer [defrc]])
   (:require
    [clojure.string :as str]
-   [com.ozimos.workforce.frontend.abac :as abac]))
+   [com.ozimos.workforce.frontend.abac :as abac]
+   [com.ozimos.workforce.frontend.ui.pages.unconnected-side-tree :as unconnected-side-tree]))
 
 ;; -----------------------------------------------------------------------------
 ;; Event Action Creators (Data-Driven Replicant DOM Dispatch)
@@ -42,6 +43,33 @@
 
 (defn select-search-result [data]
   [:com.ozimos.workforce.frontend.ui.pages.workforce-chart/select-search-result data])
+
+(defn zoom-in []
+  [:com.ozimos.workforce.frontend.ui.pages.workforce-chart/zoom-in {}])
+
+(defn zoom-out []
+  [:com.ozimos.workforce.frontend.ui.pages.workforce-chart/zoom-out {}])
+
+(defn zoom-reset []
+  [:com.ozimos.workforce.frontend.ui.pages.workforce-chart/zoom-reset {}])
+
+(defn zoom-wheel [ev]
+  [:com.ozimos.workforce.frontend.ui.pages.workforce-chart/zoom-wheel ev])
+
+(defn pan-start [ev]
+  [:com.ozimos.workforce.frontend.ui.pages.workforce-chart/pan-start ev])
+
+(defn pan-move [ev]
+  [:com.ozimos.workforce.frontend.ui.pages.workforce-chart/pan-move ev])
+
+(defn pan-end []
+  [:com.ozimos.workforce.frontend.ui.pages.workforce-chart/pan-end {}])
+
+(defn toggle-unconnected-drawer []
+  [:com.ozimos.workforce.frontend.ui.pages.workforce-chart/toggle-unconnected-drawer {}])
+
+(defn close-unconnected-drawer []
+  [:com.ozimos.workforce.frontend.ui.pages.workforce-chart/close-unconnected-drawer {}])
 
 ;; -----------------------------------------------------------------------------
 ;; Full Org Root Resolution Algorithm
@@ -424,6 +452,9 @@
            :collapsed-workforce :permissions :headcounts-by-manager :abac/policy
            :active-chart-tab :custom-root-id :current-user/email :org/chart-settings
            :loading-branches :server-search-results :searching? :total-workforce-count
+           :chart/pan :chart/zoom :chart/panning?
+           :unconnected/workforce :unconnected/headcounts :unconnected/hierarchy
+           :unconnected/roots :unconnected/count :unconnected-drawer-open?
            {:workforce/list (:query (meta WorkforceNode))}
            {:headcounts/list (:query (meta HeadcountCard))}]
    :ident :workforce-chart/root
@@ -432,7 +463,16 @@
   [{:keys [loading error active-org workforce workforce-hierarchy workforce-search
            collapsed-workforce permissions headcounts-by-manager active-chart-tab
            custom-root-id loading-branches server-search-results total-workforce-count] :as props}]
-  (let [abac-policy (get props :abac/policy)
+  (let [pan (get props :chart/pan {:x 0 :y 0})
+        zoom (get props :chart/zoom 1.0)
+        panning? (get props :chart/panning? false)
+        unconnected-workforce (get props :unconnected/workforce [])
+        unconnected-headcounts (get props :unconnected/headcounts [])
+        unconnected-hierarchy (get props :unconnected/hierarchy {})
+        unconnected-roots (get props :unconnected/roots [])
+        unconnected-count (get props :unconnected/count 0)
+        unconnected-drawer-open? (get props :unconnected-drawer-open? false)
+        abac-policy (get props :abac/policy)
         chart-settings (or (get props :org/chart-settings) (get props :chart-settings) {})
         current-user-email (or (get props :current-user/email)
                                (when (exists? js/localStorage)
@@ -494,7 +534,7 @@
                              (filter (fn [[_ h]] (abac/accessible-headcount? h abac-policy))
                                      raw-hcs-map))
         total-headcounts (count (vals headcounts-map))]
-    [:div {:class "min-h-screen bg-gray-50 flex flex-col font-sans"}
+    [:div {:class "h-[calc(100vh-4rem)] bg-gray-50 flex flex-col font-sans overflow-hidden relative"}
      ;; Top Header Bar
      [:header {:class "bg-white border-b border-gray-200 sticky top-0 z-30 shadow-2xs"}
       [:div {:class "max-w-7xl mx-auto px-6 py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4"}
@@ -598,33 +638,83 @@
        [:div {:class "flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 rounded-lg shadow-xs text-xs"}
         [:span {:class "font-medium text-indigo-600"} "🔒 Comp Visibility:"]
         [:span {:class (str "font-bold font-mono " (if can-view-comp? "text-emerald-700" "text-gray-500"))}
-         (if can-view-comp? "Full Access" "Restricted (Field-Level RBAC)")]]]]
+         (if can-view-comp? "Full Access" "Restricted (Field-Level RBAC)")]]
 
-     ;; Main Chart Interactive Canvas
-     [:main {:class "flex-1 overflow-auto p-8 flex justify-center items-start"}
-      (cond
-        loading
-        [:div {:class "flex flex-col items-center justify-center h-64 gap-3 text-gray-500"}
-         [:div {:class "animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"}]
-         [:p {:class "text-sm font-medium"} "Loading workforce hierarchy..."]]
+       (when (> (or unconnected-count 0) 0)
+         [:button {:class "flex items-center gap-2 px-3 py-1.5 bg-white border border-amber-300 hover:border-amber-500 rounded-lg shadow-xs text-xs cursor-pointer transition hover:bg-amber-50"
+                   :title "View disconnected nodes"
+                   :on {:click [(toggle-unconnected-drawer)]}}
+          [:span {:class "font-medium text-amber-600"} "⚠️ Disconnected:"]
+          [:span {:class "font-bold text-amber-800 font-mono"} (str unconnected-count)]])]]
 
-        error
-        [:div {:class "p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm max-w-md"}
-         [:p {:class "font-bold"} "Failed to load workforce chart"]
-         [:p {:class "text-xs mt-1"} (str error)]]
+     ;; Main Chart Interactive Canvas Viewport (GPU-Accelerated Pan & Zoom)
+     [:main {:class "flex-1 relative overflow-hidden bg-gray-50/50"
+             :style {:cursor (if panning? "grabbing" "grab")
+                     :user-select "none"}
+             :on {:pointerdown [(pan-start {})]
+                  :pointermove [(pan-move {})]
+                  :pointerup   [(pan-end)]
+                  :pointercancel [(pan-end)]
+                  :wheel       [(zoom-wheel {})]}}
 
-        (empty? active-root-ids)
-        [:div {:class "flex flex-col items-center justify-center h-64 text-gray-400 gap-2"}
-         [:svg {:class "w-12 h-12 text-gray-300" :fill "none" :stroke "currentColor" :viewBox "0 0 24 24"}
-          [:path {:stroke-linecap "round" :stroke-linejoin "round" :stroke-width "1.5"
-                  :d "M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"}]]
-         [:p {:class "text-sm font-medium text-gray-600"} "No workforce members registered in this organization."]
-         [:p {:class "text-xs text-gray-400"} "When employees and managers are added, their hierarchy will render here."]]
+      ;; Transform Plane Container
+      [:div {:class "w-full h-full p-8 flex justify-center items-start"
+             :style {:transform (str "translate3d(" (:x pan 0) "px, " (:y pan 0) "px, 0) scale(" (or zoom 1.0) ")")
+                     :transform-origin "50% 0"
+                     :will-change "transform"}}
+       (cond
+         loading
+         [:div {:class "flex flex-col items-center justify-center h-64 gap-3 text-gray-500"}
+          [:div {:class "animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"}]
+          [:p {:class "text-sm font-medium"} "Loading workforce hierarchy..."]]
 
-        :else
-        (into [:div {:class "flex flex-col items-center gap-12 min-w-max pb-16"}]
-              (map (fn [rid]
-                     (render-workforce-tree-node rid workforce-map headcounts-map hierarchy collapsed-nodes
-                                                workforce-search can-view-comp?
-                                                custom-root-id loading-branches))
-                   active-root-ids)))]]))
+         error
+         [:div {:class "p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm max-w-md"}
+          [:p {:class "font-bold"} "Failed to load workforce chart"]
+          [:p {:class "text-xs mt-1"} (str error)]]
+
+         (empty? active-root-ids)
+         [:div {:class "flex flex-col items-center justify-center h-64 text-gray-400 gap-2"}
+          [:svg {:class "w-12 h-12 text-gray-300" :fill "none" :stroke "currentColor" :viewBox "0 0 24 24"}
+           [:path {:stroke-linecap "round" :stroke-linejoin "round" :stroke-width "1.5"
+                   :d "M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"}]]
+          [:p {:class "text-sm font-medium text-gray-600"} "No workforce members registered in this organization."]
+          [:p {:class "text-xs text-gray-400"} "When employees and managers are added, their hierarchy will render here."]]
+
+         :else
+         (into [:div {:class "flex flex-col items-center gap-12 min-w-max pb-16"}]
+               (map (fn [rid]
+                      (render-workforce-tree-node rid workforce-map headcounts-map hierarchy collapsed-nodes
+                                                 workforce-search can-view-comp?
+                                                 custom-root-id loading-branches))
+                    active-root-ids)))]
+
+      ;; Floating Zoom HUD Controls (Bottom Right)
+      [:div {:class "absolute bottom-6 right-6 z-20 flex items-center gap-1.5 bg-white/95 backdrop-blur-xs border border-gray-200 shadow-md rounded-xl p-1.5"}
+       [:button {:class "p-1.5 rounded-lg hover:bg-gray-100 text-gray-700 transition cursor-pointer"
+                 :title "Zoom In (+15%)"
+                 :on {:click [(zoom-in)]}}
+        "➕"]
+       [:button {:class "px-2 py-1 text-xs font-mono font-semibold text-gray-700 hover:bg-gray-100 rounded-lg transition cursor-pointer"
+                 :title "Reset Zoom to 100%"
+                 :on {:click [(zoom-reset)]}}
+        (str (Math/round (* (or zoom 1.0) 100)) "%")]
+       [:button {:class "p-1.5 rounded-lg hover:bg-gray-100 text-gray-700 transition cursor-pointer"
+                 :title "Zoom Out (-15%)"
+                 :on {:click [(zoom-out)]}}
+        "➖"]
+       [:div {:class "w-px h-5 bg-gray-200 mx-0.5"}]
+       [:button {:class "px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition cursor-pointer"
+                 :title "Fit to View / Center"
+                 :on {:click [(zoom-reset)]}}
+        "⛶ Fit"]]
+
+      ;; Unconnected Side Tree Drawer / Floating Trigger
+      (when (> (or unconnected-count 0) 0)
+        (unconnected-side-tree/render-unconnected-drawer
+         {:open? unconnected-drawer-open?
+          :unconnected-workforce unconnected-workforce
+          :unconnected-headcounts unconnected-headcounts
+          :unconnected-hierarchy unconnected-hierarchy
+          :unconnected-roots unconnected-roots
+          :unconnected-count unconnected-count}))]]))

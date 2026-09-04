@@ -1,5 +1,6 @@
 (ns com.ozimos.workforce.org.core
   (:require
+   [clojure.set :as set]
    [clojure.string :as str]
    [com.ozimos.omni-auth.rama.interface :as rama]
    [com.ozimos.workforce.org.rbac :as rbac]
@@ -818,6 +819,49 @@
       (let [parent (get parent-map curr)]
         (recur parent (conj path curr) (conj visited curr))))))
 
+(defn collect-all-reachable-nodes
+  "Collects the transitive set of all node IDs reachable from root-ids via hierarchy."
+  [hierarchy root-ids]
+  (loop [queue (into clojure.lang.PersistentQueue/EMPTY (remove nil? root-ids))
+         visited (set (remove nil? root-ids))]
+    (if (empty? queue)
+      visited
+      (let [curr (peek queue)
+            q' (pop queue)
+            children (get hierarchy curr [])
+            unvisited (remove visited children)]
+        (recur (into q' unvisited)
+               (into visited unvisited))))))
+
+(defn compute-unconnected-data
+  "Computes disconnected employees, headcounts, subtrees, and roots."
+  [workforce-list enriched-headcounts-list final-hierarchy root-ids parent-map]
+  (let [all-emp-ids (set (keep :person/id (remove :person/is-synthetic? workforce-list)))
+        all-hc-ids (set (keep :headcount/id enriched-headcounts-list))
+        all-node-ids (set/union all-emp-ids all-hc-ids)
+        reachable (collect-all-reachable-nodes final-hierarchy root-ids)
+        unconnected-ids (set/difference all-node-ids reachable)
+        unconnected-workforce (filterv #(contains? unconnected-ids (:person/id %)) workforce-list)
+        unconnected-headcounts (filterv #(contains? unconnected-ids (:headcount/id %)) enriched-headcounts-list)
+        unconnected-hierarchy
+        (reduce (fn [acc uid]
+                  (let [ch (filterv #(contains? unconnected-ids %) (get final-hierarchy uid []))]
+                    (if (seq ch)
+                      (assoc acc uid ch)
+                      acc)))
+                {}
+                unconnected-ids)
+        unconnected-roots
+        (filterv (fn [uid]
+                   (let [p (get parent-map uid)]
+                     (not (contains? unconnected-ids p))))
+                 (sort (vec unconnected-ids)))]
+    {:unconnected-workforce unconnected-workforce
+     :unconnected-headcounts unconnected-headcounts
+     :unconnected-hierarchy unconnected-hierarchy
+     :unconnected-roots (vec unconnected-roots)
+     :unconnected-count (count unconnected-ids)}))
+
 (defn get-org-workforce-chart
   "Retrieves the workforce chart for an organization, enforcing backend-level
    RBAC compensation masking and ABAC headcount filtering before serialization.
@@ -994,7 +1038,8 @@
                           :headcount/approvers approvers
                           :headcount/collaborators collaborators
                           :headcount/sourcers sourcers}))
-                     allowed-hc-by-nid)]
+                      allowed-hc-by-nid)
+               unconnected-data (compute-unconnected-data final-workforce enriched-headcounts-list final-hierarchy root-ids parent-map)]
            {:org/id org-id
             :workforce/list filtered-workforce
             :workforce-hierarchy filtered-hierarchy
@@ -1002,7 +1047,12 @@
             :headcounts-by-manager filtered-headcounts-by-mgr
             :org/chart-settings chart-settings
             :total-workforce-count (count employees)
-            :total-headcount-count (count allowed-hc-by-nid)}))
+            :total-headcount-count (count allowed-hc-by-nid)
+            :unconnected/workforce (:unconnected-workforce unconnected-data)
+            :unconnected/headcounts (:unconnected-headcounts unconnected-data)
+            :unconnected/hierarchy (:unconnected-hierarchy unconnected-data)
+            :unconnected/roots (:unconnected-roots unconnected-data)
+            :unconnected/count (:unconnected-count unconnected-data)}))
 
        ;; 2. Fallback for dynamic/new orgs in Rama
        (let [members (list-members deps org-id)
@@ -1029,7 +1079,7 @@
                                    :headcount/approvers (vec (or (:approvers hc) []))
                                    :headcount/collaborators (vec (or (:collaborators hc) []))
                                    :headcount/sourcers (vec (or (:sourcers hc) []))}))
-                              (filterv #(abac-allows-headcount? % abac-policy) raw-headcounts))
+                             (filterv #(abac-allows-headcount? % abac-policy) raw-headcounts))
              hc-ids (mapv :headcount/id headcounts)
              workforce-list
              (mapv (fn [m]
@@ -1066,7 +1116,8 @@
                                   final-workforce)
              filtered-hierarchy (if allowed-nodes
                                   (select-keys final-hierarchy (conj allowed-nodes nil))
-                                  final-hierarchy)]
+                                  final-hierarchy)
+             unconnected-data (compute-unconnected-data final-workforce headcounts final-hierarchy root-ids {})]
          {:org/id org-id
           :workforce/list filtered-workforce
           :workforce-hierarchy filtered-hierarchy
@@ -1074,7 +1125,12 @@
           :headcounts-by-manager headcounts-by-mgr
           :org/chart-settings chart-settings
           :total-workforce-count (count members)
-          :total-headcount-count (count headcounts)})))))
+          :total-headcount-count (count headcounts)
+          :unconnected/workforce (:unconnected-workforce unconnected-data)
+          :unconnected/headcounts (:unconnected-headcounts unconnected-data)
+          :unconnected/hierarchy (:unconnected-hierarchy unconnected-data)
+          :unconnected/roots (:unconnected-roots unconnected-data)
+          :unconnected/count (:unconnected-count unconnected-data)})))))
 
 (defn get-org-workforce-branch
   "Retrieves direct reports and direct headcounts under a specific manager node."

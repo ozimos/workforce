@@ -353,7 +353,12 @@
                                             :headcounts-by-manager
                                             :org/chart-settings
                                             :total-workforce-count
-                                            :total-headcount-count]}]}]
+                                            :total-headcount-count
+                                            :unconnected/workforce
+                                            :unconnected/headcounts
+                                            :unconnected/hierarchy
+                                            :unconnected/roots
+                                            :unconnected/count]}]}]
                   {:on-success
                    (fn [body]
                      (let [chart (or (get-in body [[:org/id org-id] :org/workforce-chart])
@@ -364,17 +369,22 @@
                            headcounts-by-mgr (:headcounts-by-manager chart)
                            chart-settings (:org/chart-settings chart)
                            total-wf-count (:total-workforce-count chart)
+                           unconnected-wf (or (:unconnected/workforce chart) [])
+                           unconnected-hc (or (:unconnected/headcounts chart) [])
+                           unconnected-hier (or (:unconnected/hierarchy chart) {})
+                           unconnected-roots (or (:unconnected/roots chart) [])
+                           unconnected-cnt (or (:unconnected/count chart) 0)
                            saved-custom-root (when (exists? js/localStorage)
                                                (.getItem js/localStorage (str "workforce-custom-root:" org-id)))
 
                            ;; Query-Driven DB Normalization:
                            person-table (into {}
                                               (map (fn [p] [(:person/id p) p]))
-                                              workforce-list)
+                                              (concat workforce-list unconnected-wf))
 
                            headcount-table (into {}
                                                  (map (fn [h] [(:headcount/id h) h]))
-                                                 headcounts-list)
+                                                 (concat headcounts-list unconnected-hc))
 
                            ;; Compute initial collapsed nodes:
                            root-id (first (get hierarchy nil []))
@@ -392,6 +402,15 @@
                                            :headcounts-by-manager headcounts-by-mgr
                                            :org/chart-settings chart-settings
                                            :total-workforce-count total-wf-count
+                                           :unconnected/workforce unconnected-wf
+                                           :unconnected/headcounts unconnected-hc
+                                           :unconnected/hierarchy unconnected-hier
+                                           :unconnected/roots unconnected-roots
+                                           :unconnected/count unconnected-cnt
+                                           :unconnected-drawer-open? false
+                                           :chart/pan (or (:chart/pan s) {:x 0 :y 0})
+                                           :chart/zoom (or (:chart/zoom s) 1.0)
+                                           :chart/panning? false
                                            :loading-branches #{}
                                            :server-search-results nil
                                            :custom-root-id (or saved-custom-root (:custom-root-id s))
@@ -691,6 +710,78 @@
        (when (exists? js/localStorage)
          (.removeItem js/localStorage (str "workforce-custom-root:" org-id)))
        (swap! state-atom assoc :custom-root-id nil)))
+
+   :com.ozimos.workforce.frontend.ui.pages.workforce-chart/zoom-in
+   (fn [& _]
+     (let [state-atom (::app/state-atom app-inst)]
+       (swap! state-atom update :chart/zoom (fn [z] (min 2.5 (+ (or z 1.0) 0.15))))))
+
+   :com.ozimos.workforce.frontend.ui.pages.workforce-chart/zoom-out
+   (fn [& _]
+     (let [state-atom (::app/state-atom app-inst)]
+       (swap! state-atom update :chart/zoom (fn [z] (max 0.25 (- (or z 1.0) 0.15))))))
+
+   :com.ozimos.workforce.frontend.ui.pages.workforce-chart/zoom-reset
+   (fn [& _]
+     (let [state-atom (::app/state-atom app-inst)]
+       (swap! state-atom assoc :chart/zoom 1.0 :chart/pan {:x 0 :y 0})))
+
+   :com.ozimos.workforce.frontend.ui.pages.workforce-chart/zoom-wheel
+   (fn [ev & _]
+     (when-let [js-ev (or (:replicant/js-event ev) (:replicant/dom-event ev))]
+       (when (exists? (.-preventDefault js-ev))
+         (.preventDefault js-ev))
+       (let [dy (.-deltaY js-ev)
+             factor (if (neg? dy) 1.08 0.92)
+             state-atom (::app/state-atom app-inst)
+             curr-zoom (or (:chart/zoom @state-atom) 1.0)
+             new-zoom (-> (* curr-zoom factor) (max 0.25) (min 2.5))]
+         (swap! state-atom assoc :chart/zoom new-zoom))))
+
+   :com.ozimos.workforce.frontend.ui.pages.workforce-chart/pan-start
+   (fn [ev & _]
+     (let [js-ev (or (:replicant/js-event ev) (:replicant/dom-event ev))
+           target (when js-ev (.-target js-ev))
+           tag (when target (some-> (.-tagName target) str/lower-case))]
+       (when-not (contains? #{"button" "input" "select" "a"} tag)
+         (when js-ev
+           (let [cx (.-clientX js-ev)
+                 cy (.-clientY js-ev)
+                 state-atom (::app/state-atom app-inst)
+                 curr-pan (or (:chart/pan @state-atom) {:x 0 :y 0})]
+             (swap! state-atom assoc
+                    :chart/panning? true
+                    :chart/pan-start {:cx cx :cy cy :init-x (:x curr-pan 0) :init-y (:y curr-pan 0)}))))))
+
+   :com.ozimos.workforce.frontend.ui.pages.workforce-chart/pan-move
+   (fn [ev & _]
+     (let [state-atom (::app/state-atom app-inst)
+           st @state-atom]
+       (when (:chart/panning? st)
+         (when-let [js-ev (or (:replicant/js-event ev) (:replicant/dom-event ev))]
+           (let [cx (.-clientX js-ev)
+                 cy (.-clientY js-ev)
+                 start (:chart/pan-start st)
+                 dx (- cx (:cx start))
+                 dy (- cy (:cy start))]
+             (swap! state-atom assoc :chart/pan
+                    {:x (+ (:init-x start) dx)
+                     :y (+ (:init-y start) dy)}))))))
+
+   :com.ozimos.workforce.frontend.ui.pages.workforce-chart/pan-end
+   (fn [& _]
+     (let [state-atom (::app/state-atom app-inst)]
+       (swap! state-atom assoc :chart/panning? false :chart/pan-start nil)))
+
+   :com.ozimos.workforce.frontend.ui.pages.workforce-chart/toggle-unconnected-drawer
+   (fn [& _]
+     (let [state-atom (::app/state-atom app-inst)]
+       (swap! state-atom update :unconnected-drawer-open? not)))
+
+   :com.ozimos.workforce.frontend.ui.pages.workforce-chart/close-unconnected-drawer
+   (fn [& _]
+     (let [state-atom (::app/state-atom app-inst)]
+       (swap! state-atom assoc :unconnected-drawer-open? false)))
 
    ;; Dept Dashboard
    ::dept-dashboard/set-tab
