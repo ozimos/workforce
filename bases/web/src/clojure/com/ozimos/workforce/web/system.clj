@@ -48,16 +48,31 @@
 
 (defmethod ig/init-key :adapter/jetty
   [_ {:keys [port host handler]}]
-  (let [opts {:port port
+  (let [handler-atom (atom handler)
+        delegated-handler (fn [req] (@handler-atom req))
+        opts {:port port
               :host host
               :join? false
               :thread-pool (virtual-thread-pool)}
-        server (jetty/run-jetty handler opts)]
-    {:server server}))
+        server (jetty/run-jetty delegated-handler opts)]
+    {:server server :handler-atom handler-atom}))
 
 (defmethod ig/halt-key! :adapter/jetty [_ {:keys [server]}]
   (when server
     (.stop ^Server server)))
+
+(defmethod ig/suspend-key! :adapter/jetty [_ _] nil)
+
+(defmethod ig/resume-key :adapter/jetty
+  [_ {:keys [port host handler] :as opts} old-opts {server :server handler-atom :handler-atom :as old-impl}]
+  (if (= (select-keys opts [:port :host]) (select-keys old-opts [:port :host]))
+    (do
+      (when handler-atom
+        (reset! handler-atom handler))
+      old-impl)
+    (do
+      (ig/halt-key! :adapter/jetty old-impl)
+      (ig/init-key :adapter/jetty opts))))
 
 (defmethod ig/init-key :cleanup/scheduler
   [_ {:keys [rama interval-ms]}]

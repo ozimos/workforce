@@ -19,7 +19,7 @@
    - Only use `clojure -M:poly` alias if the native `poly` tool is not installed on the machine.
 7. **System Initialization**:
    - No need to reset the system if this is the first run after JVM start. Just use `(go)`.
-   - If you modify code, run `(reset)` in the REPL (reloads all 14 components in <1s via `clj-reload` + Virgil).
+   - If you modify code, run `(reset)` in the REPL (reloads all 14 components in <1s via `clj-reload`).
 8. **Temp Files**:
    - Create temp files (if needed) in the project directory and delete them after use.
 9. **Never Stop shadow-cljs**:

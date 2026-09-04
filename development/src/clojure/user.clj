@@ -2,8 +2,20 @@
   (:require
    [clojure.java.shell :as shell]
    [clojure.string :as str]
-   [integrant.repl :refer [clear go halt reset reset-all set-prep!]])
+   [integrant.repl :refer [clear go halt resume set-prep! suspend]])
   (:gen-class))
+
+(defn reset
+  "Reload changed namespaces via clj-reload and resume the Integrant system.
+
+   Matches the original `integrant.repl/reset` semantics (suspend → reload → resume)
+   but uses `clj-reload` instead of `clojure.tools.namespace.repl`. Jetty is kept
+   warm via `ig/suspend!` (see `com.ozimos.workforce.web.system`), Rama PStates fall
+   through to `halt`/`init` since they have no suspend."
+  []
+  (suspend)
+  ((requiring-resolve 'clj-reload.core/reload))
+  (resume))
 
 (require 'com.ozimos.omni-auth.config.core
          'com.ozimos.omni-auth.rama.core
@@ -268,7 +280,6 @@
   (gen-seed!)       ;; Regenerate .seed/workforce-seed-data.nippy
   (halt)            ;; Shut everything down
   (reset)           ;; Reload changed namespaces + rebuild system in < 1s
-  (reset-all)       ;; Reload ALL namespaces + rebuild system
   (clear)           ;; Discard prepped config + system
   (test-all)        ;; Run all backend tests against running dev state (< 0.5s)
   (test-clean)      ;; Run all backend tests against a fresh ephemeral test system (~1s)
