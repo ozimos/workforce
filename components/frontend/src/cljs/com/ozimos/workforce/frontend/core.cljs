@@ -565,73 +565,127 @@
 
    ;; Workforce Chart Events
    :com.ozimos.workforce.frontend.ui.pages.workforce-chart/set-search-term
-   (fn [data]
-     (let [term (if (map? data) (:term data) data)
-           state-atom (::app/state-atom app-inst)]
-       (swap! state-atom assoc :workforce-search term)
-       (search-workforce! term)))
+   (fn
+     ([data]
+      (let [term (if (map? data) (:term data) data)
+            state-atom (::app/state-atom app-inst)]
+        (swap! state-atom assoc :workforce-search term)
+        (search-workforce! term)))
+     ([_ data]
+      (let [term (if (map? data) (:term data) data)
+            state-atom (::app/state-atom app-inst)]
+        (swap! state-atom assoc :workforce-search term)
+        (search-workforce! term))))
 
    :com.ozimos.workforce.frontend.ui.pages.workforce-chart/select-search-result
-   (fn [{:keys [result]}]
-     (select-search-result! result))
+   (fn
+     ([data]
+      (let [result (if (and (map? data) (contains? data :result)) (:result data) data)]
+        (select-search-result! result)))
+     ([_ data]
+      (let [result (if (and (map? data) (contains? data :result)) (:result data) data)]
+        (select-search-result! result))))
 
    :com.ozimos.workforce.frontend.ui.pages.workforce-chart/expand-or-fetch
-   (fn [{:keys [id all-loaded?]}]
-     (let [state-atom (::app/state-atom app-inst)
-           s @state-atom
-           collapsed? (contains? (:collapsed-workforce s) id)]
-       (if (not collapsed?)
-         (swap! state-atom update :collapsed-workforce conj id)
-         (if all-loaded?
-           (swap! state-atom update :collapsed-workforce disj id)
-           (fetch-workforce-branch! id)))))
+   (fn
+     ([data]
+      (let [{:keys [id all-loaded?]} data
+            state-atom (::app/state-atom app-inst)
+            s @state-atom
+            collapsed? (contains? (:collapsed-workforce s) id)]
+        (if (not collapsed?)
+          (swap! state-atom update :collapsed-workforce conj id)
+          (if all-loaded?
+            (swap! state-atom update :collapsed-workforce disj id)
+            (fetch-workforce-branch! id)))))
+     ([_ data]
+      (let [{:keys [id all-loaded?]} data
+            state-atom (::app/state-atom app-inst)
+            s @state-atom
+            collapsed? (contains? (:collapsed-workforce s) id)]
+        (if (not collapsed?)
+          (swap! state-atom update :collapsed-workforce conj id)
+          (if all-loaded?
+            (swap! state-atom update :collapsed-workforce disj id)
+            (fetch-workforce-branch! id))))))
 
    :com.ozimos.workforce.frontend.ui.pages.workforce-chart/toggle-collapse
-   (fn [{:keys [id]}]
-     (let [state-atom (::app/state-atom app-inst)]
-       (swap! state-atom update :collapsed-workforce
-              (fn [s]
-                (let [curr (or s #{})]
-                  (if (contains? curr id)
-                    (disj curr id)
-                    (conj curr id)))))))
+   (fn
+     ([data]
+      (let [id (if (map? data) (:id data) data)
+            state-atom (::app/state-atom app-inst)]
+        (swap! state-atom update :collapsed-workforce
+               (fn [s]
+                 (let [curr (or s #{})]
+                   (if (contains? curr id)
+                     (disj curr id)
+                     (conj curr id)))))))
+     ([_ data]
+      (let [id (if (map? data) (:id data) data)
+            state-atom (::app/state-atom app-inst)]
+        (swap! state-atom update :collapsed-workforce
+               (fn [s]
+                 (let [curr (or s #{})]
+                   (if (contains? curr id)
+                     (disj curr id)
+                     (conj curr id))))))))
 
    :com.ozimos.workforce.frontend.ui.pages.workforce-chart/expand-all
-   (fn [_]
+   (fn [& _]
      (let [state-atom (::app/state-atom app-inst)]
        (swap! state-atom assoc :collapsed-workforce #{})))
 
    :com.ozimos.workforce.frontend.ui.pages.workforce-chart/collapse-all
-   (fn [_]
+   (fn [& _]
      (let [state-atom (::app/state-atom app-inst)
            hierarchy (:workforce-hierarchy @state-atom)
            all-parents (set (keys (dissoc hierarchy nil)))]
        (swap! state-atom assoc :collapsed-workforce all-parents)))
 
    :com.ozimos.workforce.frontend.ui.pages.workforce-chart/refresh
-   (fn [_] (fetch-workforce-chart!))
+   (fn [& _]
+     (fetch-workforce-chart!))
 
    :com.ozimos.workforce.frontend.ui.pages.workforce-chart/set-active-tab
-   (fn [data]
-     (let [tab (if (map? data) (:tab data) data)
-           state-atom (::app/state-atom app-inst)]
-       (swap! state-atom assoc :active-chart-tab tab)))
+   (fn
+     ([data]
+      (let [tab (if (map? data) (:tab data) data)
+            state-atom (::app/state-atom app-inst)]
+        (swap! state-atom assoc :active-chart-tab tab)))
+     ([_ data]
+      (let [tab (if (map? data) (:tab data) data)
+            state-atom (::app/state-atom app-inst)]
+        (swap! state-atom assoc :active-chart-tab tab))))
 
    :com.ozimos.workforce.frontend.ui.pages.workforce-chart/set-custom-root
-   (fn [{:keys [id]}]
-     (let [state-atom (::app/state-atom app-inst)
-           org-id (get-in @state-atom [:active-org :org/id])]
-       (when (exists? js/localStorage)
-         (.setItem js/localStorage (str "workforce-custom-root:" org-id) id))
-       (swap! state-atom
-              (fn [s]
-                (-> s
-                    (assoc :custom-root-id id
-                           :active-chart-tab :tab/my-org)
-                    (update :collapsed-workforce disj id))))))
+   (fn
+     ([data]
+      (let [id (if (map? data) (:id data) data)
+            state-atom (::app/state-atom app-inst)
+            org-id (get-in @state-atom [:active-org :org/id])]
+        (when (exists? js/localStorage)
+          (.setItem js/localStorage (str "workforce-custom-root:" org-id) id))
+        (swap! state-atom
+               (fn [s]
+                 (-> s
+                     (assoc :custom-root-id id
+                            :active-chart-tab :tab/my-org)
+                     (update :collapsed-workforce disj id))))))
+     ([_ data]
+      (let [id (if (map? data) (:id data) data)
+            state-atom (::app/state-atom app-inst)
+            org-id (get-in @state-atom [:active-org :org/id])]
+        (when (exists? js/localStorage)
+          (.setItem js/localStorage (str "workforce-custom-root:" org-id) id))
+        (swap! state-atom
+               (fn [s]
+                 (-> s
+                     (assoc :custom-root-id id
+                            :active-chart-tab :tab/my-org)
+                     (update :collapsed-workforce disj id)))))))
 
    :com.ozimos.workforce.frontend.ui.pages.workforce-chart/reset-custom-root
-   (fn [_]
+   (fn [& _]
      (let [state-atom (::app/state-atom app-inst)
            org-id (get-in @state-atom [:active-org :org/id])]
        (when (exists? js/localStorage)

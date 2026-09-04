@@ -6,6 +6,8 @@
    [com.fulcrologic.fulcro.application :as app]
    [com.fulcrologic.statecharts.integration.fulcro :as scf]
    [com.ozimos.workforce.frontend.auth-statechart :as auth-sc]
+   [com.ozimos.workforce.frontend.bridge :as bridge]
+   [com.ozimos.workforce.frontend.core :as core]
    [com.ozimos.workforce.frontend.ui.pages.org-chart :as org-chart]
    [com.ozimos.workforce.frontend.ui.pages.workforce-chart :as workforce-chart]
    [com.ozimos.workforce.frontend.ui.root :as root-rc]
@@ -296,3 +298,42 @@
       ;; Assert user returned to Page A (/org-chart) and is authenticated
       (is (= "/org-chart" @synced-route) "user must be returned to Page A (/org-chart) after login")
       (is (some #{:state/authenticated} (scf/current-configuration app-inst auth-sc/default-session-id))))))
+
+(deftest workforce-chart-button-events-test
+  (testing "Replicant event dispatch invokes expand-or-fetch and set-custom-root correctly"
+    (let [app-inst core/app-inst
+          state-atom (::app/state-atom app-inst)
+          dispatcher (bridge/dispatch! app-inst core/event-handlers)
+          mock-event-map {:replicant/trigger :replicant.trigger/dom-event}]
+      ;; 1. Test set-custom-root
+      (swap! state-atom assoc :custom-root-id nil :active-chart-tab :tab/full-org)
+      (dispatcher mock-event-map
+                 [:com.ozimos.workforce.frontend.ui.pages.workforce-chart/set-custom-root {:id "emp-bob"}])
+      (is (= "emp-bob" (:custom-root-id @state-atom))
+          "Set as Root button dispatch must update :custom-root-id in app state")
+      (is (= :tab/my-org (:active-chart-tab @state-atom))
+          "Set as Root button dispatch must switch active tab to :tab/my-org")
+
+      ;; 2. Test expand-or-fetch toggle
+      (swap! state-atom assoc :collapsed-workforce #{"emp-bob"})
+      (dispatcher mock-event-map
+                 [:com.ozimos.workforce.frontend.ui.pages.workforce-chart/expand-or-fetch {:id "emp-bob" :all-loaded? true}])
+      (is (not (contains? (:collapsed-workforce @state-atom) "emp-bob"))
+          "Expand button dispatch must remove node from :collapsed-workforce")
+
+      ;; 3. Test collapse
+      (dispatcher mock-event-map
+                 [:com.ozimos.workforce.frontend.ui.pages.workforce-chart/expand-or-fetch {:id "emp-bob" :all-loaded? true}])
+      (is (contains? (:collapsed-workforce @state-atom) "emp-bob")
+          "Collapse button dispatch must add node back to :collapsed-workforce")
+
+      ;; 4. Test expand-all and collapse-all
+      (swap! state-atom assoc :workforce-hierarchy {"emp-root" ["emp-a" "emp-b"] "emp-a" [] "emp-b" []})
+      (dispatcher mock-event-map
+                 [:com.ozimos.workforce.frontend.ui.pages.workforce-chart/collapse-all {}])
+      (is (= #{"emp-root" "emp-a" "emp-b"} (:collapsed-workforce @state-atom))
+          "Collapse all dispatch must collapse all parent nodes")
+      (dispatcher mock-event-map
+                 [:com.ozimos.workforce.frontend.ui.pages.workforce-chart/expand-all {}])
+      (is (= #{} (:collapsed-workforce @state-atom))
+          "Expand all dispatch must clear collapsed nodes"))))
