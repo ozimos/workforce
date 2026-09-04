@@ -147,17 +147,18 @@
      :converted-total-cost converted-total}))
 
 (defn employee-hire->employee-map [cmd]
-  {:employee-id (:employee-id cmd)
-   :org-id (:org-id cmd)
-   :user-id (:user-id cmd)
-   :first-name (:first-name cmd)
-   :last-name (:last-name cmd)
-   :personal-email (:personal-email cmd)
-   :hire-date (:hire-date cmd)
-   :status (or (:status cmd) :active)
-   :current-employment-id (:employment-id cmd)
-   :created-at (:created-at cmd)
-   :updated-at (:created-at cmd)})
+  (cond-> {:employee-id (:employee-id cmd)
+           :org-id (:org-id cmd)
+           :user-id (:user-id cmd)
+           :first-name (:first-name cmd)
+           :last-name (:last-name cmd)
+           :personal-email (:personal-email cmd)
+           :hire-date (:hire-date cmd)
+           :status (or (:status cmd) :active)
+           :current-employment-id (:employment-id cmd)
+           :created-at (:created-at cmd)
+           :updated-at (:created-at cmd)}
+    (:avatar-url cmd) (assoc :avatar-url (:avatar-url cmd))))
 
 (defn employee-hire->employment-map [cmd]
   {:employment-id (:employment-id cmd)

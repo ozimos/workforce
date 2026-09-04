@@ -276,8 +276,10 @@
          [{:rule-id "acme-uk-eng" :priority 100 :name "UK Engineering Burden" :conditions {:location ["GB"] :job-category [:engineering]} :multiplier 1.20}
           {:rule-id "acme-us-ca-platform" :priority 90 :name "US-CA Platform Burden" :conditions {:location ["US-CA"]} :multiplier 1.15}]
          :requisitions canonical-reqs-acme
-         :employees (into [{:employee-id "emp-acme-ian" :first-name "Ian" :last-name "Engineer" :personal-email "ian.eng@acme.com" :hire-date "2026-01-15"}
-                           {:employee-id "emp-acme-jane" :first-name "Jane" :last-name "Engineer" :personal-email "jane.eng@acme.com" :hire-date "2026-01-15"}]
+         :employees (into [{:employee-id "emp-acme-ian" :first-name "Ian" :last-name "Engineer" :personal-email "ian.eng@acme.com" :hire-date "2026-01-15"
+                            :avatar-url (gen/make-avatar-url "photo-1522075469751-3a6694fb2f61")}
+                           {:employee-id "emp-acme-jane" :first-name "Jane" :last-name "Engineer" :personal-email "jane.eng@acme.com" :hire-date "2026-01-15"
+                            :avatar-url (gen/make-avatar-url "photo-1494790108377-be9c29b29330")}]
                           (or (:employees acme-10k) []))
          :employments (into [{:employment-id "empmt-acme-ian" :employee-id "emp-acme-ian" :unit-id "dept-acme-backend" :job-title "Senior Systems Engineer" :job-category :engineering :job-level "L5" :employee-type :full-time :location "US-CA" :base-salary 165000.0 :currency "USD" :bonus-target 0.15 :custom-attributes {:health-benefit 6000.0 :signing-bonus 10000.0}}
                              {:employment-id "empmt-acme-jane" :employee-id "emp-acme-jane" :unit-id "dept-acme-frontend" :job-title "Frontend Engineer" :job-category :engineering :job-level "L4" :employee-type :full-time :location "US-CA" :base-salary 145000.0 :currency "USD" :bonus-target 0.12 :custom-attributes {:health-benefit 5000.0 :signing-bonus 0.0}}]
@@ -471,6 +473,7 @@
                  :personal-email (:personal-email e)
                  :hire-date (:hire-date e)
                  :status :active
+                 :avatar-url (:avatar-url e)
                  :start-date (:hire-date e)
                  :created-at now
                  :idempotency-key (str "seed-" (:employee-id e))))))

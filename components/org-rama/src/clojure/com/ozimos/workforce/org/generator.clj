@@ -303,6 +303,67 @@
    "Thomas" "Taylor" "Moore" "Jackson" "Martin" "Lee" "Perez" "Thompson" "White"
    "Harris" "Sanchez" "Clark" "Ramirez" "Lewis" "Robinson" "Walker" "Young"])
 
+(def headshot-photo-ids
+  ["photo-1494790108377-be9c29b29330"
+   "photo-1507003211169-0a1dd7228f2d"
+   "photo-1534528741775-53994a69daeb"
+   "photo-1500648767791-00dcc994a43e"
+   "photo-1573496359142-b8d87734a5a2"
+   "photo-1519085360753-af0119f7cbe7"
+   "photo-1580489944761-15a19d654956"
+   "photo-1506794778202-cad84cf45f1d"
+   "photo-1531746020798-e6953c6e8e04"
+   "photo-1522075469751-3a6694fb2f61"
+   "photo-1544005313-94ddf0286df2"
+   "photo-1508214751196-bcfd4ca60f91"
+   "photo-1492562080023-ab3db95bfbce"
+   "photo-1560250097-0b93528c311a"
+   "photo-1573497019940-1c28c88b4f3e"
+   "photo-1539571696357-5a69c17a67c6"
+   "photo-1517841905240-472988babdf9"
+   "photo-1567532939604-b6b5b0db2604"
+   "photo-1472099645785-5658abf4ff4e"
+   "photo-1548142813-c348350df52b"
+   "photo-1524504388940-b1c1722653e1"
+   "photo-1519764622345-23439dd774f7"
+   "photo-1501196354995-cbb51c65aaea"
+   "photo-1528892952291-009c663ce843"
+   "photo-1584999734482-0361aecad844"
+   "photo-1546961329-78bef0414d7c"
+   "photo-1573497019236-17f8177b81e8"
+   "photo-1534751516642-a171edd2521d"
+   "photo-1544717305-2782549b5136"
+   "photo-1564564321837-a57b7070ac4f"
+   "photo-1570295999919-56ceb5ecca61"
+   "photo-1522529599102-193c0d76b5b6"
+   "photo-1535713875002-d1d0cf377fde"
+   "photo-1586297135537-94bc9ba060aa"
+   "photo-1543610892-0b1f7e6d8ac1"
+   "photo-1507152832244-10d45c7eda57"
+   "photo-1573496799652-408c2ac9fe98"
+   "photo-1527980965255-d3b416303d12"
+   "photo-1568602471122-7832951cc4c5"
+   "photo-1580894732444-8ecded7900cd"
+   "photo-1542909168-82c3e7fdca5c"
+   "photo-1573497491208-6b1acb260507"
+   "photo-1530268729831-4b0b9e170218"
+   "photo-1517486808906-6ca8b3f04846"])
+
+(defn make-avatar-url
+  "Builds an optimized 80x80 retina-thumbnail Unsplash CDN URL."
+  [photo-id]
+  (str "https://images.unsplash.com/" photo-id "?auto=format&fit=crop&w=80&h=80&q=80&crop=faces"))
+
+(defn deterministic-avatar-url
+  "Returns a deterministic avatar URL for the given employee identifier,
+   with ~75% coverage (returning nil for ~25% to mirror production distribution
+   where some users have not uploaded photos and rely on initials badges)."
+  [id-str]
+  (let [h (Math/abs (hash (str id-str)))]
+    (if (< (mod h 100) 75)
+      (make-avatar-url (nth headshot-photo-ids (mod (quot h 100) (count headshot-photo-ids))))
+      nil)))
+
 (defn generate-10k-workforce-nodes
   "Generates 10,000 workforce nodes assigned to tree structure and units with:
    - 80% Employees (Active with Employment)
@@ -387,6 +448,9 @@
                 email (format "%s.%s.%s@example.com" (str/lower-case fname) (str/lower-case lname) nid)
                 emp-id (str "emp-" nid)
                 employment-id (str "empmt-" nid)
+                avatar-url (if (= nid (:root-id tree))
+                             (make-avatar-url "photo-1573496359142-b8d87734a5a2")
+                             (deterministic-avatar-url emp-id))
                 emp {:employee-id emp-id
                      :org-id org-id
                      :first-name fname
@@ -394,7 +458,8 @@
                      :personal-email email
                      :hire-date "2024-01-15"
                      :status :active
-                     :current-employment-id employment-id}
+                     :current-employment-id employment-id
+                     :avatar-url avatar-url}
                 empmt {:employment-id employment-id
                        :employee-id emp-id
                        :org-id org-id

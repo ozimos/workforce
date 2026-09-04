@@ -2,6 +2,7 @@
   (:require
    [clojure.string :as str]
    [com.ozimos.omni-auth.rama.interface :as rama]
+   [com.ozimos.workforce.org.generator :as gen]
    [com.ozimos.workforce.org.rbac :as rbac]
    [com.ozimos.workforce.org.records :as rec]
    [com.rpl.rama :as ramaapi]
@@ -758,7 +759,8 @@
                         :person/title "Co-Equal Leadership"
                         :person/role :admin
                         :person/department-name "Executive Office"
-                        :person/is-synthetic? true}]
+                        :person/is-synthetic? true
+                        :person/avatar-url nil}]
         {:root-id "__visual_root__"
          :synthetic-node synth-node
          :co-equal-ids co-equal-ids})
@@ -866,7 +868,10 @@
                         :person/location (:location empmt)
                         :person/compensation (when view-comp?
                                                {:salary (:base-salary empmt)
-                                                :currency (:currency empmt "USD")})}))
+                                                :currency (:currency empmt "USD")})
+                        :person/avatar-url (when e
+                                             (or (:avatar-url e)
+                                                 (gen/deterministic-avatar-url (:employee-id e))))}))
                    employees)
 
              parent-map (invert-children-map children)
@@ -1038,7 +1043,9 @@
                       :person/title (if (= (:user-id m) owner-id) "Executive & Owner" (str (:role m "Member")))
                       :person/email (:email m)
                       :person/role (keyword (str/lower-case (str (:role m "employee"))))
-                      :person/compensation (when view-comp? {:salary 150000 :currency "USD"})})
+                      :person/compensation (when view-comp? {:salary 150000 :currency "USD"})
+                      :person/avatar-url (or (:avatar-url m)
+                                             (gen/deterministic-avatar-url (str (:user-id m))))})
                    members)
              base-hierarchy {nil [owner-id]
                              owner-id (into (mapv #(str (:user-id %)) (remove #(= (:user-id %) owner-id) members))
@@ -1114,6 +1121,9 @@
                                       :employee)
                        :person/job-level (:job-level empmt)
                        :person/location (:location empmt)
+                       :person/avatar-url (when e
+                                            (or (:avatar-url e)
+                                                (gen/deterministic-avatar-url (:employee-id e))))
                        :person/compensation (when view-comp?
                                               {:salary (:base-salary empmt)
                                                :currency (:currency empmt "USD")})}))
@@ -1223,6 +1233,8 @@
                         :person/name (str (:first-name e) " " (:last-name e))
                         :person/title (:job-title empmt "Employee")
                         :person/email (:personal-email e)
+                        :person/avatar-url (or (:avatar-url e)
+                                               (gen/deterministic-avatar-url (:employee-id e)))
                         :person/department-name (:unit-id empmt)
                         :person/ancestor-path (build-ancestor-path parent-map nid)})))))
       (let [members (list-members deps org-id)
@@ -1239,5 +1251,7 @@
                         :person/name (or (:name m) (:email m))
                         :person/title (str (:role m "Member"))
                         :person/email (:email m)
+                        :person/avatar-url (or (:avatar-url m)
+                                               (gen/deterministic-avatar-url (str (:user-id m))))
                         :person/ancestor-path [(str (:user-id m))]})))
           [])))))

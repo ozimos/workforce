@@ -142,10 +142,21 @@
     :recruiter "bg-amber-100 text-amber-700 ring-amber-600/20"
     "bg-gray-100 text-gray-700 ring-gray-500/20"))
 
-(defn- avatar-badge [name role]
-  [:div {:class (str "w-10 h-10 rounded-full flex items-center justify-center font-bold text-xs shadow-sm ring-2 "
-                     (role-badge-color role))}
-   (initials name)])
+(defn- avatar-badge
+  ([name role] (avatar-badge name role nil))
+  ([name role avatar-url]
+   (if (seq avatar-url)
+     [:img {:src avatar-url
+            :alt (or name "Avatar")
+            :loading "lazy"
+            :decoding "async"
+            :width 40
+            :height 40
+            :class (str "w-10 h-10 rounded-full object-cover shadow-sm ring-2 "
+                        (role-badge-color role))}]
+     [:div {:class (str "w-10 h-10 rounded-full flex items-center justify-center font-bold text-xs shadow-sm ring-2 "
+                        (role-badge-color role))}
+      (initials name)])))
 
 (defn- headcount-badge [hc]
   (let [title (or (:headcount/title hc) "Open Position")
@@ -167,14 +178,15 @@
 (defrc WorkforceNode
   {:query [:person/id :person/name :person/title :person/email :person/unit-id
            :person/department-name :person/division-name :person/role
-           :person/job-level :person/location :person/manager-id :person/compensation]
+           :person/job-level :person/location :person/manager-id :person/compensation
+           :person/avatar-url]
    :ident :person/id}
   [{:keys [person/id person/name person/title person/department-name
-           person/division-name person/role]}]
+           person/division-name person/role person/avatar-url]}]
   [:div {:replicant/key (str "node-" id)
          :class "p-4 bg-white rounded-xl border border-gray-200 shadow-sm"}
    [:div {:class "flex items-center gap-3"}
-    (avatar-badge (or name (str id)) role)
+    (avatar-badge (or name (str id)) role avatar-url)
     [:div
      [:h4 {:class "font-bold text-sm text-gray-900"} (or name (str id))]
      [:p {:class "text-xs text-gray-500 font-medium"} (or title "Employee")]
@@ -346,7 +358,7 @@
                                    matches-search? "border-indigo-500 ring-2 ring-indigo-400 bg-indigo-50/20"
                                    :else "border-gray-200 hover:border-indigo-300"))}
                [:div {:class "flex items-start gap-3"}
-                (avatar-badge name role)
+                (avatar-badge name role (:person/avatar-url person))
                 [:div {:class "flex-1 min-w-0"}
                  [:div {:class "flex items-center justify-between"}
                   [:h4 {:class "font-bold text-sm text-gray-900 truncate"} name]

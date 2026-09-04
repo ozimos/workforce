@@ -309,3 +309,24 @@
             rendered (pr-str hiccup)]
         (is (str/includes? rendered "10000"))
         (is (str/includes? rendered "loaded"))))))
+
+(deftest avatar-rendering-test
+  (testing "renders img with avatar-url, loading=lazy, decoding=async, and explicit dimensions when present"
+    (let [wf-with-avatar (assoc-in sample-workforce ["emp-alice" :person/avatar-url] "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=80")
+          hiccup (wf/WorkforceChart {:workforce wf-with-avatar
+                                    :workforce-hierarchy sample-hierarchy
+                                    :collapsed-workforce #{}})
+          rendered (pr-str hiccup)]
+      (is (str/includes? rendered ":src \"https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=80\""))
+      (is (str/includes? rendered ":loading \"lazy\""))
+      (is (str/includes? rendered ":decoding \"async\""))
+      (is (str/includes? rendered ":width 40"))
+      (is (str/includes? rendered ":height 40"))))
+
+  (testing "falls back to colored initials badge when avatar-url is absent"
+    (let [wf-without-avatar (assoc-in sample-workforce ["emp-bob" :person/avatar-url] nil)
+          hiccup (wf/WorkforceChart {:workforce wf-without-avatar
+                                    :workforce-hierarchy sample-hierarchy
+                                    :collapsed-workforce #{}})
+          rendered (pr-str hiccup)]
+      (is (str/includes? rendered "\"BJ\"")))))

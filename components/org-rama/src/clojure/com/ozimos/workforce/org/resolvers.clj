@@ -252,6 +252,7 @@
                                             :person/title
                                             :person/email
                                             :person/department-name
+                                            :person/avatar-url
                                             :person/ancestor-path]}]}
   (let [user-id (require-auth env)
         store (get-store deps)
