@@ -3,7 +3,18 @@
    [clojure.string :as str]
    [com.fulcrologic.fulcro.components :as comp :refer [defsc]]
    [com.fulcrologic.fulcro.dom :as dom :refer [a button div h1 h2 h3 input label option p select span]]
+   [com.fulcrologic.statecharts.integration.fulcro :as scf]
+   [com.ozimos.workforce.frontend.auth-statechart :as auth-sc]
    [com.ozimos.workforce.frontend.transit :as transit]))
+
+;; -----------------------------------------------------------------------------
+;; SPA Navigation (no full page reload)
+;; -----------------------------------------------------------------------------
+
+(defn- spa-navigate! [this path]
+  (let [app (comp/any->app this)]
+    (.pushState js/window.history nil "" path)
+    (scf/send! app auth-sc/default-session-id :event/navigate {:path path})))
 
 ;; -----------------------------------------------------------------------------
 ;; Data Fetching & Mutations
@@ -147,7 +158,7 @@
     (div {:onClick (fn [_]
                      (if has-children?
                        (toggle-node-collapsed! this unit-id)
-                       (set! js/window.location.href (str "/dept-dashboard?unit-id=" unit-id))))
+                       (spa-navigate! this (str "/dept-dashboard?unit-id=" unit-id))))
           :className (str "relative rounded-xl border p-5 shadow-sm transition-all duration-200 cursor-pointer select-none "
                           (if is-div?
                             "bg-white border-indigo-100 hover:border-indigo-400 hover:shadow-md ring-1 ring-indigo-50"
@@ -205,8 +216,11 @@
                    :className "rounded-md bg-gray-50 px-2.5 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-100 ring-1 ring-inset ring-gray-200 transition"
                    :title "Edit headcount budget"}
             "Budget")
-          (a {:href (str "/dept-dashboard?unit-id=" unit-id)
-              :onClick #(.stopPropagation %)
+           (a {:href (str "/dept-dashboard?unit-id=" unit-id)
+               :onClick (fn [e]
+                          (.stopPropagation e)
+                          (.preventDefault e)
+                          (spa-navigate! this (str "/dept-dashboard?unit-id=" unit-id)))
               :className "rounded-md bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 ring-1 ring-inset ring-indigo-700/10 transition inline-block"}
             "Analytics →")))
 
@@ -232,8 +246,8 @@
                 actors))))))
 
 (defn- render-tree-branch [this node-id units hierarchy depth search-term collapsed-nodes]
-  (let [unit (get units node-id {:unit-id node-id :name node-id})
-        children (get hierarchy node-id [])
+  (let [unit (get units node-id)
+        children (filter #(contains? units %) (get hierarchy node-id []))
         is-collapsed? (contains? collapsed-nodes node-id)
         search-clean (when (seq search-term) (str/lower-case search-term))
         matches-search? (and (seq search-clean)
@@ -479,7 +493,9 @@
           ;; SLA Link
           (div {:className "rounded-xl bg-gradient-to-br from-indigo-50 to-slate-50 p-4 shadow-2xs border border-indigo-100 flex flex-col justify-between"}
             (p {:className "text-xs font-medium text-indigo-900"} "Analytics & SLA")
-            (a {:href "/dept-dashboard" :className "text-xs font-bold text-indigo-600 hover:text-indigo-700 mt-1 inline-flex items-center gap-1"}
+            (a {:href "/dept-dashboard"
+                :onClick (fn [e] (.preventDefault e) (spa-navigate! this "/dept-dashboard"))
+                :className "text-xs font-bold text-indigo-600 hover:text-indigo-700 mt-1 inline-flex items-center gap-1"}
               "View Dashboards →"))))
 
       ;; Toolbar: Search & Expand Controls

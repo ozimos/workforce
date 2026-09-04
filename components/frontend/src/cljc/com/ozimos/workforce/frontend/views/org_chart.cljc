@@ -1,5 +1,5 @@
 (ns com.ozimos.workforce.frontend.views.org-chart
-  "Replicant rendering of the OrgChart page: pure `props -> hiccup` via `defrc`.
+  "CANONICAL Replicant rendering of the OrgChart page: pure `props -> hiccup` via `defrc`.
 
    Unlike `org-chart` (defsc + React DOM), this namespace produces plain Hiccup
    data (vectors/maps) with event handlers as pure data (`{:on {:click [::event ...]}}`).
@@ -8,10 +8,11 @@
 
    Cross-runtime (.cljc): compiles for the browser (Replicant DOM), the Node
    SSR harness, and the JVM (SSR rendering + headless tests)."
+  (:require-macros
+   [com.ozimos.workforce.frontend.defrc :refer [defrc]])
   (:require
    [clojure.string :as str]
    [com.fulcrologic.fulcro.mutations :refer [defmutation]]
-   [com.ozimos.workforce.frontend.defrc :refer [defrc]]
    [com.ozimos.workforce.frontend.util.math :as math]))
 
 ;; -----------------------------------------------------------------------------
@@ -182,12 +183,37 @@
     (swap! state set-search-term-state value)))
 
 ;; -----------------------------------------------------------------------------
-;; Root View (defrc)
+;; Composed Component Queries for Query-Driven Automatic Normalization
 ;; -----------------------------------------------------------------------------
 
+(defrc DivisionItem
+  {:query [:division/id :division/name]
+   :ident :division/id}
+  [props]
+  [:span {:class "font-medium text-purple-700"} (or (:division/name props) (:division/id props))])
+
+(defrc DeptItem
+  {:query [:dept/id :dept/name]
+   :ident :dept/id}
+  [props]
+  [:span {:class "font-medium text-blue-700"} (or (:dept/name props) (:dept/id props))])
+
+(defrc OrgUnit
+  {:query [:unit/id :unit/name :unit/division-id :unit/dept-id :unit/parent-id
+           :unit/budget :unit/filled :unit/open :unit/pending :unit/actors :unit/children
+           {:unit/division (:query (meta DivisionItem))}
+           {:unit/dept (:query (meta DeptItem))}]
+   :ident :unit/id}
+  [props]
+  (render-unit-card props 0 false false))
+
 (defrc OrgChartReplicant
-  {:query [:loading :error :active-org :units :hierarchy :search-term :collapsed-nodes]
-   :ident :org-chart-replicant/root}
+  {:query [:loading :error :active-org :units :hierarchy :search-term :collapsed-nodes
+           {:org/chart [:org/id :org/hierarchy
+                        {:org/units (:query (meta OrgUnit))}]}]
+   :ident :org-chart-replicant/root
+   :ident-key :org-chart-replicant/root
+   :route-segment ["org-chart-2"]}
   [{:keys [loading error active-org units hierarchy search-term collapsed-nodes]}]
   (let [unit-list (vals (or units {}))
         root-units (or (get hierarchy nil)
@@ -203,7 +229,7 @@
      [:div {:class "border-b border-gray-200 pb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4"}
       [:div
        [:div {:class "flex items-center gap-2"}
-        [:h1 {:class "text-3xl font-extrabold tracking-tight text-gray-900"} "Organization Chart"]
+        [:h1 {:class "text-3xl font-extrabold tracking-tight text-gray-900"} "Divisions & Departments Chart"]
         (when active-org
           [:span {:class "inline-flex items-center rounded-md bg-indigo-50 px-2.5 py-0.5 text-xs font-bold text-indigo-700 ring-1 ring-inset ring-indigo-700/10"}
            (:org/name active-org)])]

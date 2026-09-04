@@ -5,7 +5,7 @@
    [com.fulcrologic.fulcro.algorithms.denormalize :as denorm]
    [com.fulcrologic.fulcro.application :as app]
    [com.fulcrologic.fulcro.components :as comp]
-   [com.ozimos.workforce.frontend.ui.pages.org-chart-replicant :as sut]
+   [com.ozimos.workforce.frontend.views.org-chart :as sut]
    [replicant.string :as rs]))
 
 ;; Mock data: two-level hierarchy eng -> plat
@@ -104,16 +104,16 @@
 (deftest action-event-maps-on-cards
   (testing "parent card toggle event is pure data [::sut/toggle-collapse unit-id]"
     (let [hiccup (hiccup-tree (base-props {}))
-          toggle-event (find-event-in-hiccup hiccup #(= (first %) :com.ozimos.workforce.frontend.ui.pages.org-chart-replicant/toggle-collapse))]
-      (is (= [:com.ozimos.workforce.frontend.ui.pages.org-chart-replicant/toggle-collapse "eng"] toggle-event))))
+          toggle-event (find-event-in-hiccup hiccup #(= (first %) :com.ozimos.workforce.frontend.views.org-chart/toggle-collapse))]
+      (is (= [:com.ozimos.workforce.frontend.views.org-chart/toggle-collapse "eng"] toggle-event))))
   (testing "leaf card navigate event is pure data [::sut/navigate dept-dashboard?unit-id=...]"
     (let [hiccup (hiccup-tree (base-props {}))
-          nav-event (find-event-in-hiccup hiccup #(and (= (first %) :com.ozimos.workforce.frontend.ui.pages.org-chart-replicant/navigate)
+          nav-event (find-event-in-hiccup hiccup #(and (= (first %) :com.ozimos.workforce.frontend.views.org-chart/navigate)
                                                     (str/includes? (second %) "plat")))]
-      (is (= [:com.ozimos.workforce.frontend.ui.pages.org-chart-replicant/navigate "/dept-dashboard?unit-id=plat"] nav-event))))
+      (is (= [:com.ozimos.workforce.frontend.views.org-chart/navigate "/dept-dashboard?unit-id=plat"] nav-event))))
   (testing "events are pure data vectors, not fns"
     (let [hiccup (hiccup-tree (base-props {}))
-          toggle (find-event-in-hiccup hiccup #(= (first %) :com.ozimos.workforce.frontend.ui.pages.org-chart-replicant/toggle-collapse))]
+          toggle (find-event-in-hiccup hiccup #(= (first %) :com.ozimos.workforce.frontend.views.org-chart/toggle-collapse))]
       (is (vector? toggle))
       (is (keyword? (first toggle)))
       (is (string? (second toggle))))))
@@ -216,8 +216,8 @@
         (is (str/includes? (rs/render hiccup-1) "Platform")
             "Initial render must include child unit Platform")
         ;; 2. Extract the toggle event from the rendered Hiccup:
-        (let [toggle-event (find-event-in-hiccup hiccup-1 #(= (first %) :com.ozimos.workforce.frontend.ui.pages.org-chart-replicant/toggle-collapse))]
-          (is (= [:com.ozimos.workforce.frontend.ui.pages.org-chart-replicant/toggle-collapse "eng"] toggle-event)
+        (let [toggle-event (find-event-in-hiccup hiccup-1 #(= (first %) :com.ozimos.workforce.frontend.views.org-chart/toggle-collapse))]
+          (is (= [:com.ozimos.workforce.frontend.views.org-chart/toggle-collapse "eng"] toggle-event)
               "Parent card must emit toggle-collapse event for 'eng'")
           ;; 3. Execute the mutation on the Fulcro app (simulating what the bridge dispatcher does):
           (comp/transact! app-inst [(sut/toggle-collapse {:id (second toggle-event)})])

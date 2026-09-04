@@ -19,7 +19,7 @@
    [com.ozimos.workforce.frontend.ui.pages.headcount-replicant :as headcount]
    [com.ozimos.workforce.frontend.ui.pages.join-org-replicant :as join-org]
    [com.ozimos.workforce.frontend.ui.pages.login-replicant :as login]
-   [com.ozimos.workforce.frontend.ui.pages.org-chart-replicant :as org-chart]
+   [com.ozimos.workforce.frontend.views.org-chart :as org-chart]
    [com.ozimos.workforce.frontend.ui.pages.policy-settings-replicant :as policy-settings]
    [com.ozimos.workforce.frontend.ui.pages.profile-replicant :as profile]
    [com.ozimos.workforce.frontend.ui.pages.register-replicant :as register]
@@ -150,13 +150,19 @@
         (fetch-user-session!)))))
 
 (defn- navigate!
-  ([path] (navigate! path nil))
-  ([path return-to]
-   (when (and (exists? js/window) (exists? js/window.history))
-     (if return-to
-       (.replaceState js/window.history nil "" path)
-       (.pushState js/window.history nil "" path)))
-   (scf/send! app-inst auth-sc/default-session-id :event/navigate {:path path :return-to return-to})))
+   ([path] (navigate! path nil))
+   ([path return-to]
+    (when (and (exists? js/window) (exists? js/window.history))
+      (if return-to
+        (.replaceState js/window.history nil "" path)
+        (.pushState js/window.history nil "" path)))
+    (scf/send! app-inst auth-sc/default-session-id :event/navigate {:path path :return-to return-to})))
+
+(defn navigate
+  "Public SPA navigation: push the path onto history and route in-app
+   without a full page reload."
+  [path]
+  (navigate! path))
 
 (defn load-rc!
   "Pure headless data loader: sends a component's EQL query to `/api/query`
