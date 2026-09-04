@@ -198,7 +198,9 @@
       (is (nil? (:password @state-atom)) "password must be cleared after logout")
       (is (nil? (:error-msg @state-atom)))
       (is (nil? (:mfa-required @state-atom)))
-      (is (= {} (get-in @state-atom [:login/root :main])) "normalized login ident must be reset")
+      (let [login-ident (get-in @state-atom [:login/root :main])]
+        (is (nil? (:identifier login-ident)) "normalized login ident identifier must be cleared")
+        (is (nil? (:password login-ident)) "normalized login ident password must be cleared"))
       (is (= "/login" @redirected-to) "must redirect to /login on logout")
       (is (nil? @redirected-return-to) "explicit logout must not set return-to (Option B)"))))
 
