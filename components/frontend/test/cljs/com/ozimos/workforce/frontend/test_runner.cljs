@@ -2,27 +2,21 @@
   (:require
    [cljs.test :refer [run-tests]]
    [com.ozimos.workforce.frontend.abac-test]
-   [com.ozimos.workforce.frontend.core-routing-test]
    [com.ozimos.workforce.frontend.bridge-test]
+   [com.ozimos.workforce.frontend.core-routing-test]
    [com.ozimos.workforce.frontend.routing-test]
    [com.ozimos.workforce.frontend.transit-test]
    [com.ozimos.workforce.frontend.ui.components.nav-test]
-   [com.ozimos.workforce.frontend.ui.components.nav-test]
    [com.ozimos.workforce.frontend.ui.pages.create-org-test]
    [com.ozimos.workforce.frontend.ui.pages.dept-dashboard-test]
-   [com.ozimos.workforce.frontend.ui.pages.dept-dashboard-test]
    [com.ozimos.workforce.frontend.ui.pages.forgot-password-test]
-   [com.ozimos.workforce.frontend.ui.pages.headcount-test]
    [com.ozimos.workforce.frontend.ui.pages.headcount-test]
    [com.ozimos.workforce.frontend.ui.pages.home-test]
    [com.ozimos.workforce.frontend.ui.pages.join-org-test]
    [com.ozimos.workforce.frontend.ui.pages.login-test]
-   [com.ozimos.workforce.frontend.ui.pages.login-test]
-   [com.ozimos.workforce.frontend.ui.pages.org-chart-test]
    [com.ozimos.workforce.frontend.ui.pages.org-chart-test]
    [com.ozimos.workforce.frontend.ui.pages.org-dashboard-test]
    [com.ozimos.workforce.frontend.ui.pages.policy-settings-test]
-   [com.ozimos.workforce.frontend.ui.pages.profile-test]
    [com.ozimos.workforce.frontend.ui.pages.profile-test]
    [com.ozimos.workforce.frontend.ui.pages.register-test]
    [com.ozimos.workforce.frontend.ui.pages.reset-password-test]
@@ -34,10 +28,7 @@
     'com.ozimos.workforce.frontend.core-routing-test
     'com.ozimos.workforce.frontend.transit-test
     'com.ozimos.workforce.frontend.bridge-test
-    'com.ozimos.workforce.frontend.ui.pages.headcount-test
     'com.ozimos.workforce.frontend.ui.components.nav-test
-    'com.ozimos.workforce.frontend.ui.components.nav-test
-    'com.ozimos.workforce.frontend.ui.pages.dept-dashboard-test
     'com.ozimos.workforce.frontend.ui.pages.dept-dashboard-test
     'com.ozimos.workforce.frontend.ui.pages.headcount-test
     'com.ozimos.workforce.frontend.ui.pages.login-test
@@ -46,15 +37,12 @@
     'com.ozimos.workforce.frontend.abac-test
     'com.ozimos.workforce.frontend.ui.pages.workforce-chart-test
     'com.ozimos.workforce.frontend.ui.pages.policy-settings-test
-    'com.ozimos.workforce.frontend.ui.pages.org-chart-test
-    'com.ozimos.workforce.frontend.ui.pages.profile-test
     'com.ozimos.workforce.frontend.ui.pages.profile-test
     'com.ozimos.workforce.frontend.ui.pages.home-test
     'com.ozimos.workforce.frontend.ui.pages.join-org-test
     'com.ozimos.workforce.frontend.ui.pages.create-org-test
-    'com.ozimos.workforce.frontend.ui.pages.login-test
     'com.ozimos.workforce.frontend.ui.pages.register-test
     'com.ozimos.workforce.frontend.ui.pages.verify-test
     'com.ozimos.workforce.frontend.ui.pages.forgot-password-test
     'com.ozimos.workforce.frontend.ui.pages.reset-password-test
-     'com.ozimos.workforce.frontend.routing-test))
+    'com.ozimos.workforce.frontend.routing-test))
