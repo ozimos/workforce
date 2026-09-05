@@ -330,3 +330,58 @@
                                     :collapsed-workforce #{}})
           rendered (pr-str hiccup)]
       (is (str/includes? rendered "\"BJ\"")))))
+
+(deftest workforce-chart-pan-zoom-rendering-test
+  (testing "renders viewport with GPU transform style and floating zoom HUD"
+    (let [hiccup (wf/WorkforceChart {:workforce sample-workforce
+                                    :workforce-hierarchy sample-hierarchy
+                                    :chart/pan {:x 120 :y 45}
+                                    :chart/zoom 1.15
+                                    :chart/panning? true})
+          rendered (pr-str hiccup)]
+      ;; Check transform plane container styling
+      (is (str/includes? rendered "translate3d(120px, 45px, 0) scale(1.15)"))
+      (is (str/includes? rendered ":cursor \"grabbing\""))
+      ;; Check zoom HUD controls
+      (is (str/includes? rendered "115%"))
+      (is (str/includes? rendered "➕"))
+      (is (str/includes? rendered "➖"))
+      (is (str/includes? rendered "⛶ Fit")))))
+
+(deftest workforce-chart-unconnected-drawer-test
+  (let [orphan-emp {:person/id "emp-orphan"
+                    :person/name "Oscar Orphan"
+                    :person/title "Rogue Engineer"
+                    :person/department-name "Lab"}
+        orphan-child {:person/id "emp-child"
+                      :person/name "Charlie Child"
+                      :person/title "Junior Intern"}
+        props {:workforce sample-workforce
+               :workforce-hierarchy sample-hierarchy
+               :unconnected/workforce [orphan-emp orphan-child]
+               :unconnected/headcounts []
+               :unconnected/hierarchy {"emp-orphan" ["emp-child"]}
+               :unconnected/roots ["emp-orphan"]
+               :unconnected/count 2}]
+    (testing "renders disconnected badge in stat badges row"
+      (let [hiccup (wf/WorkforceChart props)
+            rendered (pr-str hiccup)]
+        (is (str/includes? rendered "⚠️ Disconnected:"))
+        (is (str/includes? rendered "\"2\""))))
+
+    (testing "renders collapsed floating trigger button when drawer is closed"
+      (let [hiccup (wf/WorkforceChart (assoc props :unconnected-drawer-open? false))
+            rendered (pr-str hiccup)]
+        (is (str/includes? rendered "⚠️ Disconnected"))
+        (is (not (str/includes? rendered "Disconnected Nodes")))))
+
+    (testing "renders expanded slide-over drawer with orphan hierarchy when open"
+      (let [hiccup (wf/WorkforceChart (assoc props :unconnected-drawer-open? true))
+            rendered (pr-str hiccup)]
+        (is (str/includes? rendered "Disconnected Nodes"))
+        (is (str/includes? rendered "Oscar Orphan"))
+        (is (str/includes? rendered "Orphan Subtree Root"))
+        (is (str/includes? rendered "Charlie Child"))
+        (is (str/includes? rendered "Subtree Report"))
+        (is (str/includes? rendered "🎯 Set as Root"))))))
+

@@ -204,7 +204,12 @@
                                        :headcounts-by-manager
                                        :org/chart-settings
                                        :total-workforce-count
-                                       :total-headcount-count]}]}
+                                       :total-headcount-count
+                                       :unconnected/workforce
+                                       :unconnected/headcounts
+                                       :unconnected/hierarchy
+                                       :unconnected/roots
+                                       :unconnected/count]}]}
   (let [user-id (require-auth env)
         store (get-store deps)
         org-id (:org/id params)
